@@ -9,11 +9,12 @@ auto-service = "1.1.1"
 
 # Spring
 spring-boot = "3.4.3"
-spring-ai = "1.0.0-M6"
+spring-ai = "1.0.3"
 spring-dependency-management = "1.1.7"
 
 # OpenAPI
 swagger-models = "2.2.28"
+jackson = "2.17.3"
 
 # Testing
 junit = "5.11.4"
@@ -38,6 +39,9 @@ spring-ai-mcp-server = { module = "org.springframework.ai:spring-ai-starter-mcp-
 
 # OpenAPI
 swagger-models = { module = "io.swagger.core.v3:swagger-models-jakarta", version.ref = "swagger-models" }
+
+# Jackson (for OpenAPI JSON serialization in processor)
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
 
 # Testing
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }

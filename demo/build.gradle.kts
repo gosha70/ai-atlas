@@ -4,13 +4,8 @@ plugins {
     alias(libs.plugins.spring.boot)
 }
 
-// Disable bootJar until main class exists (Cycle 2)
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
-    enabled = false
-}
-
-tasks.named<Jar>("jar") {
-    enabled = true
+    mainClass.set("ai.adam.demo.DemoApplication")
 }
 
 dependencies {

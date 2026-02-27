@@ -7,6 +7,10 @@ dependencies {
     // Code generation
     implementation(libs.javapoet)
 
+    // OpenAPI spec generation
+    implementation(libs.swagger.models)
+    implementation(libs.jackson.databind)
+
     // AutoService for META-INF/services registration
     compileOnly(libs.auto.service.annotations)
     annotationProcessor(libs.auto.service)
@@ -17,6 +21,11 @@ dependencies {
     testImplementation(libs.assertj.core)
     testImplementation(libs.compile.testing)
     testImplementation(project(":modules:annotations"))
+
+    // Spring dependencies for compile-testing (generated code must compile)
+    testImplementation(platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.spring.boot.get()}"))
+    testImplementation("org.springframework:spring-web")
+    testImplementation(libs.spring.ai.mcp.server)
 }
 
 tasks.withType<Test> {

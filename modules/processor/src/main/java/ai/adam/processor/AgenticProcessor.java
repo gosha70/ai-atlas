@@ -5,12 +5,20 @@ package ai.adam.processor;
 
 import ai.adam.annotations.AgentVisible;
 import ai.adam.annotations.AgentVisibleClass;
+import ai.adam.annotations.AgenticExposed;
 import ai.adam.processor.generator.DtoGenerator;
+import ai.adam.processor.generator.McpToolGenerator;
+import ai.adam.processor.generator.OpenApiGenerator;
+import ai.adam.processor.generator.RestControllerGenerator;
 import ai.adam.processor.model.EntityModel;
+import ai.adam.processor.model.ServiceModel;
+import ai.adam.processor.model.ServiceModel.MethodModel;
+import ai.adam.processor.model.ServiceModel.ParameterModel;
 import ai.adam.processor.util.FieldScanner;
 import ai.adam.processor.util.PiiDetector;
 import com.google.auto.service.AutoService;
 import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.TypeName;
 
 import javax.annotation.processing.AbstractProcessor;
 import javax.annotation.processing.Processor;
@@ -19,14 +27,25 @@ import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.ElementKind;
+import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.MirroredTypeException;
+import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
  * JSR 269 annotation processor for the AI-ADAM framework.
- * Scans for {@code @AgentVisibleClass} types and generates PII-safe DTO records
- * containing only {@code @AgentVisible} fields.
+ *
+ * <p>Processing order:
+ * <ol>
+ *   <li>{@code @AgentVisibleClass} entities → DTO records</li>
+ *   <li>{@code @AgenticExposed} services → MCP tools + REST controllers</li>
+ * </ol>
  *
  * <p>Registered as AGGREGATING for Gradle incremental builds.
  */
@@ -38,13 +57,42 @@ import java.util.Set;
 @SupportedSourceVersion(SourceVersion.RELEASE_21)
 public class AgenticProcessor extends AbstractProcessor {
 
+    /** Maps entity qualified name → EntityModel (for DTO lookup during service processing) */
+    private final Map<String, EntityModel> entityRegistry = new HashMap<>();
+
+    /** Collects service models for aggregate OpenAPI generation */
+    private final List<ServiceModel> serviceRegistry = new ArrayList<>();
+
+    /** Guard to ensure OpenAPI spec is written only once */
+    private boolean openApiGenerated = false;
+
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
         if (roundEnv.processingOver()) {
             return false;
         }
 
-        // Process @AgentVisibleClass entities → generate DTOs
+        // Phase 1: Process @AgentVisibleClass entities → generate DTOs
+        processEntities(roundEnv);
+
+        // Phase 2: Process @AgenticExposed services → generate MCP tools + REST controllers
+        processServices(roundEnv);
+
+        // Phase 3: Generate aggregate OpenAPI spec (once per compilation)
+        if (!openApiGenerated && (!entityRegistry.isEmpty() || !serviceRegistry.isEmpty())) {
+            OpenApiGenerator.generate(
+                    new ArrayList<>(entityRegistry.values()),
+                    serviceRegistry,
+                    processingEnv.getFiler(),
+                    processingEnv.getMessager()
+            );
+            openApiGenerated = true;
+        }
+
+        return true;
+    }
+
+    private void processEntities(RoundEnvironment roundEnv) {
         for (var element : roundEnv.getElementsAnnotatedWith(AgentVisibleClass.class)) {
             if (element.getKind() != ElementKind.CLASS) {
                 processingEnv.getMessager().printMessage(
@@ -58,15 +106,12 @@ public class AgenticProcessor extends AbstractProcessor {
             TypeElement typeElement = (TypeElement) element;
             processEntity(typeElement);
         }
-
-        return true;
     }
 
     private void processEntity(TypeElement typeElement) {
         var annotation = typeElement.getAnnotation(AgentVisibleClass.class);
         var fields = FieldScanner.scan(typeElement);
 
-        // Emit PII warnings for unannotated fields
         emitPiiWarnings(typeElement);
 
         if (fields.isEmpty()) {
@@ -79,13 +124,11 @@ public class AgenticProcessor extends AbstractProcessor {
             return;
         }
 
-        // Resolve DTO name
         String simpleName = typeElement.getSimpleName().toString();
         String dtoName = annotation.dtoName().isEmpty()
                 ? simpleName + "Dto"
                 : annotation.dtoName();
 
-        // Resolve DTO package
         String sourcePackage = processingEnv.getElementUtils()
                 .getPackageOf(typeElement).getQualifiedName().toString();
         String dtoPackage = annotation.packageName().isEmpty()
@@ -93,10 +136,166 @@ public class AgenticProcessor extends AbstractProcessor {
                 : annotation.packageName();
 
         ClassName sourceClassName = ClassName.get(typeElement);
-
         EntityModel model = new EntityModel(sourceClassName, dtoName, dtoPackage, fields);
 
+        // Register for service processing lookup
+        entityRegistry.put(typeElement.getQualifiedName().toString(), model);
+
         DtoGenerator.generate(model, processingEnv.getFiler(), processingEnv.getMessager());
+    }
+
+    private void processServices(RoundEnvironment roundEnv) {
+        // Collect type-level @AgenticExposed
+        for (var element : roundEnv.getElementsAnnotatedWith(AgenticExposed.class)) {
+            if (element.getKind() == ElementKind.CLASS || element.getKind() == ElementKind.INTERFACE) {
+                TypeElement typeElement = (TypeElement) element;
+                processServiceType(typeElement);
+            } else if (element.getKind() == ElementKind.METHOD) {
+                // Method-level: collect by enclosing type
+                ExecutableElement method = (ExecutableElement) element;
+                TypeElement enclosingType = (TypeElement) method.getEnclosingElement();
+                processServiceWithMethods(enclosingType, List.of(method));
+            }
+        }
+    }
+
+    private void processServiceType(TypeElement typeElement) {
+        // Type-level @AgenticExposed: all public methods are exposed
+        List<ExecutableElement> methods = typeElement.getEnclosedElements().stream()
+                .filter(e -> e.getKind() == ElementKind.METHOD)
+                .filter(e -> e.getModifiers().contains(javax.lang.model.element.Modifier.PUBLIC))
+                .map(e -> (ExecutableElement) e)
+                .toList();
+
+        if (methods.isEmpty()) {
+            processingEnv.getMessager().printMessage(
+                    Diagnostic.Kind.WARNING,
+                    "@AgenticExposed on " + typeElement.getSimpleName()
+                            + " has no public methods to expose",
+                    typeElement
+            );
+            return;
+        }
+
+        processServiceWithMethods(typeElement, methods);
+    }
+
+    private void processServiceWithMethods(TypeElement serviceType, List<ExecutableElement> methods) {
+        ClassName serviceClassName = ClassName.get(serviceType);
+        String servicePackage = processingEnv.getElementUtils()
+                .getPackageOf(serviceType).getQualifiedName().toString();
+        String generatedPackage = servicePackage + ".generated";
+
+        // Get type-level annotation (may be null for method-level only)
+        AgenticExposed typeAnnotation = serviceType.getAnnotation(AgenticExposed.class);
+
+        List<MethodModel> methodModels = new ArrayList<>();
+        for (ExecutableElement method : methods) {
+            MethodModel methodModel = buildMethodModel(method, typeAnnotation);
+            if (methodModel != null) {
+                methodModels.add(methodModel);
+            }
+        }
+
+        if (methodModels.isEmpty()) {
+            return;
+        }
+
+        ServiceModel model = new ServiceModel(serviceClassName, methodModels);
+        serviceRegistry.add(model);
+
+        McpToolGenerator.generate(model, generatedPackage, processingEnv.getFiler(), processingEnv.getMessager());
+        RestControllerGenerator.generate(model, generatedPackage, processingEnv.getFiler(), processingEnv.getMessager());
+    }
+
+    private MethodModel buildMethodModel(ExecutableElement method, AgenticExposed typeAnnotation) {
+        // Method-level annotation takes precedence
+        AgenticExposed methodAnnotation = method.getAnnotation(AgenticExposed.class);
+        AgenticExposed annotation = methodAnnotation != null ? methodAnnotation : typeAnnotation;
+
+        if (annotation == null) {
+            return null;
+        }
+
+        String methodName = method.getSimpleName().toString();
+        // For type-level annotation, use method name as tool name (type toolName is the service prefix)
+        String toolName;
+        if (methodAnnotation != null && !methodAnnotation.toolName().isEmpty()) {
+            toolName = methodAnnotation.toolName();
+        } else {
+            toolName = methodName;
+        }
+        String description = annotation.description().isEmpty()
+                ? "Invokes " + methodName
+                : annotation.description();
+
+        // Resolve return entity type via MirroredTypeException
+        ClassName returnEntityType = resolveReturnEntityType(annotation);
+        ClassName returnDtoType = null;
+        TypeName returnType = TypeName.get(method.getReturnType());
+
+        // Detect if method returns a collection (List, Collection, etc.)
+        boolean collectionReturn = isCollectionReturn(method);
+
+        if (returnEntityType != null) {
+            EntityModel entityModel = entityRegistry.get(returnEntityType.canonicalName());
+            if (entityModel != null) {
+                returnDtoType = entityModel.dtoClassName();
+            }
+        }
+
+        // Build parameter models
+        List<ParameterModel> params = method.getParameters().stream()
+                .map(p -> new ParameterModel(
+                        p.getSimpleName().toString(),
+                        TypeName.get(p.asType()),
+                        ""
+                ))
+                .toList();
+
+        return new MethodModel(methodName, toolName, description, returnType, returnEntityType, returnDtoType, collectionReturn, params);
+    }
+
+    /**
+     * Checks if a method's return type is a collection (List, Collection, Set, Iterable).
+     */
+    private boolean isCollectionReturn(ExecutableElement method) {
+        TypeMirror returnType = method.getReturnType();
+        var typeUtils = processingEnv.getTypeUtils();
+        var elementUtils = processingEnv.getElementUtils();
+
+        for (String collectionType : List.of("java.util.List", "java.util.Collection", "java.util.Set", "java.lang.Iterable")) {
+            TypeElement collectionElement = elementUtils.getTypeElement(collectionType);
+            if (collectionElement != null) {
+                TypeMirror erasedReturn = typeUtils.erasure(returnType);
+                TypeMirror erasedCollection = typeUtils.erasure(collectionElement.asType());
+                if (typeUtils.isAssignable(erasedReturn, erasedCollection)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Reads the returnType() attribute from @AgenticExposed, handling
+     * MirroredTypeException as required by JSR 269.
+     */
+    private ClassName resolveReturnEntityType(AgenticExposed annotation) {
+        try {
+            Class<?> returnType = annotation.returnType();
+            if (returnType == void.class) {
+                return null;
+            }
+            return ClassName.get(returnType);
+        } catch (MirroredTypeException e) {
+            TypeMirror typeMirror = e.getTypeMirror();
+            TypeElement typeElement = (TypeElement) processingEnv.getTypeUtils().asElement(typeMirror);
+            if (typeElement != null) {
+                return ClassName.get(typeElement);
+            }
+            return null;
+        }
     }
 
     private void emitPiiWarnings(TypeElement typeElement) {

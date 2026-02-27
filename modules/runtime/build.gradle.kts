@@ -10,6 +10,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     annotationProcessor("org.springframework.boot:spring-boot-configuration-processor:${libs.versions.spring.boot.get()}")
 
+    // Spring AI MCP — provides @Tool/@ToolParam annotations + MCP server auto-config
+    api(libs.spring.ai.mcp.server)
+
     // Testing
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)

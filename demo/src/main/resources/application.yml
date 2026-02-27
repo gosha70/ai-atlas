@@ -1,0 +1,22 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ai-adam-demo
+  ai:
+    mcp:
+      server:
+        name: ai-adam-demo
+        version: 0.1.0
+
+ai:
+  adam:
+    mcp:
+      enabled: true
+    audit:
+      enabled: true
+
+logging:
+  level:
+    ai.adam: DEBUG
