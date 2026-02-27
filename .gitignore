@@ -1,0 +1,29 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project internal
+/doc_internal
+/.claude
+
+# Secrets
+.env
+*.pem
+*.key
+credentials.json
