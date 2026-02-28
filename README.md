@@ -1,82 +1,61 @@
 # AI-ADAM
 
-**AI Auto-Discoverable API Management** — a Java annotation processor framework that generates PII-safe DTOs, MCP tools, REST controllers, and OpenAPI specs at compile time.
+**AI Auto-Discoverable API Management**
 
-## What It Does
+## The Problem
 
-Annotate your service methods with `@AgenticExposed` and your entity fields with `@AgentVisible` — the compiler auto-generates everything an AI agent needs to safely interact with your API. Unannotated fields are structurally excluded (whitelist = safe by default).
+Enterprise Java applications contain sensitive data — SSNs, credit card numbers, passwords — mixed alongside business data in entity classes. When exposing APIs for AI agents (via [MCP](https://modelcontextprotocol.io/) or REST), developers must manually write DTOs, tool wrappers, and controllers that exclude PII fields. This is tedious, error-prone, and a single missed field can leak sensitive data to an LLM.
+
+## The Solution
+
+AI-ADAM is a **compile-time annotation processor** that generates PII-safe API layers from two simple annotations:
+
+- **`@AgentVisible`** on entity fields — whitelist what AI agents can see
+- **`@AgenticExposed`** on service classes — expose methods as MCP tools and REST endpoints
+
+Everything else is structurally excluded. There is no way for unannotated fields to reach the generated API — the safety guarantee is enforced by the Java compiler, not runtime checks.
+
+From these annotations, the processor generates four artifacts at compile time:
+
+| Generated Artifact | Purpose |
+|---|---|
+| **Java record DTO** | Contains only `@AgentVisible` fields with a null-safe `fromEntity()` factory |
+| **MCP tool class** | Spring AI `@Tool`-annotated service for AI agent interaction via [Model Context Protocol](https://modelcontextprotocol.io/) |
+| **REST controller** | Spring `@RestController` with `@PostMapping`/`@GetMapping` endpoints returning DTOs |
+| **OpenAPI 3.0 spec** | Machine-readable API description at `META-INF/openapi/openapi.json` |
+
+## How It Works
+
+Given an entity with mixed safe and sensitive fields:
 
 ```java
 @AgentVisibleClass
 public class Order {
-
     @AgentVisible(description = "Unique order identifier")
     private Long id;
 
     @AgentVisible(description = "Current order status")
     private String status;
 
-    // Not annotated — excluded from generated DTO
-    private String customerSsn;
+    @AgentVisible(description = "Total order amount in cents")
+    private long totalAmountCents;
+
+    @AgentVisible(description = "Number of items in the order")
+    private int itemCount;
+
+    // PII — NOT annotated, structurally excluded from all generated code
+    private String customerName;
+    private String customerEmail;
+    private String shippingAddress;
     private String creditCardNumber;
+    private String customerSsn;
 }
 ```
 
-At compile time, the processor generates:
-
-1. **PII-safe DTO record** with only whitelisted fields
-2. **MCP tool** for AI agent interaction (Spring AI `@Tool`)
-3. **REST controller** with request mapping
-4. **OpenAPI 3.0 spec** at `META-INF/openapi/openapi.json`
+And a service:
 
 ```java
-// Generated DTO — only safe fields, no SSN or credit card
-@Generated("ai.adam.processor")
-public record OrderDto(Long id, String status, Long totalAmountCents, int itemCount) {
-    public static OrderDto fromEntity(Order entity) {
-        if (entity == null) return null;
-        return new OrderDto(entity.getId(), entity.getStatus(),
-                entity.getTotalAmountCents(), entity.getItemCount());
-    }
-}
-```
-
-## Quickstart
-
-### 1. Add dependencies
-
-```kotlin
-// build.gradle.kts
-dependencies {
-    implementation("ai.adam:annotations:0.1.0")
-    implementation("ai.adam:runtime:0.1.0")
-    annotationProcessor("ai.adam:processor:0.1.0")
-}
-```
-
-Or use the Gradle plugin:
-
-```kotlin
-plugins {
-    id("ai.adam.gradle-plugin") version "0.1.0"
-}
-```
-
-### 2. Annotate your entities
-
-```java
-@AgentVisibleClass
-public class Order {
-    @AgentVisible(description = "Order ID") private Long id;
-    @AgentVisible(description = "Status")   private String status;
-    private String customerSsn; // excluded — not annotated
-}
-```
-
-### 3. Annotate your services
-
-```java
-@AgenticExposed(description = "Order management", returnType = Order.class)
+@AgenticExposed(description = "Order management operations", returnType = Order.class)
 @Service
 public class OrderService {
     public Order findById(Long id) { ... }
@@ -84,117 +63,204 @@ public class OrderService {
 }
 ```
 
-### 4. Build and run
+Running `./gradlew build` generates:
 
-```bash
-./gradlew build         # generates DTOs, MCP tools, REST controllers, OpenAPI
-./gradlew bootRun       # starts Spring Boot with MCP server + REST API
+**PII-safe DTO** — only the 4 whitelisted fields, no customer name, no SSN, no credit card:
+
+```java
+@Generated("ai.adam.processor")
+public record OrderDto(Long id, String status, long totalAmountCents, int itemCount) {
+    public static OrderDto fromEntity(Order entity) {
+        if (entity == null) return null;
+        return new OrderDto(
+            entity.getId(), entity.getStatus(),
+            entity.getTotalAmountCents(), entity.getItemCount());
+    }
+}
 ```
 
-Generated artifacts:
-- `OrderDto.java` — PII-safe record
-- `OrderServiceMcpTool.java` — MCP tool with `@Tool` annotations
-- `OrderServiceRestController.java` — REST endpoints at `/api/v1/order-service/`
-- `META-INF/openapi/openapi.json` — OpenAPI 3.0 spec
+**MCP tool** — AI agents call this via MCP protocol, responses are always DTOs:
+
+```java
+@Generated("ai.adam.processor")
+@Service
+public class OrderServiceMcpTool {
+    private final OrderService service;
+    // constructor injection...
+
+    @Tool(name = "findById", description = "Order management operations")
+    public OrderDto findById(@ToolParam(description = "id") Long id) {
+        return OrderDto.fromEntity(service.findById(id));
+    }
+}
+```
+
+**REST controller** — standard Spring endpoints, also returning DTOs:
+
+```java
+@Generated("ai.adam.processor")
+@RestController
+@RequestMapping("/api/v1/order-service")
+public class OrderServiceRestController {
+    @PostMapping("/find-by-id")
+    public OrderDto findById(@RequestParam Long id) { ... }
+
+    @PostMapping("/find-by-status")
+    public List<OrderDto> findByStatus(@RequestParam String status) { ... }
+}
+```
+
+## Demo Application
+
+The `demo/` module is a working Spring Boot app that demonstrates the full pipeline. It contains an `Order` entity with 9 fields (4 safe, 5 PII) and an `OrderService` with two methods.
+
+### Running the demo
+
+```bash
+# 1. Build everything (triggers annotation processing)
+./gradlew build
+
+# 2. Start the demo app
+./gradlew :demo:bootRun
+```
+
+The app starts on port 8080 with:
+
+- **REST API** at `http://localhost:8080/api/v1/order-service/`
+- **MCP server** over SSE at `http://localhost:8080/sse` (for AI agent connections)
+
+### Try the REST API
+
+```bash
+# Find order by ID — returns only safe fields (id, status, totalAmountCents, itemCount)
+curl -X POST "http://localhost:8080/api/v1/order-service/find-by-id?id=1"
+# → {"id":1,"status":"PENDING","totalAmountCents":9999,"itemCount":3}
+
+# No customerSsn, no creditCardNumber, no customerEmail — they don't exist in the DTO
+```
+
+### Try the MCP tools
+
+Connect an MCP client (e.g., [MCP Inspector](https://github.com/modelcontextprotocol/inspector)) to `http://localhost:8080/sse`. Two tools are registered:
+
+- `findById(id)` — returns a single order DTO
+- `findByStatus(status)` — returns a list of order DTOs
+
+### Demo frontend
+
+The `demo-frontend/` directory contains a Next.js app that consumes the generated REST API:
+
+```bash
+cd demo-frontend
+npm install
+npm run dev    # starts on http://localhost:3000
+```
+
+The frontend displays order data with only the 4 PII-safe fields. It includes a verification panel confirming that `creditCardNumber` and `customerSsn` are structurally excluded.
+
+## Quickstart
+
+### Option A: Gradle plugin (recommended)
+
+```kotlin
+plugins {
+    id("ai.adam.gradle-plugin") version "0.1.0"
+}
+```
+
+### Option B: Manual dependencies
+
+```kotlin
+dependencies {
+    implementation("ai.adam:annotations:0.1.0")
+    implementation("ai.adam:runtime:0.1.0")
+    annotationProcessor("ai.adam:processor:0.1.0")
+}
+```
+
+Then annotate your entities with `@AgentVisibleClass` + `@AgentVisible`, your services with `@AgenticExposed`, and build. Generated code appears in `build/generated/sources/annotationProcessor/`.
 
 ## Modules
 
 | Module | Description |
 |--------|-------------|
-| `modules/annotations` | `@AgentVisible`, `@AgentVisibleClass`, `@AgenticExposed` — zero dependencies |
-| `modules/processor` | JSR 269 annotation processor with JavaPoet code generation |
-| `modules/runtime` | Spring Boot auto-configuration, MCP server wiring, PII audit interceptor |
-| `modules/gradle-plugin` | Gradle plugin for one-liner adoption |
-| `demo` | Demo Spring Boot application consuming the framework |
-| `demo-frontend` | Next.js frontend generated from the OpenAPI spec |
+| `modules/annotations` | `@AgentVisible`, `@AgentVisibleClass`, `@AgenticExposed` — zero external dependencies |
+| `modules/processor` | JSR 269 annotation processor — generates DTOs, MCP tools, REST controllers, OpenAPI specs using JavaPoet |
+| `modules/runtime` | Spring Boot auto-configuration — MCP server wiring (SSE transport), PII audit interceptor, DTO response safety check |
+| `modules/gradle-plugin` | Gradle plugin — auto-adds all framework dependencies and configures IntelliJ generated source dirs |
+| `demo` | Spring Boot demo app with `Order` entity and `OrderService` |
+| `demo-frontend` | Next.js frontend consuming the generated REST API |
 
 ## Requirements
 
-- Java 21+ (auto-provisioned via Gradle toolchain if not installed)
+- Java 17+ to run Gradle, Java 21 for compilation (auto-provisioned via Gradle toolchain)
 - Gradle 8.12 (wrapper included)
 - Spring Boot 3.4+ (for runtime module)
 
-## Build
+## Build Commands
 
 ```bash
 ./gradlew build                    # build all modules + run tests
-./gradlew :demo:compileJava       # trigger annotation processing in demo
-./gradlew :demo:bootRun           # run demo app (REST + MCP SSE)
-./gradlew :modules:processor:test  # processor tests only
+./gradlew :demo:bootRun           # run demo app (REST + MCP SSE on port 8080)
+./gradlew :demo:compileJava       # trigger annotation processing only
+./gradlew :modules:processor:test  # run processor tests (33 compile-testing tests)
 ./gradlew publishToMavenLocal     # publish all modules to ~/.m2
 ```
 
-## Annotations
+## Annotation Reference
 
 ### `@AgentVisible`
+
 Applied to fields. Marks a field for inclusion in the generated DTO.
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `description` | `String` | `""` | Human-readable field description for LLM consumption |
-| `sensitive` | `boolean` | `false` | Whether the field should be masked in audit logs |
+| `description` | `String` | `""` | Human-readable description for LLM tool parameters and OpenAPI docs |
+| `sensitive` | `boolean` | `false` | If true, runtime interceptors may mask this field in audit logs |
 
 ### `@AgentVisibleClass`
-Applied to classes. Triggers DTO generation for the annotated entity.
+
+Applied to classes. Triggers DTO record generation for the annotated entity.
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `dtoName` | `String` | `{ClassName}Dto` | Custom name for the generated DTO |
-| `packageName` | `String` | `{pkg}.generated` | Override package for the generated DTO |
+| `dtoName` | `String` | `{ClassName}Dto` | Custom name for the generated DTO record |
+| `packageName` | `String` | `{pkg}.generated` | Override output package for the generated DTO |
 
 ### `@AgenticExposed`
-Applied to types or methods. Triggers MCP tool and REST controller generation.
+
+Applied to types or individual methods. Triggers MCP tool and REST controller generation.
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `toolName` | `String` | `""` | Name for the generated MCP tool |
-| `description` | `String` | `""` | What this tool does and when to use it |
-| `returnType` | `Class<?>` | `void.class` | Entity type for DTO response mapping |
+| `toolName` | `String` | method name | Name for the generated MCP tool |
+| `description` | `String` | `"Invokes {methodName}"` | Description for MCP tool and OpenAPI operation |
+| `returnType` | `Class<?>` | `void.class` | Entity class to map to DTO in responses |
+
+When applied to a type, all public methods are exposed. When applied to a method, only that method is exposed.
 
 ## PII Safety
 
-The framework provides compile-time and runtime PII protection:
+**Compile-time guarantees:**
+- Only `@AgentVisible` fields appear in generated DTOs — structural exclusion, not filtering
+- The processor warns about fields matching PII patterns (`ssn`, `password`, `creditCard`, etc.) that are *not* annotated, helping developers confirm intentional exclusions
+- Custom PII patterns: `-Aai.adam.pii.patterns=salary,homeAddress,phoneNumber`
 
-**Compile time:**
-- Only `@AgentVisible` fields appear in generated DTOs (structural exclusion)
-- Heuristic PII detection warns about fields matching patterns like `ssn`, `password`, `creditCard`
-- Configurable custom patterns via `-Aai.adam.pii.patterns=salary,homeAddress`
-
-**Runtime:**
-- `DtoResponseBodyAdvice` warns if generated controllers return non-DTO types
-- `PiiAuditInterceptor` logs all API requests with correlation IDs
-- MDC-based structured logging for audit trails
-
-## Processor Options
-
-| Option | Description |
-|--------|-------------|
-| `-Aai.adam.pii.patterns=keyword1,keyword2` | Additional PII field name patterns (comma-separated) |
+**Runtime safety net:**
+- `DtoResponseBodyAdvice` logs a warning if a generated controller somehow returns a non-DTO object
+- `PiiAuditInterceptor` logs all `/api/v1/**` requests with SLF4J MDC correlation IDs
 
 ## Edge Case Handling
 
 | Scenario | Behavior |
 |----------|----------|
-| Interface with `@AgentVisibleClass` | Warning, skipped (no fields) |
-| Enum with `@AgentVisibleClass` | Warning, skipped |
-| Abstract class with `@AgentVisibleClass` | Warning, DTO still generated |
+| Interface with `@AgentVisibleClass` | Warning emitted, skipped (interfaces have no fields) |
+| Enum with `@AgentVisibleClass` | Warning emitted, skipped |
+| Abstract class with `@AgentVisibleClass` | Warning emitted, DTO still generated |
 | Static inner class | Fully supported |
-| Inherited `@AgentVisible` fields | Walked up superclass chain |
+| Inherited `@AgentVisible` fields | Superclass chain walked; parent fields appear first |
 | Boolean fields | Uses `isX()` getter convention |
 | Enum-typed fields | Preserved as-is in DTO |
-
-## Publishing
-
-Modules are configured for Maven Central publishing:
-
-```bash
-# Local testing
-./gradlew publishToMavenLocal
-
-# Maven Central (requires OSSRH credentials + GPG key)
-OSSRH_USERNAME=... OSSRH_PASSWORD=... GPG_SIGNING_KEY=... GPG_SIGNING_PASSWORD=... \
-  ./gradlew publishMavenJavaPublicationToOssrhRepository
-```
 
 ## License
 
