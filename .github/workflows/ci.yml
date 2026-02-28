@@ -29,10 +29,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build and test
-        run: ./gradlew build -Dorg.gradle.java.home=$JAVA_HOME
+        run: ./gradlew build
 
       - name: Verify publishToMavenLocal
-        run: ./gradlew publishToMavenLocal -Dorg.gradle.java.home=$JAVA_HOME
+        run: ./gradlew publishToMavenLocal
 
       - name: Upload test reports
         if: failure()
