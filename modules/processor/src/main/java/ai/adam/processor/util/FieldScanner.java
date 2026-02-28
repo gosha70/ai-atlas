@@ -14,6 +14,7 @@ import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -21,6 +22,7 @@ import java.util.Set;
 /**
  * Scans a TypeElement and its superclass chain for fields annotated
  * with {@code @AgentVisible} and converts them to {@link FieldModel} instances.
+ * Detects enum field types and extracts their constant names automatically.
  */
 public final class FieldScanner {
 
@@ -56,17 +58,55 @@ public final class FieldScanner {
                 String fieldName = enclosed.getSimpleName().toString();
                 if (seenFieldNames.add(fieldName)) {
                     var field = (VariableElement) enclosed;
+
+                    // Resolve display name: use annotation.name() if non-empty, else field name
+                    String displayName = annotation.name().isEmpty()
+                            ? fieldName
+                            : annotation.name();
+
+                    // Detect if field type is an enum and extract constants
+                    boolean isEnum = false;
+                    List<String> enumValues = Collections.emptyList();
+                    TypeMirror fieldType = field.asType();
+                    if (fieldType instanceof DeclaredType declaredType) {
+                        var typeElement2 = declaredType.asElement();
+                        if (typeElement2.getKind() == ElementKind.ENUM) {
+                            isEnum = true;
+                            enumValues = extractEnumConstants((TypeElement) typeElement2);
+                        }
+                    }
+
                     allFields.add(new FieldModel(
                             fieldName,
-                            TypeName.get(field.asType()),
+                            displayName,
+                            TypeName.get(fieldType),
                             annotation.description(),
-                            annotation.sensitive()
+                            annotation.sensitive(),
+                            annotation.checkCircularReference(),
+                            isEnum,
+                            enumValues
                     ));
                 }
             }
         }
 
         return allFields;
+    }
+
+    /**
+     * Extracts the names of all enum constants from the given enum type element.
+     *
+     * @param enumElement the TypeElement representing an enum type
+     * @return list of enum constant names in declaration order
+     */
+    private static List<String> extractEnumConstants(TypeElement enumElement) {
+        List<String> constants = new ArrayList<>();
+        for (var enclosed : enumElement.getEnclosedElements()) {
+            if (enclosed.getKind() == ElementKind.ENUM_CONSTANT) {
+                constants.add(enclosed.getSimpleName().toString());
+            }
+        }
+        return constants;
     }
 
     /**

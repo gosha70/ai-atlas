@@ -61,6 +61,36 @@ class AnnotationMetadataTest {
     }
 
     @Test
+    void agentVisible_defaultNameIsEmpty() throws Exception {
+        var method = AgentVisible.class.getDeclaredMethod("name");
+        assertThat(method.getDefaultValue()).isEqualTo("");
+    }
+
+    @Test
+    void agentVisible_defaultCheckCircularReferenceIsTrue() throws Exception {
+        var method = AgentVisible.class.getDeclaredMethod("checkCircularReference");
+        assertThat(method.getDefaultValue()).isEqualTo(true);
+    }
+
+    @Test
+    void agentVisibleClass_defaultNameIsEmpty() throws Exception {
+        var method = AgentVisibleClass.class.getDeclaredMethod("name");
+        assertThat(method.getDefaultValue()).isEqualTo("");
+    }
+
+    @Test
+    void agentVisibleClass_defaultDescriptionIsEmpty() throws Exception {
+        var method = AgentVisibleClass.class.getDeclaredMethod("description");
+        assertThat(method.getDefaultValue()).isEqualTo("");
+    }
+
+    @Test
+    void agentVisibleClass_defaultIncludeTypeInfoIsTrue() throws Exception {
+        var method = AgentVisibleClass.class.getDeclaredMethod("includeTypeInfo");
+        assertThat(method.getDefaultValue()).isEqualTo(true);
+    }
+
+    @Test
     void agentVisibleClass_defaultDtoNameIsEmpty() throws Exception {
         var method = AgentVisibleClass.class.getDeclaredMethod("dtoName");
         assertThat(method.getDefaultValue()).isEqualTo("");

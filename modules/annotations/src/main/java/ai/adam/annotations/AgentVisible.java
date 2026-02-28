@@ -36,9 +36,32 @@ public @interface AgentVisible {
 
     /**
      * Human-readable description of the field for LLM consumption.
-     * Used in MCP tool parameter descriptions and OpenAPI schema docs.
+     * Used in MCP tool parameter descriptions, OpenAPI schema docs,
+     * and enriched JSON output for AI agents.
      */
     String description() default "";
+
+    /**
+     * Custom display name for this field in enriched JSON metadata and
+     * runtime entity serialization. When empty (default), the Java field
+     * name is used. Mirrors {@code @CopilotField(name = ...)} semantics.
+     *
+     * <p>This name is used as the key in the generated {@code FIELD_METADATA}
+     * map and as the JSON property name when the runtime {@code AgentSafeSerializer}
+     * serializes entities in enriched mode. It does <strong>not</strong> rename
+     * the DTO record component or OpenAPI schema property — those always use
+     * the Java field name to maintain getter compatibility.
+     *
+     * <p>Must be unique across all {@code @AgentVisible} fields within the
+     * same class. A compile error is emitted if two fields share the same
+     * display name.
+     *
+     * <p>Example: {@code @AgentVisible(name = "totalCents")} on a field
+     * named {@code total} will produce a FIELD_METADATA entry keyed by
+     * {@code "totalCents"} and serialize as {@code "totalCents"} in
+     * enriched JSON output.
+     */
+    String name() default "";
 
     /**
      * Whether this field contains sensitive data that should be logged
@@ -46,4 +69,16 @@ public @interface AgentVisible {
      * in the DTO, but runtime interceptors may mask its value.
      */
     boolean sensitive() default false;
+
+    /**
+     * Whether to check for circular references when serializing this
+     * field at runtime. When {@code true} (default), the JSON serializer
+     * will track object identity and skip already-visited instances to
+     * prevent infinite recursion — critical for bidirectional JPA
+     * relationships.
+     *
+     * <p>Set to {@code false} only for leaf fields that are guaranteed
+     * never to form cycles (e.g., primitive wrappers, strings, enums).
+     */
+    boolean checkCircularReference() default true;
 }

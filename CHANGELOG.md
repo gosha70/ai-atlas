@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Annotations
+- `@AgentVisible` — added `name` attribute for custom display names in metadata and enriched JSON
+- `@AgentVisible` — added `checkCircularReference` attribute (default `true`) for controlling circular reference detection during serialization
+- `@AgentVisibleClass` — added `name` attribute for entity display name in enriched JSON `typeInfo` block
+- `@AgentVisibleClass` — added `description` attribute for class-level descriptions
+- `@AgentVisibleClass` — added `includeTypeInfo` attribute (default `true`) for controlling `typeInfo` block in enriched output
+
+### Processor
+- **Compile-time metadata** — generated DTOs now include `FieldMeta` nested record, `CLASS_NAME`, `CLASS_DESCRIPTION`, `INCLUDE_TYPE_INFO` constants, and `FIELD_METADATA` map
+- **Enum field detection** — enum field types are auto-detected; their constant names are extracted into `FIELD_METADATA.validValues` and OpenAPI `enum` constraints
+- **Duplicate name validation** — compile error emitted when two `@AgentVisible` fields share the same display name within a class
+- **OpenAPI enrichment** — class descriptions used in schema docs; enum constraints in field schemas
+
+### Runtime
+- **AgentSafeModule** — Jackson module that registers the `AgentSafeSerializer` for all `@AgentVisibleClass` entities
+- **AgentSafeSerializer** — Hibernate-safe JSON serializer with enriched and flat output modes, circular reference detection, and PII-safe whitelisting
+- **HibernateSupport** — reflection-based Hibernate proxy unwrapping and uninitialized collection handling (no compile dependency on Hibernate)
+- **SerializationContext** — ThreadLocal-based circular reference tracker using object identity
+- **Configuration** — `ai.adam.json.enriched`, `ai.adam.json.include-descriptions`, `ai.adam.json.include-valid-values` properties
+
+### Demo
+- `Order` entity updated with class-level metadata, `OrderStatus` enum, and custom field name (`totalCents`)
+
+---
+
 ## [1.0.0] — 2026-02-27
 
 Initial release of AI-ADAM (AI Auto-Discoverable API Management).

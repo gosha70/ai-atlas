@@ -154,6 +154,29 @@ public class AgenticProcessor extends AbstractProcessor {
             return;
         }
 
+        // Validate: displayName (metadata key) must be unique across all fields.
+        // Generated FIELD_METADATA uses Map.ofEntries() which throws on duplicate keys.
+        Map<String, String> displayNameToField = new HashMap<>();
+        boolean hasDuplicateAlias = false;
+        for (var field : fields) {
+            String previous = displayNameToField.put(field.displayName(), field.name());
+            if (previous != null) {
+                processingEnv.getMessager().printMessage(
+                        Diagnostic.Kind.ERROR,
+                        "@AgentVisible name \"" + field.displayName()
+                                + "\" on field '" + field.name()
+                                + "' conflicts with field '" + previous
+                                + "' — metadata keys must be unique within "
+                                + typeElement.getSimpleName(),
+                        typeElement
+                );
+                hasDuplicateAlias = true;
+            }
+        }
+        if (hasDuplicateAlias) {
+            return;
+        }
+
         String simpleName = typeElement.getSimpleName().toString();
         String dtoName = annotation.dtoName().isEmpty()
                 ? simpleName + "Dto"
@@ -165,8 +188,19 @@ public class AgenticProcessor extends AbstractProcessor {
                 ? sourcePackage + ".generated"
                 : annotation.packageName();
 
+        // Class-level metadata for enriched JSON and LLM context
+        String displayName = annotation.name().isEmpty()
+                ? simpleName
+                : annotation.name();
+        String classDescription = annotation.description();
+        boolean includeTypeInfo = annotation.includeTypeInfo();
+
         ClassName sourceClassName = ClassName.get(typeElement);
-        EntityModel model = new EntityModel(sourceClassName, dtoName, dtoPackage, fields);
+        EntityModel model = new EntityModel(
+                sourceClassName, dtoName, dtoPackage,
+                displayName, classDescription, includeTypeInfo,
+                fields
+        );
 
         // Register for service processing lookup
         entityRegistry.put(typeElement.getQualifiedName().toString(), model);

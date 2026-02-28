@@ -42,4 +42,27 @@ public @interface AgentVisibleClass {
      * {@code {originalPackage}.generated}.
      */
     String packageName() default "";
+
+    /**
+     * Display name for this entity type in LLM-facing contexts.
+     * Used in the {@code typeInfo} block of enriched JSON output
+     * and MCP tool descriptions. Defaults to the simple class name.
+     *
+     * <p>Example: {@code @AgentVisibleClass(name = "insight")} produces
+     * {@code "typeInfo": {"name": "insight", ...}} in enriched JSON.
+     */
+    String name() default "";
+
+    /**
+     * Human-readable description of this entity class for LLM consumption.
+     * Included in the {@code typeInfo} block of enriched JSON output,
+     * OpenAPI schema descriptions, and MCP tool context.
+     */
+    String description() default "";
+
+    /**
+     * Whether to include a {@code typeInfo} block (containing name and
+     * description) in enriched JSON output. Defaults to {@code true}.
+     */
+    boolean includeTypeInfo() default true;
 }

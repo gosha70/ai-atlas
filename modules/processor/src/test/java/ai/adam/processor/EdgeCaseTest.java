@@ -148,6 +148,12 @@ class EdgeCaseTest {
         String dto = getGeneratedSource(compilation, "test.generated.OrderEntityDto");
         assertThat(dto).contains("OrderStatus status");
         assertThat(dto).contains("entity.getStatus()");
+
+        // Verify enum valid values are captured in FIELD_METADATA
+        assertThat(dto).contains("FIELD_METADATA");
+        assertThat(dto).contains("\"PENDING\"");
+        assertThat(dto).contains("\"SHIPPED\"");
+        assertThat(dto).contains("\"DELIVERED\"");
     }
 
     @Test

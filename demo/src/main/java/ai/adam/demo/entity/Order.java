@@ -10,17 +10,35 @@ import ai.adam.annotations.AgentVisibleClass;
  * Demo entity representing a customer order.
  * Only fields annotated with {@code @AgentVisible} will appear
  * in the generated {@code OrderDto} record.
+ *
+ * <p>Demonstrates:
+ * <ul>
+ *   <li>Enum field auto-detection for validValues</li>
+ *   <li>Custom field name via {@code @AgentVisible(name = ...)}</li>
+ *   <li>Class-level metadata for enriched JSON output</li>
+ * </ul>
  */
-@AgentVisibleClass
+@AgentVisibleClass(
+        name = "order",
+        description = "A customer order with status tracking and item summary"
+)
 public class Order {
+
+    /**
+     * Order status enum — values are auto-detected by the annotation processor
+     * and included in generated DTO metadata and OpenAPI schemas.
+     */
+    public enum OrderStatus {
+        PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED
+    }
 
     @AgentVisible(description = "Unique order identifier")
     private Long id;
 
     @AgentVisible(description = "Current order status")
-    private String status;
+    private OrderStatus status;
 
-    @AgentVisible(description = "Total order amount in cents")
+    @AgentVisible(name = "totalCents", description = "Total order amount in cents")
     private long totalAmountCents;
 
     @AgentVisible(description = "Number of items in the order")
@@ -41,11 +59,11 @@ public class Order {
         this.id = id;
     }
 
-    public String getStatus() {
+    public OrderStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(OrderStatus status) {
         this.status = status;
     }
 

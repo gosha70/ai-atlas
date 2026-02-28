@@ -3,10 +3,12 @@
  */
 package ai.adam.runtime.autoconfigure;
 
+import ai.adam.runtime.json.AgentSafeModule;
 import ai.adam.runtime.mcp.AgenticMcpConfiguration;
 import ai.adam.runtime.security.DtoResponseBodyAdvice;
 import ai.adam.runtime.security.PiiAuditInterceptor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -46,6 +48,21 @@ public class AgenticAutoConfiguration implements WebMvcConfigurer {
     @ConditionalOnProperty(prefix = "ai.adam.audit", name = "enabled", havingValue = "true", matchIfMissing = true)
     public DtoResponseBodyAdvice dtoResponseBodyAdvice() {
         return new DtoResponseBodyAdvice();
+    }
+
+    /**
+     * Registers the Hibernate-safe Jackson serialization module for
+     * {@code @AgentVisibleClass}-annotated entities.
+     */
+    @Bean
+    @ConditionalOnClass(name = "com.fasterxml.jackson.databind.ObjectMapper")
+    public AgentSafeModule agentSafeModule() {
+        AgenticProperties.Json json = properties.getJson();
+        return new AgentSafeModule(
+                json.isEnriched(),
+                json.isIncludeDescriptions(),
+                json.isIncludeValidValues()
+        );
     }
 
     @Override

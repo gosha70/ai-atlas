@@ -24,7 +24,7 @@ public class OrderService {
         // Stub — will be backed by real data in Cycle 2
         Order order = new Order();
         order.setId(id);
-        order.setStatus("PENDING");
+        order.setStatus(Order.OrderStatus.PENDING);
         order.setTotalAmountCents(9999L);
         order.setItemCount(3);
         return order;

@@ -107,7 +107,10 @@ public final class OpenApiGenerator {
     private static Schema buildEntitySchema(EntityModel entity) {
         Schema schema = new Schema();
         schema.type("object");
-        schema.description(entity.dtoName() + " — PII-safe projection of " + entity.sourceClassName().simpleName());
+        String description = entity.classDescription().isEmpty()
+                ? entity.dtoName() + " — PII-safe projection of " + entity.sourceClassName().simpleName()
+                : entity.classDescription();
+        schema.description(description);
         Map<String, Schema> properties = new LinkedHashMap<>();
         for (FieldModel field : entity.fields()) {
             properties.put(field.name(), buildFieldSchema(field));
@@ -116,8 +119,16 @@ public final class OpenApiGenerator {
         return schema;
     }
 
+    @SuppressWarnings({"rawtypes", "unchecked"})
     private static Schema buildFieldSchema(FieldModel field) {
-        Schema schema = mapJavaTypeToSchema(field.typeName().toString());
+        Schema schema;
+        if (field.enumType() && !field.enumValues().isEmpty()) {
+            // Enum fields: type string with enum constraint
+            schema = new Schema().type("string");
+            schema.setEnum(field.enumValues());
+        } else {
+            schema = mapJavaTypeToSchema(field.typeName().toString());
+        }
         if (!field.description().isEmpty()) {
             schema.description(field.description());
         }

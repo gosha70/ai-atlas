@@ -37,6 +37,70 @@ class InvalidUsageTest {
     }
 
     @Test
+    void errorOnDuplicateAgentVisibleName() {
+        JavaFileObject source = JavaFileObjects.forSourceString("test.DuplicateNames",
+                """
+                package test;
+
+                import ai.adam.annotations.AgentVisible;
+                import ai.adam.annotations.AgentVisibleClass;
+
+                @AgentVisibleClass
+                public class DuplicateNames {
+                    @AgentVisible(name = "amount", description = "Price")
+                    private Long price;
+
+                    @AgentVisible(name = "amount", description = "Cost")
+                    private Long cost;
+
+                    public Long getPrice() { return price; }
+                    public Long getCost() { return cost; }
+                }
+                """);
+
+        Compilation compilation = javac()
+                .withProcessors(new AgenticProcessor())
+                .compile(source);
+
+        assertThat(compilation).failed();
+        assertThat(compilation).hadErrorContaining("\"amount\"");
+        assertThat(compilation).hadErrorContaining("conflicts with field");
+    }
+
+    @Test
+    void errorOnImplicitDuplicateWithExplicitName() {
+        // Field 'id' has no explicit name (defaults to "id"),
+        // another field sets name = "id" — collision
+        JavaFileObject source = JavaFileObjects.forSourceString("test.ImplicitDuplicate",
+                """
+                package test;
+
+                import ai.adam.annotations.AgentVisible;
+                import ai.adam.annotations.AgentVisibleClass;
+
+                @AgentVisibleClass
+                public class ImplicitDuplicate {
+                    @AgentVisible(description = "ID")
+                    private Long id;
+
+                    @AgentVisible(name = "id", description = "Identifier alias")
+                    private Long identifier;
+
+                    public Long getId() { return id; }
+                    public Long getIdentifier() { return identifier; }
+                }
+                """);
+
+        Compilation compilation = javac()
+                .withProcessors(new AgenticProcessor())
+                .compile(source);
+
+        assertThat(compilation).failed();
+        assertThat(compilation).hadErrorContaining("\"id\"");
+        assertThat(compilation).hadErrorContaining("conflicts with field");
+    }
+
+    @Test
     void warnsOnAgentVisibleClassOnEnum() {
         JavaFileObject source = JavaFileObjects.forSourceString("test.BadEnum",
                 """

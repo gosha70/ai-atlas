@@ -204,6 +204,86 @@ class OpenApiGeneratorTest {
         assertThat(json).contains("/api/v1/dog-service/find-by-id");
     }
 
+    @Test
+    void generatesEnumConstraintsInSchema() {
+        JavaFileObject enumType = JavaFileObjects.forSourceString("test.Priority",
+                """
+                package test;
+                public enum Priority { LOW, MEDIUM, HIGH }
+                """);
+
+        JavaFileObject entity = JavaFileObjects.forSourceString("test.Task",
+                """
+                package test;
+                import ai.adam.annotations.AgentVisible;
+                import ai.adam.annotations.AgentVisibleClass;
+                @AgentVisibleClass
+                public class Task {
+                    @AgentVisible(description = "ID") private Long id;
+                    @AgentVisible(description = "Priority level") private Priority priority;
+                    public Long getId() { return id; }
+                    public Priority getPriority() { return priority; }
+                }
+                """);
+
+        JavaFileObject service = JavaFileObjects.forSourceString("test.TaskService",
+                """
+                package test;
+                import ai.adam.annotations.AgenticExposed;
+                @AgenticExposed(description = "Task ops", returnType = Task.class)
+                public class TaskService {
+                    public Task findById(Long id) { return null; }
+                }
+                """);
+
+        Compilation compilation = javac()
+                .withProcessors(new AgenticProcessor())
+                .compile(enumType, entity, service);
+
+        String json = getGeneratedResource(compilation);
+
+        // Enum field should produce string type with enum constraints
+        assertThat(json).contains("\"TaskDto\"");
+        assertThat(json).contains("\"LOW\"");
+        assertThat(json).contains("\"MEDIUM\"");
+        assertThat(json).contains("\"HIGH\"");
+        assertThat(json).contains("\"enum\"");
+    }
+
+    @Test
+    void usesClassDescriptionInSchemaWhenProvided() {
+        JavaFileObject entity = JavaFileObjects.forSourceString("test.Widget",
+                """
+                package test;
+                import ai.adam.annotations.AgentVisible;
+                import ai.adam.annotations.AgentVisibleClass;
+                @AgentVisibleClass(description = "A configurable widget component")
+                public class Widget {
+                    @AgentVisible(description = "Widget ID") private Long id;
+                    public Long getId() { return id; }
+                }
+                """);
+
+        JavaFileObject service = JavaFileObjects.forSourceString("test.WidgetService",
+                """
+                package test;
+                import ai.adam.annotations.AgenticExposed;
+                @AgenticExposed(description = "Widget ops", returnType = Widget.class)
+                public class WidgetService {
+                    public Widget findById(Long id) { return null; }
+                }
+                """);
+
+        Compilation compilation = javac()
+                .withProcessors(new AgenticProcessor())
+                .compile(entity, service);
+
+        String json = getGeneratedResource(compilation);
+
+        // Class description should be used in schema
+        assertThat(json).contains("A configurable widget component");
+    }
+
     private static String getGeneratedResource(Compilation compilation) {
         var file = compilation.generatedFile(StandardLocation.CLASS_OUTPUT, "META-INF/openapi/openapi.json");
         assertThat(file).as("OpenAPI spec resource file").isPresent();
