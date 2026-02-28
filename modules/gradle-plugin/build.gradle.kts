@@ -2,6 +2,7 @@
 
 plugins {
     `java-gradle-plugin`
+    `maven-publish`
 }
 
 gradlePlugin {

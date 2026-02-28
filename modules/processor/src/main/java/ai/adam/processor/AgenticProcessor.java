@@ -54,6 +54,7 @@ import java.util.Set;
         "ai.adam.annotations.AgentVisibleClass",
         "ai.adam.annotations.AgenticExposed"
 })
+@javax.annotation.processing.SupportedOptions("ai.adam.pii.patterns")
 @SupportedSourceVersion(SourceVersion.RELEASE_21)
 public class AgenticProcessor extends AbstractProcessor {
 
@@ -94,6 +95,24 @@ public class AgenticProcessor extends AbstractProcessor {
 
     private void processEntities(RoundEnvironment roundEnv) {
         for (var element : roundEnv.getElementsAnnotatedWith(AgentVisibleClass.class)) {
+            if (element.getKind() == ElementKind.INTERFACE) {
+                processingEnv.getMessager().printMessage(
+                        Diagnostic.Kind.WARNING,
+                        "@AgentVisibleClass on interface " + element.getSimpleName()
+                                + " is not supported — interfaces have no fields. Skipping.",
+                        element
+                );
+                continue;
+            }
+            if (element.getKind() == ElementKind.ENUM) {
+                processingEnv.getMessager().printMessage(
+                        Diagnostic.Kind.WARNING,
+                        "@AgentVisibleClass on enum " + element.getSimpleName()
+                                + " is not supported — use on concrete classes. Skipping.",
+                        element
+                );
+                continue;
+            }
             if (element.getKind() != ElementKind.CLASS) {
                 processingEnv.getMessager().printMessage(
                         Diagnostic.Kind.ERROR,
@@ -104,6 +123,17 @@ public class AgenticProcessor extends AbstractProcessor {
             }
 
             TypeElement typeElement = (TypeElement) element;
+
+            // Warn on abstract classes but still process them (they may have fields)
+            if (typeElement.getModifiers().contains(javax.lang.model.element.Modifier.ABSTRACT)) {
+                processingEnv.getMessager().printMessage(
+                        Diagnostic.Kind.WARNING,
+                        "@AgentVisibleClass on abstract class " + typeElement.getSimpleName()
+                                + " — DTO will be generated but fromEntity() may not be callable directly",
+                        typeElement
+                );
+            }
+
             processEntity(typeElement);
         }
     }
@@ -299,13 +329,15 @@ public class AgenticProcessor extends AbstractProcessor {
     }
 
     private void emitPiiWarnings(TypeElement typeElement) {
+        String customPatterns = processingEnv.getOptions().get("ai.adam.pii.patterns");
         for (var enclosed : typeElement.getEnclosedElements()) {
             if (enclosed.getKind() == ElementKind.FIELD
                     && enclosed.getAnnotation(AgentVisible.class) == null) {
                 PiiDetector.check(
                         enclosed.getSimpleName().toString(),
                         enclosed,
-                        processingEnv.getMessager()
+                        processingEnv.getMessager(),
+                        customPatterns
                 );
             }
         }

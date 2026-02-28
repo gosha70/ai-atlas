@@ -15,7 +15,7 @@ import static com.google.testing.compile.Compiler.javac;
 class InvalidUsageTest {
 
     @Test
-    void rejectsAgentVisibleClassOnInterface() {
+    void warnsOnAgentVisibleClassOnInterface() {
         JavaFileObject source = JavaFileObjects.forSourceString("test.BadInterface",
                 """
                 package test;
@@ -31,12 +31,13 @@ class InvalidUsageTest {
                 .withProcessors(new AgenticProcessor())
                 .compile(source);
 
-        assertThat(compilation).failed();
-        assertThat(compilation).hadErrorContaining("@AgentVisibleClass can only be applied to classes");
+        assertThat(compilation).succeeded();
+        assertThat(compilation).hadWarningContaining("interface");
+        assertThat(compilation).hadWarningContaining("not supported");
     }
 
     @Test
-    void rejectsAgentVisibleClassOnEnum() {
+    void warnsOnAgentVisibleClassOnEnum() {
         JavaFileObject source = JavaFileObjects.forSourceString("test.BadEnum",
                 """
                 package test;
@@ -53,7 +54,8 @@ class InvalidUsageTest {
                 .withProcessors(new AgenticProcessor())
                 .compile(source);
 
-        assertThat(compilation).failed();
-        assertThat(compilation).hadErrorContaining("@AgentVisibleClass can only be applied to classes");
+        assertThat(compilation).succeeded();
+        assertThat(compilation).hadWarningContaining("enum");
+        assertThat(compilation).hadWarningContaining("not supported");
     }
 }

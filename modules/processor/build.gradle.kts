@@ -1,5 +1,7 @@
 // processor module — compile-time only, no runtime dependencies
 
+apply(from = rootProject.file("gradle/publishing.gradle.kts"))
+
 dependencies {
     // Annotations (implementation — processor needs them on its classpath at APT time)
     implementation(project(":modules:annotations"))

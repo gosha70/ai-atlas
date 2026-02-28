@@ -4,6 +4,7 @@
 package ai.adam.runtime.autoconfigure;
 
 import ai.adam.runtime.mcp.AgenticMcpConfiguration;
+import ai.adam.runtime.security.DtoResponseBodyAdvice;
 import ai.adam.runtime.security.PiiAuditInterceptor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -39,6 +40,12 @@ public class AgenticAutoConfiguration implements WebMvcConfigurer {
     @ConditionalOnProperty(prefix = "ai.adam.audit", name = "enabled", havingValue = "true", matchIfMissing = true)
     public PiiAuditInterceptor piiAuditInterceptor() {
         return new PiiAuditInterceptor();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ai.adam.audit", name = "enabled", havingValue = "true", matchIfMissing = true)
+    public DtoResponseBodyAdvice dtoResponseBodyAdvice() {
+        return new DtoResponseBodyAdvice();
     }
 
     @Override

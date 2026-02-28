@@ -6,8 +6,9 @@ package ai.adam.processor.util;
 import javax.annotation.processing.Messager;
 import javax.lang.model.element.Element;
 import javax.tools.Diagnostic;
-import java.util.Set;
+import java.util.Arrays;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Heuristic detector for fields that may contain PII.
@@ -15,22 +16,18 @@ import java.util.regex.Pattern;
  * that are NOT annotated with {@code @AgentVisible} (which would be
  * an intentional inclusion), helping developers catch accidental omissions
  * or confirm intentional exclusions.
+ *
+ * <p>Default patterns can be extended via the processor option
+ * {@code -Aai.adam.pii.patterns=keyword1,keyword2,...}. Custom keywords
+ * are matched case-insensitively as substrings of the field name.
  */
 public final class PiiDetector {
 
-    private static final Set<String> PII_PATTERNS = Set.of(
-            "ssn", "socialSecurity", "social_security",
-            "password", "passwd", "secret",
-            "creditCard", "credit_card", "cardNumber", "card_number",
-            "cvv", "cvc",
-            "taxId", "tax_id", "taxIdentifier",
-            "driverLicense", "driver_license",
-            "passport", "passportNumber"
-    );
+    private static final String DEFAULT_REGEX =
+            "(ssn|password|passwd|credit.?card|card.?number|cvv|cvc|tax.?id|driver.?license|passport|secret)";
 
-    private static final Pattern PII_REGEX = Pattern.compile(
-            "(?i)(ssn|password|passwd|credit.?card|card.?number|cvv|cvc|tax.?id|driver.?license|passport)",
-            Pattern.CASE_INSENSITIVE
+    private static final Pattern DEFAULT_PII_PATTERN = Pattern.compile(
+            "(?i)" + DEFAULT_REGEX
     );
 
     private PiiDetector() {
@@ -40,12 +37,14 @@ public final class PiiDetector {
      * Checks if a field name matches known PII patterns and emits a
      * NOTE-level diagnostic if it does.
      *
-     * @param fieldName the field name to check
-     * @param element   the element for diagnostic positioning
-     * @param messager  the compiler messager for emitting diagnostics
+     * @param fieldName      the field name to check
+     * @param element        the element for diagnostic positioning
+     * @param messager       the compiler messager for emitting diagnostics
+     * @param customPatterns comma-separated additional keywords (may be null)
      */
-    public static void check(String fieldName, Element element, Messager messager) {
-        if (PII_REGEX.matcher(fieldName).find()) {
+    public static void check(String fieldName, Element element, Messager messager, String customPatterns) {
+        Pattern pattern = buildPattern(customPatterns);
+        if (pattern.matcher(fieldName).find()) {
             messager.printMessage(
                     Diagnostic.Kind.NOTE,
                     String.format(
@@ -57,5 +56,24 @@ public final class PiiDetector {
                     element
             );
         }
+    }
+
+    /**
+     * Builds the combined PII regex from default patterns plus any
+     * custom keywords supplied via processor options.
+     */
+    private static Pattern buildPattern(String customPatterns) {
+        if (customPatterns == null || customPatterns.isBlank()) {
+            return DEFAULT_PII_PATTERN;
+        }
+        String customRegex = Arrays.stream(customPatterns.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(Pattern::quote)
+                .collect(Collectors.joining("|"));
+        if (customRegex.isEmpty()) {
+            return DEFAULT_PII_PATTERN;
+        }
+        return Pattern.compile("(?i)(" + DEFAULT_REGEX + "|" + customRegex + ")");
     }
 }

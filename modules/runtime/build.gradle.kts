@@ -1,5 +1,7 @@
 // runtime module — Spring Boot auto-configuration + MCP server
 
+apply(from = rootProject.file("gradle/publishing.gradle.kts"))
+
 dependencies {
     // Annotations (runtime — needed for reflection)
     api(project(":modules:annotations"))

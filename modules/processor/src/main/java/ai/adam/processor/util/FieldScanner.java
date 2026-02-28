@@ -10,11 +10,17 @@ import com.palantir.javapoet.TypeName;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
+import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.TypeKind;
+import javax.lang.model.type.TypeMirror;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
- * Scans a TypeElement for fields annotated with {@code @AgentVisible}
- * and converts them to {@link FieldModel} instances.
+ * Scans a TypeElement and its superclass chain for fields annotated
+ * with {@code @AgentVisible} and converts them to {@link FieldModel} instances.
  */
 public final class FieldScanner {
 
@@ -22,25 +28,66 @@ public final class FieldScanner {
     }
 
     /**
-     * Scans direct fields (no superclass walking — deferred to Cycle 2)
-     * of the given type element for {@code @AgentVisible} annotations.
+     * Scans the given type element and its entire superclass chain
+     * for {@code @AgentVisible} fields. Fields from supertypes appear
+     * before subtype fields. Duplicate field names are skipped (subtype wins).
      *
      * @return list of FieldModel for each annotated field
      */
     public static List<FieldModel> scan(TypeElement typeElement) {
-        return typeElement.getEnclosedElements().stream()
-                .filter(e -> e.getKind() == ElementKind.FIELD)
-                .filter(e -> e.getAnnotation(AgentVisible.class) != null)
-                .map(e -> {
-                    var field = (VariableElement) e;
-                    var annotation = field.getAnnotation(AgentVisible.class);
-                    return new FieldModel(
-                            field.getSimpleName().toString(),
+        Set<String> seenFieldNames = new LinkedHashSet<>();
+        List<FieldModel> allFields = new ArrayList<>();
+
+        // Walk superclass chain (top-down: collect supertypes first, then reverse)
+        List<TypeElement> hierarchy = new ArrayList<>();
+        TypeElement current = typeElement;
+        while (current != null) {
+            hierarchy.add(current);
+            current = getSuperclassElement(current);
+        }
+
+        // Process from top of hierarchy down (so superclass fields come first)
+        for (int i = hierarchy.size() - 1; i >= 0; i--) {
+            for (var enclosed : hierarchy.get(i).getEnclosedElements()) {
+                if (enclosed.getKind() != ElementKind.FIELD) continue;
+                AgentVisible annotation = enclosed.getAnnotation(AgentVisible.class);
+                if (annotation == null) continue;
+
+                String fieldName = enclosed.getSimpleName().toString();
+                if (seenFieldNames.add(fieldName)) {
+                    var field = (VariableElement) enclosed;
+                    allFields.add(new FieldModel(
+                            fieldName,
                             TypeName.get(field.asType()),
                             annotation.description(),
                             annotation.sensitive()
-                    );
-                })
-                .toList();
+                    ));
+                }
+            }
+        }
+
+        return allFields;
+    }
+
+    /**
+     * Resolves the superclass TypeElement, or null if the superclass is
+     * {@code java.lang.Object} or absent.
+     */
+    private static TypeElement getSuperclassElement(TypeElement typeElement) {
+        TypeMirror superclass = typeElement.getSuperclass();
+        if (superclass.getKind() == TypeKind.NONE) {
+            return null;
+        }
+        if (superclass instanceof DeclaredType declaredType) {
+            var element = declaredType.asElement();
+            if (element instanceof TypeElement superElement) {
+                String qualifiedName = superElement.getQualifiedName().toString();
+                if ("java.lang.Object".equals(qualifiedName)) {
+                    return null;
+                }
+                return superElement;
+            }
+        }
+        return null;
     }
 }
