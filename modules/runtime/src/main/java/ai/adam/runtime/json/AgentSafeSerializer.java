@@ -13,11 +13,11 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.SortedMap;
-import java.util.TreeMap;
 
 /**
  * Jackson serializer that safely converts {@code @AgentVisibleClass}-annotated
@@ -53,6 +53,9 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
     private static final String METHOD_GET_PREFIX = "get";
     private static final String METHOD_IS_PREFIX = "is";
 
+    /** Tracks nesting depth to clear SerializationContext after top-level serialization. */
+    private static final ThreadLocal<Integer> DEPTH = ThreadLocal.withInitial(() -> 0);
+
     private final boolean enriched;
     private final boolean includeDescriptions;
     private final boolean includeValidValues;
@@ -84,11 +87,18 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
             return;
         }
 
+        DEPTH.set(DEPTH.get() + 1);
         try {
             SerializationContext.addInstance(value);
             writeObject(value, gen, serializers);
         } finally {
             SerializationContext.removeInstance(value);
+            int depth = DEPTH.get() - 1;
+            DEPTH.set(depth);
+            if (depth == 0) {
+                SerializationContext.clear();
+                DEPTH.remove();
+            }
         }
     }
 
@@ -103,19 +113,20 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
             writeTypeInfo(gen, clazz, classAnnotation);
         }
 
-        // Collect and write @AgentVisible fields
-        for (Method method : clazz.getMethods()) {
-            if (!isAgentVisibleGetter(method)) {
-                continue;
-            }
+        // Collect @AgentVisible getters sorted by field name for deterministic output
+        Method[] methods = Arrays.stream(clazz.getMethods())
+                .filter(this::isAgentVisibleGetter)
+                .sorted(Comparator.comparing(m -> {
+                    String name = extractFieldName(m);
+                    return name != null ? name : m.getName();
+                }))
+                .toArray(Method[]::new);
 
-            AgentVisible fieldAnnotation = method.getAnnotation(AgentVisible.class);
+        for (Method method : methods) {
+            // @AgentVisible targets FIELD only — resolve from the corresponding field
+            AgentVisible fieldAnnotation = findFieldAnnotation(clazz, method);
             if (fieldAnnotation == null) {
-                // Check the corresponding field
-                fieldAnnotation = findFieldAnnotation(clazz, method);
-                if (fieldAnnotation == null) {
-                    continue;
-                }
+                continue;
             }
 
             String fieldName = resolveFieldName(method, fieldAnnotation);
@@ -230,8 +241,8 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
     }
 
     /**
-     * Checks if a method is a getter annotated with @AgentVisible
-     * (either on the method itself or on the corresponding field).
+     * Checks if a method is a getter whose corresponding field is
+     * annotated with {@code @AgentVisible}.
      */
     private boolean isAgentVisibleGetter(Method method) {
         if (method.getParameterCount() != 0) {
@@ -244,11 +255,6 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
         if (name.equals("getClass")) {
             return false;
         }
-        // Check method-level annotation first
-        if (method.isAnnotationPresent(AgentVisible.class)) {
-            return true;
-        }
-        // Check field-level annotation
         return findFieldAnnotation(method.getDeclaringClass(), method) != null;
     }
 

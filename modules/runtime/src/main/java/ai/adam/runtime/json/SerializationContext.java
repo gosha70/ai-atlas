@@ -3,13 +3,14 @@
  */
 package ai.adam.runtime.json;
 
-import java.util.HashSet;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Set;
 
 /**
  * Thread-local circular reference tracker for safe JSON serialization of
- * JPA entity graphs. Uses object identity (System.identityHashCode) to detect
- * cycles in bidirectional relationships.
+ * JPA entity graphs. Uses object identity ({@code ==}) to detect cycles
+ * in bidirectional relationships.
  *
  * <p>Ported from Appian's {@code CopilotPromptSerializationContext} pattern.
  * Must be cleared after serialization to prevent memory leaks.
@@ -26,8 +27,8 @@ import java.util.Set;
  */
 public final class SerializationContext {
 
-    private static final ThreadLocal<Set<Integer>> CONTEXT =
-            ThreadLocal.withInitial(HashSet::new);
+    private static final ThreadLocal<Set<Object>> CONTEXT =
+            ThreadLocal.withInitial(() -> Collections.newSetFromMap(new IdentityHashMap<>()));
 
     private SerializationContext() {
     }
@@ -39,7 +40,7 @@ public final class SerializationContext {
      */
     public static void addInstance(Object instance) {
         if (instance != null) {
-            CONTEXT.get().add(System.identityHashCode(instance));
+            CONTEXT.get().add(instance);
         }
     }
 
@@ -50,7 +51,7 @@ public final class SerializationContext {
      */
     public static void removeInstance(Object instance) {
         if (instance != null) {
-            CONTEXT.get().remove(System.identityHashCode(instance));
+            CONTEXT.get().remove(instance);
         }
     }
 
@@ -64,14 +65,15 @@ public final class SerializationContext {
         if (instance == null) {
             return false;
         }
-        return CONTEXT.get().contains(System.identityHashCode(instance));
+        return CONTEXT.get().contains(instance);
     }
 
     /**
-     * Clears the entire serialization context for the current thread.
-     * Must be called in a finally block after serialization completes.
+     * Clears the entire serialization context for the current thread
+     * and removes the ThreadLocal value to prevent memory leaks in
+     * thread-pool environments.
      */
     public static void clear() {
-        CONTEXT.get().clear();
+        CONTEXT.remove();
     }
 }
