@@ -16,9 +16,9 @@ configure<PublishingExtension> {
             from(components["java"])
 
             pom {
-                name.set("AI-ADAM :: ${project.name}")
-                description.set("AI-ADAM: AI Auto-Discoverable API Management — ${project.name} module")
-                url.set("https://github.com/ai-adam/ai-adam")
+                name.set("AI-ATLAS :: ${project.name}")
+                description.set("AI-ATLAS: AI Annotation-Driven Tooling & Layered API Synthesis — ${project.name} module")
+                url.set("https://github.com/ai-atlas/ai-atlas")
 
                 licenses {
                     license {
@@ -29,16 +29,16 @@ configure<PublishingExtension> {
 
                 developers {
                     developer {
-                        id.set("ai-adam")
-                        name.set("AI-ADAM Team")
+                        id.set("ai-atlas")
+                        name.set("AI-ATLAS Team")
                         email.set("dev@egoge.com")
                     }
                 }
 
                 scm {
-                    connection.set("scm:git:git://github.com/ai-adam/ai-adam.git")
-                    developerConnection.set("scm:git:ssh://github.com/ai-adam/ai-adam.git")
-                    url.set("https://github.com/ai-adam/ai-adam")
+                    connection.set("scm:git:git://github.com/ai-atlas/ai-atlas.git")
+                    developerConnection.set("scm:git:ssh://github.com/ai-atlas/ai-atlas.git")
+                    url.set("https://github.com/ai-atlas/ai-atlas")
                 }
             }
         }

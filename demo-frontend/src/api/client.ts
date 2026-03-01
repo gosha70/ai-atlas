@@ -1,5 +1,5 @@
 /**
- * AI-ADAM Demo API client — generated from OpenAPI spec.
+ * AI-ATLAS Demo API client — generated from OpenAPI spec.
  * Communicates with the Spring Boot demo backend via /api/v1/ endpoints.
  */
 

@@ -1,7 +1,7 @@
 [versions]
 # Core
 java = "21"
-adam = "0.1.0-SNAPSHOT"
+atlas = "0.1.0-SNAPSHOT"
 
 # Code generation
 javapoet = "0.6.0"

@@ -3,11 +3,11 @@ server:
 
 spring:
   application:
-    name: ai-adam-demo
+    name: ai-atlas-demo
   ai:
     mcp:
       server:
-        name: ai-adam-demo
+        name: ai-atlas-demo
         version: 0.1.0
 
 ai:
@@ -19,4 +19,4 @@ ai:
 
 logging:
   level:
-    ai.adam: DEBUG
+    ai.atlas: DEBUG

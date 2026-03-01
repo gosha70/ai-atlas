@@ -22,7 +22,7 @@ All notable changes to this project will be documented in this file.
 - **AgentSafeSerializer** — Hibernate-safe JSON serializer with enriched and flat output modes, circular reference detection, and PII-safe whitelisting
 - **HibernateSupport** — reflection-based Hibernate proxy unwrapping and uninitialized collection handling (no compile dependency on Hibernate)
 - **SerializationContext** — ThreadLocal-based circular reference tracker using object identity
-- **Configuration** — `ai.adam.json.enriched`, `ai.adam.json.include-descriptions`, `ai.adam.json.include-valid-values` properties
+- **Configuration** — `ai.atlas.json.enriched`, `ai.atlas.json.include-descriptions`, `ai.atlas.json.include-valid-values` properties
 
 ### Demo
 - `Order` entity updated with class-level metadata, `OrderStatus` enum, and custom field name (`totalCents`)
@@ -31,7 +31,7 @@ All notable changes to this project will be documented in this file.
 
 ## [1.0.0] — 2026-02-27
 
-Initial release of AI-ADAM (AI Auto-Discoverable API Management).
+Initial release of AI-ATLAS (AI Annotation-Driven Tooling & Layered API Synthesis).
 
 ### Annotations (`modules/annotations`)
 - `@AgentVisible` — field-level annotation for DTO inclusion with `description` and `sensitive` attributes
@@ -46,7 +46,7 @@ Initial release of AI-ADAM (AI Auto-Discoverable API Management).
 - **Superclass chain walking** — inherited `@AgentVisible` fields from parent classes are included in generated DTOs
 - **Edge case handling** — interfaces and enums produce warnings (skipped), abstract classes produce warnings but still generate DTOs, static inner classes fully supported
 - **PII detection** — heuristic warnings for fields matching patterns like `ssn`, `password`, `creditCard`
-- **Configurable PII patterns** — additional patterns via `-Aai.adam.pii.patterns=keyword1,keyword2`
+- **Configurable PII patterns** — additional patterns via `-Aai.atlas.pii.patterns=keyword1,keyword2`
 - **Boolean getter convention** — `boolean` fields use `isX()` getters, others use `getX()`
 
 ### Runtime (`modules/runtime`)
@@ -55,10 +55,10 @@ Initial release of AI-ADAM (AI Auto-Discoverable API Management).
 - **SSE transport** — MCP server uses Server-Sent Events (default for `spring-ai-starter-mcp-server-webmvc`)
 - **PII audit interceptor** — logs all `/api/v1/**` requests with SLF4J MDC correlation IDs
 - **DTO response body advice** — runtime safety net warning if generated controllers return non-DTO types
-- **Configuration properties** — `ai.adam.mcp.enabled` and `ai.adam.audit.enabled` (both default `true`)
+- **Configuration properties** — `ai.atlas.mcp.enabled` and `ai.atlas.audit.enabled` (both default `true`)
 
 ### Gradle Plugin (`modules/gradle-plugin`)
-- Plugin ID: `ai.adam.gradle-plugin`
+- Plugin ID: `ai.atlas.gradle-plugin`
 - Auto-adds `annotations` to `implementation`, `processor` to `annotationProcessor`, `runtime` to `implementation`
 - Configures IntelliJ IDEA generated source directories
 - Extension with `version`, `group`, `mcpEnabled`, `restEnabled`, `openApiEnabled` properties

@@ -1,5 +1,5 @@
 allprojects {
-    group = "ai.adam"
+    group = "ai.atlas"
     version = providers.gradleProperty("version").getOrElse("0.1.0-SNAPSHOT")
 }
 

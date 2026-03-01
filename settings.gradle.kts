@@ -17,7 +17,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ai-adam"
+rootProject.name = "ai-atlas"
 
 include(
     ":modules:annotations",

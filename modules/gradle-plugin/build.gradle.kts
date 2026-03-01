@@ -8,8 +8,8 @@ plugins {
 gradlePlugin {
     plugins {
         create("agenticPlugin") {
-            id = "ai.adam.gradle-plugin"
-            implementationClass = "ai.adam.plugin.AgenticPlugin"
+            id = "ai.atlas.gradle-plugin"
+            implementationClass = "ai.atlas.plugin.AgenticPlugin"
         }
     }
 }

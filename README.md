@@ -1,6 +1,6 @@
-# AI-ADAM
+# AI-ATLAS
 
-**AI Auto-Discoverable API Management**
+**AI Annotation-Driven Tooling & Layered API Synthesis**
 
 ## The Problem
 
@@ -8,7 +8,7 @@ Enterprise Java applications contain sensitive data — SSNs, credit card number
 
 ## The Solution
 
-AI-ADAM is a **compile-time annotation processor** that generates PII-safe API layers from two simple annotations:
+AI-ATLAS is a **compile-time annotation processor** that generates PII-safe API layers from two simple annotations:
 
 - **`@AgentVisible`** on entity fields — whitelist what AI agents can see
 - **`@AgenticExposed`** on service classes — expose methods as MCP tools and REST endpoints
@@ -75,7 +75,7 @@ Running `./gradlew build` generates:
 **PII-safe DTO** — only the 4 whitelisted fields, no customer name, no SSN, no credit card. Includes compile-time metadata (field descriptions, enum valid values, circular reference flags) for runtime enriched JSON:
 
 ```java
-@Generated("ai.adam.processor")
+@Generated("ai.atlas.processor")
 public record OrderDto(Long id, OrderStatus status, long totalAmountCents, int itemCount) {
 
     public record FieldMeta(String description, List<String> validValues,
@@ -105,7 +105,7 @@ public record OrderDto(Long id, OrderStatus status, long totalAmountCents, int i
 **MCP tool** — AI agents call this via MCP protocol, responses are always DTOs:
 
 ```java
-@Generated("ai.adam.processor")
+@Generated("ai.atlas.processor")
 @Service
 public class OrderServiceMcpTool {
     private final OrderService service;
@@ -121,7 +121,7 @@ public class OrderServiceMcpTool {
 **REST controller** — standard Spring endpoints, also returning DTOs:
 
 ```java
-@Generated("ai.adam.processor")
+@Generated("ai.atlas.processor")
 @RestController
 @RequestMapping("/api/v1/order-service")
 public class OrderServiceRestController {
@@ -187,7 +187,7 @@ The frontend displays order data with only the 4 PII-safe fields. It includes a 
 
 ```kotlin
 plugins {
-    id("ai.adam.gradle-plugin") version "0.1.0"
+    id("ai.atlas.gradle-plugin") version "0.1.0"
 }
 ```
 
@@ -195,9 +195,9 @@ plugins {
 
 ```kotlin
 dependencies {
-    implementation("ai.adam:annotations:0.1.0")
-    implementation("ai.adam:runtime:0.1.0")
-    annotationProcessor("ai.adam:processor:0.1.0")
+    implementation("ai.atlas:annotations:0.1.0")
+    implementation("ai.atlas:runtime:0.1.0")
+    annotationProcessor("ai.atlas:processor:0.1.0")
 }
 ```
 
@@ -270,14 +270,14 @@ When applied to a type, all public methods are exposed. When applied to a method
 
 ## Enriched JSON Serialization
 
-AI-ADAM includes a Hibernate-safe Jackson serializer (`AgentSafeModule`) that produces two output modes, configured via Spring properties:
+AI-ATLAS includes a Hibernate-safe Jackson serializer (`AgentSafeModule`) that produces two output modes, configured via Spring properties:
 
 **Flat mode** (default, for REST endpoints):
 ```json
 {"id": 1, "status": "SHIPPED", "totalCents": 9999, "itemCount": 3}
 ```
 
-**Enriched mode** (for MCP/LLM consumption — `ai.adam.json.enriched=true`):
+**Enriched mode** (for MCP/LLM consumption — `ai.atlas.json.enriched=true`):
 ```json
 {
   "typeInfo": {"name": "order", "description": "A customer order with status tracking and item summary"},
@@ -293,9 +293,9 @@ Configuration properties:
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `ai.adam.json.enriched` | `false` | Enable enriched JSON with descriptions and valid values |
-| `ai.adam.json.include-descriptions` | `true` | Include field descriptions in enriched output |
-| `ai.adam.json.include-valid-values` | `true` | Include enum valid values in enriched output |
+| `ai.atlas.json.enriched` | `false` | Enable enriched JSON with descriptions and valid values |
+| `ai.atlas.json.include-descriptions` | `true` | Include field descriptions in enriched output |
+| `ai.atlas.json.include-valid-values` | `true` | Include enum valid values in enriched output |
 
 The serializer handles Hibernate proxies (lazy-loaded associations), uninitialized PersistentCollections, and circular references in bidirectional JPA relationships — all via reflection, with no hard compile dependency on Hibernate.
 
@@ -304,7 +304,7 @@ The serializer handles Hibernate proxies (lazy-loaded associations), uninitializ
 **Compile-time guarantees:**
 - Only `@AgentVisible` fields appear in generated DTOs — structural exclusion, not filtering
 - The processor warns about fields matching PII patterns (`ssn`, `password`, `creditCard`, etc.) that are *not* annotated, helping developers confirm intentional exclusions
-- Custom PII patterns: `-Aai.adam.pii.patterns=salary,homeAddress,phoneNumber`
+- Custom PII patterns: `-Aai.atlas.pii.patterns=salary,homeAddress,phoneNumber`
 
 **Runtime safety net:**
 - `DtoResponseBodyAdvice` logs a warning if a generated controller somehow returns a non-DTO object

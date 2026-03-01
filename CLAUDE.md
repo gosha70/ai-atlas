@@ -77,7 +77,7 @@
 - Processor must handle `MirroredTypeException` when reading Class<?> annotation values
 - Processor declares `AGGREGATING` incremental type for Gradle incremental builds
 - Generated sources go to `build/generated/sources/annotationProcessor/java/main/`
-- All generated files include `@Generated("ai.adam.processor")` annotation
+- All generated files include `@Generated("ai.atlas.processor")` annotation
 - Generated code NEVER imports internal/private types from the consumer project
 - Processor must walk superclass chain for inherited `@AgentVisible` fields
 - Processor emits compile warnings (Messager.NOTE) for suspicious PII field names
@@ -92,7 +92,7 @@
 - OpenAPI specs generated via swagger-models (io.swagger.v3:swagger-models)
 
 ## Gradle Plugin Rules
-- Plugin ID follows reverse domain: `ai.adam.gradle-plugin`
+- Plugin ID follows reverse domain: `ai.atlas.gradle-plugin`
 - Plugin creates extension object for user configuration
 - Plugin auto-adds `annotations` to `implementation` configuration
 - Plugin auto-adds `processor` to `annotationProcessor` configuration
