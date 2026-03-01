@@ -320,6 +320,106 @@ class DtoGeneratorTest {
         assertThat(dto).contains("Map.entry(\"email\"");
     }
 
+    @Test
+    void usesExplicitAllowedValuesOnNonEnumField() {
+        JavaFileObject source = JavaFileObjects.forSourceString("test.Config",
+                """
+                package test;
+                import ai.adam.annotations.AgentVisible;
+                import ai.adam.annotations.AgentVisibleClass;
+                @AgentVisibleClass
+                public class Config {
+                    @AgentVisible(description = "Log level", allowedValues = {"DEBUG", "INFO", "WARN", "ERROR"})
+                    private String logLevel;
+                    public String getLogLevel() { return logLevel; }
+                }
+                """);
+
+        Compilation compilation = javac()
+                .withProcessors(new AgenticProcessor())
+                .compile(source);
+
+        CompilationSubject.assertThat(compilation).succeeded();
+
+        String dto = getGeneratedSource(compilation, "test.generated.ConfigDto");
+
+        assertThat(dto).contains("\"DEBUG\"");
+        assertThat(dto).contains("\"INFO\"");
+        assertThat(dto).contains("\"WARN\"");
+        assertThat(dto).contains("\"ERROR\"");
+    }
+
+    @Test
+    void explicitAllowedValuesOverrideEnumConstants() {
+        JavaFileObject enumType = JavaFileObjects.forSourceString("test.Priority",
+                """
+                package test;
+                public enum Priority { LOW, MEDIUM, HIGH, CRITICAL }
+                """);
+
+        JavaFileObject entity = JavaFileObjects.forSourceString("test.Ticket",
+                """
+                package test;
+                import ai.adam.annotations.AgentVisible;
+                import ai.adam.annotations.AgentVisibleClass;
+                @AgentVisibleClass
+                public class Ticket {
+                    @AgentVisible(description = "Ticket priority", allowedValues = {"LOW", "HIGH"})
+                    private Priority priority;
+                    public Priority getPriority() { return priority; }
+                }
+                """);
+
+        Compilation compilation = javac()
+                .withProcessors(new AgenticProcessor())
+                .compile(enumType, entity);
+
+        CompilationSubject.assertThat(compilation).succeeded();
+
+        String dto = getGeneratedSource(compilation, "test.generated.TicketDto");
+
+        // Only explicit values present, not auto-detected MEDIUM/CRITICAL
+        assertThat(dto).contains("\"LOW\"");
+        assertThat(dto).contains("\"HIGH\"");
+        assertThat(dto).doesNotContain("\"MEDIUM\"");
+        assertThat(dto).doesNotContain("\"CRITICAL\"");
+    }
+
+    @Test
+    void emptyAllowedValuesFallsBackToEnumDetection() {
+        JavaFileObject enumType = JavaFileObjects.forSourceString("test.Color",
+                """
+                package test;
+                public enum Color { RED, GREEN, BLUE }
+                """);
+
+        JavaFileObject entity = JavaFileObjects.forSourceString("test.Widget",
+                """
+                package test;
+                import ai.adam.annotations.AgentVisible;
+                import ai.adam.annotations.AgentVisibleClass;
+                @AgentVisibleClass
+                public class Widget {
+                    @AgentVisible(description = "Widget color", allowedValues = {})
+                    private Color color;
+                    public Color getColor() { return color; }
+                }
+                """);
+
+        Compilation compilation = javac()
+                .withProcessors(new AgenticProcessor())
+                .compile(enumType, entity);
+
+        CompilationSubject.assertThat(compilation).succeeded();
+
+        String dto = getGeneratedSource(compilation, "test.generated.WidgetDto");
+
+        // Falls back to enum constants since allowedValues is explicitly empty
+        assertThat(dto).contains("\"RED\"");
+        assertThat(dto).contains("\"GREEN\"");
+        assertThat(dto).contains("\"BLUE\"");
+    }
+
     private static String getGeneratedSource(Compilation compilation, String qualifiedName) {
         var file = compilation.generatedSourceFile(qualifiedName);
         assertThat(file).as("Generated file: " + qualifiedName).isPresent();

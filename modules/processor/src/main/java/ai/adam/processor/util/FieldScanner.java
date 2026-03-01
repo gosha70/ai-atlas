@@ -64,16 +64,19 @@ public final class FieldScanner {
                             ? fieldName
                             : annotation.name();
 
-                    // Detect if field type is an enum and extract constants
+                    // Resolve allowed values: prefer explicit annotation values, fall back to enum constants
                     boolean isEnum = false;
-                    List<String> enumValues = Collections.emptyList();
+                    List<String> allowedValues;
+                    String[] explicitValues = annotation.allowedValues();
                     TypeMirror fieldType = field.asType();
-                    if (fieldType instanceof DeclaredType declaredType) {
-                        var typeElement2 = declaredType.asElement();
-                        if (typeElement2.getKind() == ElementKind.ENUM) {
-                            isEnum = true;
-                            enumValues = extractEnumConstants((TypeElement) typeElement2);
-                        }
+                    if (explicitValues.length > 0) {
+                        allowedValues = List.of(explicitValues);
+                    } else if (fieldType instanceof DeclaredType declaredType
+                            && declaredType.asElement().getKind() == ElementKind.ENUM) {
+                        isEnum = true;
+                        allowedValues = extractEnumConstants((TypeElement) declaredType.asElement());
+                    } else {
+                        allowedValues = Collections.emptyList();
                     }
 
                     allFields.add(new FieldModel(
@@ -84,7 +87,7 @@ public final class FieldScanner {
                             annotation.sensitive(),
                             annotation.checkCircularReference(),
                             isEnum,
-                            enumValues
+                            allowedValues
                     ));
                 }
             }

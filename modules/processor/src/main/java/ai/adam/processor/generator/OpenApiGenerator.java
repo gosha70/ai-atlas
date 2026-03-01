@@ -122,12 +122,13 @@ public final class OpenApiGenerator {
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static Schema buildFieldSchema(FieldModel field) {
         Schema schema;
-        if (field.enumType() && !field.enumValues().isEmpty()) {
-            // Enum fields: type string with enum constraint
+        if (field.enumType()) {
             schema = new Schema().type("string");
-            schema.setEnum(field.enumValues());
         } else {
             schema = mapJavaTypeToSchema(field.typeName().toString());
+        }
+        if (!field.enumValues().isEmpty()) {
+            schema.setEnum(field.enumValues());
         }
         if (!field.description().isEmpty()) {
             schema.description(field.description());

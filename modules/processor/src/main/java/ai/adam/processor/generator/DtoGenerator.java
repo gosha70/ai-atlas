@@ -149,7 +149,7 @@ public final class DtoGenerator {
 
             // Build validValues list expression
             CodeBlock validValuesExpr;
-            if (field.enumType() && !field.enumValues().isEmpty()) {
+            if (!field.enumValues().isEmpty()) {
                 CodeBlock.Builder valuesBuilder = CodeBlock.builder();
                 valuesBuilder.add("$T.of(", LIST);
                 for (int j = 0; j < field.enumValues().size(); j++) {

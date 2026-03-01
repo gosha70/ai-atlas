@@ -81,4 +81,12 @@ public @interface AgentVisible {
      * never to form cycles (e.g., primitive wrappers, strings, enums).
      */
     boolean checkCircularReference() default true;
+
+    /**
+     * Returns the array of values which either presents the enum values, or hard-coded values
+     * specified by the developer.
+     *
+     * @return the range of values this field might be set to
+     */
+    String[] allowedValues() default {};
 }
