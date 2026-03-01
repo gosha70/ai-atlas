@@ -226,7 +226,7 @@ Then annotate your entities with `@AgentVisibleClass` + `@AgentVisible`, your se
 ./gradlew build                    # build all modules + run tests
 ./gradlew :demo:bootRun           # run demo app (REST + MCP SSE on port 8080)
 ./gradlew :demo:compileJava       # trigger annotation processing only
-./gradlew :modules:processor:test  # run processor tests (33 compile-testing tests)
+./gradlew :modules:processor:test  # run processor tests only
 ./gradlew publishToMavenLocal     # publish all modules to ~/.m2
 ```
 
@@ -242,6 +242,7 @@ Applied to fields. Marks a field for inclusion in the generated DTO.
 | `name` | `String` | field name | Custom display name used as the key in `FIELD_METADATA` and enriched JSON output |
 | `sensitive` | `boolean` | `false` | If true, runtime interceptors may mask this field in audit logs |
 | `checkCircularReference` | `boolean` | `true` | When true, the JSON serializer tracks object identity to prevent infinite recursion in bidirectional JPA relationships. Set to false for leaf fields (primitives, strings, enums). |
+| `allowedValues` | `String[]` | `{}` | Explicit allowed values for this field. Overrides auto-detected enum constants when non-empty. Populated into `FIELD_METADATA.validValues` and OpenAPI `enum` constraints. |
 
 ### `@AgentVisibleClass`
 
