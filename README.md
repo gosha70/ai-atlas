@@ -1,6 +1,12 @@
-# AI-ATLAS
 
-**AI Annotation-Driven Tooling & Layered API Synthesis**
+<h2>
+  <img
+    src="docs/images/AI-ATLAS_Logo.png"
+    width="250"
+    alt="AI-ATLAS Logo"
+    style="vertical-align: middle; margin-right: 12px; position: relative; top: -2px;" />
+    <p>AI Annotation-Driven Tooling & Layered API Synthesis</p>
+</h2>
 
 ## The Problem
 
