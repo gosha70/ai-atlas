@@ -62,6 +62,7 @@ From these annotations, the processor generates four artifacts at compile time:
 ### End-to-End Overview
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#FFE0B2', 'primaryTextColor': '#3b2006', 'primaryBorderColor': '#E65100', 'lineColor': '#8D6E63', 'textColor': '#3b2006'}}}%%
 flowchart LR
     subgraph INPUT["Annotated Java Source"]
         Entity["@AgentVisibleClass<br/>Order.java<br/><i>id, status, itemCount</i><br/><s>ssn, creditCard</s>"]
@@ -95,12 +96,20 @@ flowchart LR
     REST --> Client
     OAPI --> FE
 
-    style Entity fill:#e8f4e8,stroke:#2d7d2d
-    style Service fill:#e8f4e8,stroke:#2d7d2d
-    style DTO fill:#e8eef8,stroke:#2d5a9b
-    style MCP fill:#e8eef8,stroke:#2d5a9b
-    style REST fill:#e8eef8,stroke:#2d5a9b
-    style OAPI fill:#e8eef8,stroke:#2d5a9b
+    style INPUT fill:#fff8f0,stroke:#8B4513,color:#3b2006
+    style Entity fill:#FFE0B2,stroke:#E65100,color:#3b2006
+    style Service fill:#FFE0B2,stroke:#E65100,color:#3b2006
+    style COMPILE fill:#4E342E,stroke:#3E2723,color:#FFCC80
+    style AP fill:#6D4C41,stroke:#3E2723,color:#FFF8E1
+    style OUTPUT fill:#FFF3E0,stroke:#BF360C,color:#3b2006
+    style DTO fill:#FFCC80,stroke:#E65100,color:#3b2006
+    style MCP fill:#FFCC80,stroke:#E65100,color:#3b2006
+    style REST fill:#FFCC80,stroke:#E65100,color:#3b2006
+    style OAPI fill:#FFCC80,stroke:#E65100,color:#3b2006
+    style CONSUMERS fill:#FBE9E7,stroke:#BF360C,color:#3b2006
+    style Agent fill:#FFB74D,stroke:#BF360C,color:#3b2006
+    style Client fill:#FFB74D,stroke:#BF360C,color:#3b2006
+    style FE fill:#FFB74D,stroke:#BF360C,color:#3b2006
 ```
 
 ### Module Architecture
@@ -108,6 +117,7 @@ flowchart LR
 Six modules with strict dependency boundaries:
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#FFE0B2', 'primaryTextColor': '#3b2006', 'primaryBorderColor': '#E65100', 'lineColor': '#8D6E63', 'textColor': '#3b2006'}}}%%
 graph TD
     annotations["<b>annotations</b><br/><i>zero dependencies</i><br/>@AgentVisible<br/>@AgentVisibleClass<br/>@AgenticExposed"]
     processor["<b>processor</b><br/><i>compile-time only</i><br/>JSR 269 + JavaPoet"]
@@ -126,12 +136,12 @@ graph TD
     demo -->|"implementation"| runtime
     demo_fe -.->|"consumes REST API"| demo
 
-    style annotations fill:#fff3cd,stroke:#856404
-    style processor fill:#d1ecf1,stroke:#0c5460
-    style runtime fill:#d4edda,stroke:#155724
-    style plugin fill:#f8d7da,stroke:#721c24
-    style demo fill:#e2e3e5,stroke:#383d41
-    style demo_fe fill:#e2e3e5,stroke:#383d41
+    style annotations fill:#FFB74D,stroke:#E65100,color:#3b2006
+    style processor fill:#FFCC80,stroke:#BF360C,color:#3b2006
+    style runtime fill:#FFE0B2,stroke:#BF360C,color:#3b2006
+    style plugin fill:#A1887F,stroke:#4E342E,color:#FFF8E1
+    style demo fill:#8D6E63,stroke:#3E2723,color:#FFF8E1
+    style demo_fe fill:#8D6E63,stroke:#3E2723,color:#FFF8E1
 ```
 
 ### Annotation Processing Pipeline
@@ -139,6 +149,7 @@ graph TD
 The processor executes in three phases during `compileJava`:
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#FFE0B2', 'primaryTextColor': '#3b2006', 'primaryBorderColor': '#E65100', 'lineColor': '#8D6E63', 'textColor': '#3b2006'}}}%%
 flowchart LR
     subgraph P1["Phase 1: Entity Processing"]
         AVC["@AgentVisibleClass"] --> FS["FieldScanner<br/><i>walks superclass chain</i>"]
@@ -164,14 +175,30 @@ flowchart LR
     P1 --> P2
     P2 --> P3
 
-    style P1 fill:#fff3cd,stroke:#856404
-    style P2 fill:#d1ecf1,stroke:#0c5460
-    style P3 fill:#d4edda,stroke:#155724
+    style P1 fill:#FFF3E0,stroke:#E65100,color:#3b2006
+    style AVC fill:#FFB74D,stroke:#E65100,color:#3b2006
+    style FS fill:#FFCC80,stroke:#BF360C,color:#3b2006
+    style EM fill:#FFCC80,stroke:#BF360C,color:#3b2006
+    style DG fill:#FFCC80,stroke:#BF360C,color:#3b2006
+    style DTO fill:#FF8F00,stroke:#E65100,color:#fff
+    style P2 fill:#FBE9E7,stroke:#BF360C,color:#3b2006
+    style AE fill:#FFB74D,stroke:#E65100,color:#3b2006
+    style SM fill:#FFCC80,stroke:#BF360C,color:#3b2006
+    style MTG fill:#FFCC80,stroke:#BF360C,color:#3b2006
+    style RCG fill:#FFCC80,stroke:#BF360C,color:#3b2006
+    style TOOL fill:#FF8F00,stroke:#E65100,color:#fff
+    style CTRL fill:#FF8F00,stroke:#E65100,color:#fff
+    style P3 fill:#EFEBE9,stroke:#4E342E,color:#3b2006
+    style EM2 fill:#BCAAA4,stroke:#4E342E,color:#3b2006
+    style SM2 fill:#BCAAA4,stroke:#4E342E,color:#3b2006
+    style OAG fill:#8D6E63,stroke:#3E2723,color:#FFF8E1
+    style SPEC fill:#FF8F00,stroke:#E65100,color:#fff
 ```
 
 ### Component Structure
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#FFE0B2', 'primaryTextColor': '#3b2006', 'primaryBorderColor': '#E65100', 'secondaryColor': '#FFCC80', 'secondaryTextColor': '#3b2006', 'secondaryBorderColor': '#BF360C', 'tertiaryColor': '#EFEBE9', 'tertiaryTextColor': '#3b2006', 'tertiaryBorderColor': '#4E342E', 'lineColor': '#8D6E63', 'textColor': '#3b2006', 'classText': '#3b2006'}}}%%
 classDiagram
     namespace Annotations {
         class AgentVisible {
