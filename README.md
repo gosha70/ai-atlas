@@ -111,7 +111,7 @@ flowchart LR
     style Client fill:#FFB74D,stroke:#BF360C,color:#3b2006
     style FE fill:#FFB74D,stroke:#BF360C,color:#3b2006
 ```
-- * [JSR 269](https://jcp.org/en/jsr/detail?id=269)  Pluggable Annotation Processing API
+- _[JSR 269](https://jcp.org/en/jsr/detail?id=269)  Pluggable Annotation Processing API_
 
 ### Module Architecture
 
