@@ -623,4 +623,4 @@ The serializer handles Hibernate proxies (lazy-loaded associations), uninitializ
 
 ## License
 
-Copyright (c) 2026 egoge.com. All rights reserved.
+Copyright 2026 egoge.com. Licensed under the [Apache License 2.0](LICENSE).
