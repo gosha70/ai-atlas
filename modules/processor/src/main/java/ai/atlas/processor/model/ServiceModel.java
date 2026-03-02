@@ -14,32 +14,32 @@ import java.util.List;
  * methods. Used by McpToolGenerator and RestControllerGenerator.
  */
 public record ServiceModel(
-        ClassName serviceClassName,
-        List<MethodModel> methods
+    ClassName serviceClassName,
+    List<MethodModel> methods
 ) {
 
-    /**
-     * Represents a single exposed method on the service.
-     */
-    public record MethodModel(
-            String methodName,
-            String toolName,
-            String description,
-            TypeName returnType,
-            ClassName returnEntityType,
-            ClassName returnDtoType,
-            boolean collectionReturn,
-            List<ParameterModel> parameters
-    ) {
-    }
+  /**
+   * Represents a single exposed method on the service.
+   */
+  public record MethodModel(
+      String methodName,
+      String toolName,
+      String description,
+      TypeName returnType,
+      ClassName returnEntityType,
+      ClassName returnDtoType,
+      boolean collectionReturn,
+      List<ParameterModel> parameters
+  ) {
+  }
 
-    /**
-     * Represents a parameter of an exposed method.
-     */
-    public record ParameterModel(
-            String name,
-            TypeName typeName,
-            String description
-    ) {
-    }
+  /**
+   * Represents a parameter of an exposed method.
+   */
+  public record ParameterModel(
+      String name,
+      TypeName typeName,
+      String description
+  ) {
+  }
 }

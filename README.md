@@ -8,9 +8,36 @@
     <p>AI Annotation-Driven Tooling & Layered API Synthesis</p>
 </h2>
 
-## The Problem
+## Why AI-ATLAS?
 
-Enterprise Java applications contain sensitive data — SSNs, credit card numbers, passwords — mixed alongside business data in entity classes. When exposing APIs for AI agents (via [MCP](https://modelcontextprotocol.io/) or REST), developers must manually write DTOs, tool wrappers, and controllers that exclude PII fields. This is tedious, error-prone, and a single missed field can leak sensitive data to an LLM.
+### The Scale Problem
+
+Enterprise Java applications contain hundreds of CRUD services with embedded business logic. These services are essential to composing agentic AI workflows, but today developers must manually enable [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) servers for each service — writing `@McpTool` methods, hand-crafting DTOs, mapping entity fields, and registering tools one by one. For an enterprise with 200+ services, this is months of tedious integration work that introduces security risks through direct, unfiltered exposure of internal data models.
+
+### The PII Security Gap
+
+Entity classes mix business data (order status, item count) with sensitive data (SSNs, credit card numbers, passwords). Exposing services to AI agents risks leaking PII through unfiltered access to internal models. This maps directly to [OWASP API Security Top 10:2023 API3](https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/) — Broken Object Property Level Authorization.
+
+### Whitelist Beats Blacklist
+
+Traditional approaches like `@JsonIgnore` use **blacklisting** — every PII field must be explicitly excluded. A developer adding a new PII field who forgets the exclusion annotation creates an immediate data leak. AI-ATLAS inverts this with **whitelisting** via `@AgentVisible`: only annotated fields are included. Forgetting the annotation is safe — the field simply does not exist in the generated DTO.
+
+### No Existing Tool Does This
+
+No existing tool combines auto-discovery of existing services, MCP tool generation, REST controller generation, and built-in PII filtering at compile time:
+
+| Capability | Spring AI MCP | Spring Data REST | JHipster | swagger-to-mcp | **AI-ATLAS** |
+|---|---|---|---|---|---|
+| Auto-discover existing services | Manual | Repos only | New apps | Needs spec | **Yes** |
+| MCP generation | Manual | — | — | From spec | **Auto** |
+| REST generation | — | From repos | From DSL | — | **Auto** |
+| Built-in PII filtering | — | — | — | — | **Yes** |
+| OpenAPI spec generation | — | Partial | Yes | Consumes | **Auto** |
+| Compile-time generation | Runtime | Runtime | Templates | Build-time | **APT** |
+
+### Retrofit, Not Greenfield
+
+AI-ATLAS is designed to retrofit **existing** enterprise codebases. Add two annotations to existing entity and service classes, run a build, and the full AI-enablement layer is generated. No rewriting services, no new application scaffolding — unlike JHipster which generates new applications rather than wrapping existing ones.
 
 ## The Solution
 
@@ -29,6 +56,230 @@ From these annotations, the processor generates four artifacts at compile time:
 | **MCP tool class** | Spring AI `@Tool`-annotated service for AI agent interaction via [Model Context Protocol](https://modelcontextprotocol.io/) |
 | **REST controller** | Spring `@RestController` with `@PostMapping`/`@GetMapping` endpoints returning DTOs |
 | **OpenAPI 3.0 spec** | Machine-readable API description at `META-INF/openapi/openapi.json` |
+
+## High-Level Architecture
+
+### End-to-End Overview
+
+```mermaid
+flowchart LR
+    subgraph INPUT["Annotated Java Source"]
+        Entity["@AgentVisibleClass<br/>Order.java<br/><i>id, status, itemCount</i><br/><s>ssn, creditCard</s>"]
+        Service["@AgenticExposed<br/>OrderService.java<br/><i>findById, findByStatus</i>"]
+    end
+
+    subgraph COMPILE["javac + AI-ATLAS Processor"]
+        AP["AgenticProcessor<br/><i>JSR 269</i>"]
+    end
+
+    subgraph OUTPUT["Generated Artifacts"]
+        DTO["Record DTO<br/><i>PII-safe fields only</i>"]
+        MCP["MCP Tool<br/><i>@Tool + @ToolParam</i>"]
+        REST["REST Controller<br/><i>@RestController</i>"]
+        OAPI["OpenAPI 3.0<br/><i>openapi.json</i>"]
+    end
+
+    subgraph CONSUMERS["Runtime Consumers"]
+        Agent["AI Agent<br/><i>Claude, GPT, etc.</i>"]
+        Client["REST Client"]
+        FE["Frontend<br/><i>Next.js, React</i>"]
+    end
+
+    Entity --> AP
+    Service --> AP
+    AP --> DTO
+    AP --> MCP
+    AP --> REST
+    AP --> OAPI
+    MCP --> Agent
+    REST --> Client
+    OAPI --> FE
+
+    style Entity fill:#e8f4e8,stroke:#2d7d2d
+    style Service fill:#e8f4e8,stroke:#2d7d2d
+    style DTO fill:#e8eef8,stroke:#2d5a9b
+    style MCP fill:#e8eef8,stroke:#2d5a9b
+    style REST fill:#e8eef8,stroke:#2d5a9b
+    style OAPI fill:#e8eef8,stroke:#2d5a9b
+```
+
+### Module Architecture
+
+Six modules with strict dependency boundaries:
+
+```mermaid
+graph TD
+    annotations["<b>annotations</b><br/><i>zero dependencies</i><br/>@AgentVisible<br/>@AgentVisibleClass<br/>@AgenticExposed"]
+    processor["<b>processor</b><br/><i>compile-time only</i><br/>JSR 269 + JavaPoet"]
+    runtime["<b>runtime</b><br/><i>Spring Boot</i><br/>MCP config, JSON serializer,<br/>PII audit interceptor"]
+    plugin["<b>gradle-plugin</b><br/><i>configures all deps</i>"]
+    demo["<b>demo</b><br/><i>Spring Boot app</i><br/>Order entity + OrderService"]
+    demo_fe["<b>demo-frontend</b><br/><i>Next.js</i>"]
+
+    processor -->|"compile-only"| annotations
+    runtime -->|"api"| annotations
+    plugin -.->|"auto-adds"| annotations
+    plugin -.->|"auto-adds"| processor
+    plugin -.->|"auto-adds"| runtime
+    demo -->|"annotationProcessor"| processor
+    demo -->|"implementation"| annotations
+    demo -->|"implementation"| runtime
+    demo_fe -.->|"consumes REST API"| demo
+
+    style annotations fill:#fff3cd,stroke:#856404
+    style processor fill:#d1ecf1,stroke:#0c5460
+    style runtime fill:#d4edda,stroke:#155724
+    style plugin fill:#f8d7da,stroke:#721c24
+    style demo fill:#e2e3e5,stroke:#383d41
+    style demo_fe fill:#e2e3e5,stroke:#383d41
+```
+
+### Annotation Processing Pipeline
+
+The processor executes in three phases during `compileJava`:
+
+```mermaid
+flowchart LR
+    subgraph P1["Phase 1: Entity Processing"]
+        AVC["@AgentVisibleClass"] --> FS["FieldScanner<br/><i>walks superclass chain</i>"]
+        FS --> EM["EntityModel"]
+        EM --> DG["DtoGenerator"]
+        DG --> DTO["Java Record DTO<br/>+ FieldMeta<br/>+ fromEntity()"]
+    end
+
+    subgraph P2["Phase 2: Service Processing"]
+        AE["@AgenticExposed"] --> SM["ServiceModel"]
+        SM --> MTG["McpToolGenerator"]
+        SM --> RCG["RestControllerGenerator"]
+        MTG --> TOOL["@Service + @Tool<br/>MCP tool class"]
+        RCG --> CTRL["@RestController<br/>REST endpoints"]
+    end
+
+    subgraph P3["Phase 3: Spec Generation"]
+        EM2["All EntityModels"] --> OAG["OpenApiGenerator"]
+        SM2["All ServiceModels"] --> OAG
+        OAG --> SPEC["META-INF/openapi/<br/>openapi.json"]
+    end
+
+    P1 --> P2
+    P2 --> P3
+
+    style P1 fill:#fff3cd,stroke:#856404
+    style P2 fill:#d1ecf1,stroke:#0c5460
+    style P3 fill:#d4edda,stroke:#155724
+```
+
+### Component Structure
+
+```mermaid
+classDiagram
+    namespace Annotations {
+        class AgentVisible {
+            +description : String
+            +name : String
+            +sensitive : boolean
+            +checkCircularReference : boolean
+            +allowedValues : String[]
+        }
+        class AgentVisibleClass {
+            +dtoName : String
+            +packageName : String
+            +name : String
+            +description : String
+            +includeTypeInfo : boolean
+        }
+        class AgenticExposed {
+            +toolName : String
+            +description : String
+            +returnType : Class
+        }
+    }
+
+    namespace Processor {
+        class AgenticProcessor {
+            -entityRegistry : Map
+            +process(annotations, roundEnv)
+            -processEntities(roundEnv)
+            -processServices(roundEnv)
+        }
+        class EntityModel {
+            +sourceClassName : ClassName
+            +dtoName : String
+            +fields : List~FieldModel~
+        }
+        class FieldModel {
+            +name : String
+            +displayName : String
+            +typeName : TypeName
+            +enumType : boolean
+            +enumValues : List~String~
+        }
+        class ServiceModel {
+            +serviceClassName : ClassName
+            +methods : List~MethodModel~
+        }
+        class DtoGenerator {
+            +generate(EntityModel, Filer)
+        }
+        class McpToolGenerator {
+            +generate(ServiceModel, Filer)
+        }
+        class RestControllerGenerator {
+            +generate(ServiceModel, Filer)
+        }
+        class OpenApiGenerator {
+            +generate(entities, services, Filer)
+        }
+        class FieldScanner {
+            +scan(TypeElement) : List~FieldModel~
+        }
+        class PiiDetector {
+            +check(fieldName, Element, Messager)
+        }
+    }
+
+    namespace Runtime {
+        class AgenticAutoConfiguration {
+            +agentSafeModule()
+            +piiAuditInterceptor()
+            +dtoResponseBodyAdvice()
+        }
+        class AgenticMcpConfiguration {
+            +toolCallbackProvider()
+        }
+        class AgentSafeModule {
+            -enriched : boolean
+        }
+        class AgentSafeSerializer {
+            +serialize(value, gen, provider)
+        }
+        class HibernateSupport {
+            +isProxy(obj)$
+            +unproxy(obj)$
+            +safeResolve(obj)$
+        }
+        class SerializationContext {
+            +addInstance(obj)$
+            +containsInstance(obj)$
+            +clear()$
+        }
+    }
+
+    AgenticProcessor --> EntityModel : creates
+    AgenticProcessor --> ServiceModel : creates
+    AgenticProcessor --> DtoGenerator : delegates
+    AgenticProcessor --> McpToolGenerator : delegates
+    AgenticProcessor --> RestControllerGenerator : delegates
+    AgenticProcessor --> OpenApiGenerator : delegates
+    AgenticProcessor --> FieldScanner : uses
+    AgenticProcessor --> PiiDetector : uses
+    FieldScanner --> FieldModel : produces
+    AgentSafeModule --> AgentSafeSerializer : registers
+    AgentSafeSerializer --> HibernateSupport : uses
+    AgentSafeSerializer --> SerializationContext : uses
+    AgenticAutoConfiguration --> AgenticMcpConfiguration : imports
+    AgenticAutoConfiguration --> AgentSafeModule : creates
+```
 
 ## How It Works
 
@@ -139,6 +390,30 @@ public class OrderServiceRestController {
 }
 ```
 
+## PII Safety Architecture
+
+### Defense-in-Depth
+
+AI-ATLAS provides a layered security strategy for PII protection:
+
+| Layer | Mechanism | Guarantee | Status |
+|-------|-----------|-----------|--------|
+| **1. Compile-time** | Generated DTOs structurally exclude unannotated fields | PII fields cannot exist in generated types — enforced by `javac` | Implemented |
+| **2. Runtime audit** | `DtoResponseBodyAdvice` + `PiiAuditInterceptor` with MDC correlation | Warns if non-DTO objects leak through generated endpoints; logs all API access | Implemented |
+| **3. Runtime policy** | OPA/Cedar integration for dynamic, context-aware views | Role-based field filtering at request time | Planned |
+| **4. Output scanning** | Regex + NLP-based PII detection before agent response | Catch-all for data that bypasses structural layers | Planned |
+
+### Compile-Time Guarantees
+
+- Only `@AgentVisible` fields appear in generated DTOs — structural exclusion, not filtering
+- The processor warns about fields matching PII patterns (`ssn`, `password`, `creditCard`, etc.) that are *not* annotated, helping developers confirm intentional exclusions
+- Custom PII patterns: `-Aai.atlas.pii.patterns=salary,homeAddress,phoneNumber`
+
+### Runtime Safety Net
+
+- `DtoResponseBodyAdvice` logs a warning if a generated controller somehow returns a non-DTO object
+- `PiiAuditInterceptor` logs all `/api/v1/**` requests with SLF4J MDC correlation IDs
+
 ## Demo Application
 
 The `demo/` module is a working Spring Boot app that demonstrates the full pipeline. It contains an `Order` entity with 9 fields (4 safe, 5 PII) and an `OrderService` with two methods.
@@ -209,33 +484,6 @@ dependencies {
 
 Then annotate your entities with `@AgentVisibleClass` + `@AgentVisible`, your services with `@AgenticExposed`, and build. Generated code appears in `build/generated/sources/annotationProcessor/`.
 
-## Modules
-
-| Module | Description |
-|--------|-------------|
-| `modules/annotations` | `@AgentVisible`, `@AgentVisibleClass`, `@AgenticExposed` — zero external dependencies |
-| `modules/processor` | JSR 269 annotation processor — generates DTOs, MCP tools, REST controllers, OpenAPI specs using JavaPoet |
-| `modules/runtime` | Spring Boot auto-configuration — MCP server wiring (SSE transport), PII audit interceptor, Hibernate-safe Jackson serializer with enriched JSON mode |
-| `modules/gradle-plugin` | Gradle plugin — auto-adds all framework dependencies and configures IntelliJ generated source dirs |
-| `demo` | Spring Boot demo app with `Order` entity and `OrderService` |
-| `demo-frontend` | Next.js frontend consuming the generated REST API |
-
-## Requirements
-
-- Java 17+ to run Gradle, Java 21 for compilation (auto-provisioned via Gradle toolchain)
-- Gradle 8.12 (wrapper included)
-- Spring Boot 3.4+ (for runtime module)
-
-## Build Commands
-
-```bash
-./gradlew build                    # build all modules + run tests
-./gradlew :demo:bootRun           # run demo app (REST + MCP SSE on port 8080)
-./gradlew :demo:compileJava       # trigger annotation processing only
-./gradlew :modules:processor:test  # run processor tests only
-./gradlew publishToMavenLocal     # publish all modules to ~/.m2
-```
-
 ## Annotation Reference
 
 ### `@AgentVisible`
@@ -305,17 +553,6 @@ Configuration properties:
 
 The serializer handles Hibernate proxies (lazy-loaded associations), uninitialized PersistentCollections, and circular references in bidirectional JPA relationships — all via reflection, with no hard compile dependency on Hibernate.
 
-## PII Safety
-
-**Compile-time guarantees:**
-- Only `@AgentVisible` fields appear in generated DTOs — structural exclusion, not filtering
-- The processor warns about fields matching PII patterns (`ssn`, `password`, `creditCard`, etc.) that are *not* annotated, helping developers confirm intentional exclusions
-- Custom PII patterns: `-Aai.atlas.pii.patterns=salary,homeAddress,phoneNumber`
-
-**Runtime safety net:**
-- `DtoResponseBodyAdvice` logs a warning if a generated controller somehow returns a non-DTO object
-- `PiiAuditInterceptor` logs all `/api/v1/**` requests with SLF4J MDC correlation IDs
-
 ## Edge Case Handling
 
 | Scenario | Behavior |
@@ -331,6 +568,31 @@ The serializer handles Hibernate proxies (lazy-loaded associations), uninitializ
 | Custom field display names | `@AgentVisible(name = "totalCents")` uses custom key in `FIELD_METADATA` and enriched JSON |
 | Hibernate proxies | Automatically unwrapped by the runtime serializer (reflection-based, no Hibernate dependency) |
 | Circular JPA references | Detected via `SerializationContext`; serialized as `null` to prevent infinite recursion |
+
+## Modules
+
+| Module | Description |
+|--------|-------------|
+| `modules/annotations` | `@AgentVisible`, `@AgentVisibleClass`, `@AgenticExposed` — zero external dependencies |
+| `modules/processor` | JSR 269 annotation processor — generates DTOs, MCP tools, REST controllers, OpenAPI specs using JavaPoet |
+| `modules/runtime` | Spring Boot auto-configuration — MCP server wiring (SSE transport), PII audit interceptor, Hibernate-safe Jackson serializer with enriched JSON mode |
+| `modules/gradle-plugin` | Gradle plugin — auto-adds all framework dependencies and configures IntelliJ generated source dirs |
+| `demo` | Spring Boot demo app with `Order` entity and `OrderService` |
+| `demo-frontend` | Next.js frontend consuming the generated REST API |
+
+## Requirements & Build
+
+- Java 17+ to run Gradle, Java 21 for compilation (auto-provisioned via Gradle toolchain)
+- Gradle 8.12 (wrapper included)
+- Spring Boot 3.4+ (for runtime module)
+
+```bash
+./gradlew build                    # build all modules + run tests
+./gradlew :demo:bootRun           # run demo app (REST + MCP SSE on port 8080)
+./gradlew :demo:compileJava       # trigger annotation processing only
+./gradlew :modules:processor:test  # run processor tests only
+./gradlew publishToMavenLocal     # publish all modules to ~/.m2
+```
 
 ## License
 

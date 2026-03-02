@@ -23,57 +23,61 @@ import java.util.stream.Collectors;
  */
 public final class PiiDetector {
 
-    private static final String DEFAULT_REGEX =
-            "(ssn|password|passwd|credit.?card|card.?number|cvv|cvc|tax.?id|driver.?license|passport|secret)";
+  private static final String DEFAULT_REGEX =
+      "(ssn|password|passwd|credit.?card|card.?number|cvv|cvc|tax.?id|driver.?license|passport|secret)";
 
-    private static final Pattern DEFAULT_PII_PATTERN = Pattern.compile(
-            "(?i)" + DEFAULT_REGEX
-    );
+  private static final Pattern DEFAULT_PII_PATTERN = Pattern.compile(
+      "(?i)" + DEFAULT_REGEX
+  );
 
-    private PiiDetector() {
+  private PiiDetector() {
+  }
+
+  /**
+   * Checks if a field name matches known PII patterns and emits a
+   * NOTE-level diagnostic if it does.
+   *
+   * @param fieldName      the field name to check
+   * @param element        the element for diagnostic positioning
+   * @param messager       the compiler <tt>messager</tt> for emitting diagnostics
+   * @param customPatterns comma-separated additional keywords (maybe null)
+   */
+  public static void check(
+      String fieldName,
+      Element element,
+      Messager messager,
+      String customPatterns) {
+    Pattern pattern = buildPattern(customPatterns);
+    if (pattern.matcher(fieldName).find()) {
+      messager.printMessage(
+          Diagnostic.Kind.NOTE,
+          String.format(
+              "[ai-atlas] Field '%s' matches PII pattern. "
+                  + "It is excluded from the generated DTO (not annotated with @AgentVisible). "
+                  + "If this is intentional, no action needed.",
+              fieldName
+          ),
+          element
+      );
     }
+  }
 
-    /**
-     * Checks if a field name matches known PII patterns and emits a
-     * NOTE-level diagnostic if it does.
-     *
-     * @param fieldName      the field name to check
-     * @param element        the element for diagnostic positioning
-     * @param messager       the compiler messager for emitting diagnostics
-     * @param customPatterns comma-separated additional keywords (may be null)
-     */
-    public static void check(String fieldName, Element element, Messager messager, String customPatterns) {
-        Pattern pattern = buildPattern(customPatterns);
-        if (pattern.matcher(fieldName).find()) {
-            messager.printMessage(
-                    Diagnostic.Kind.NOTE,
-                    String.format(
-                            "[ai-atlas] Field '%s' matches PII pattern. "
-                                    + "It is excluded from the generated DTO (not annotated with @AgentVisible). "
-                                    + "If this is intentional, no action needed.",
-                            fieldName
-                    ),
-                    element
-            );
-        }
+  /**
+   * Builds the combined PII regex from default patterns plus any
+   * custom keywords supplied via processor options.
+   */
+  private static Pattern buildPattern(String customPatterns) {
+    if (customPatterns == null || customPatterns.isBlank()) {
+      return DEFAULT_PII_PATTERN;
     }
-
-    /**
-     * Builds the combined PII regex from default patterns plus any
-     * custom keywords supplied via processor options.
-     */
-    private static Pattern buildPattern(String customPatterns) {
-        if (customPatterns == null || customPatterns.isBlank()) {
-            return DEFAULT_PII_PATTERN;
-        }
-        String customRegex = Arrays.stream(customPatterns.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .map(Pattern::quote)
-                .collect(Collectors.joining("|"));
-        if (customRegex.isEmpty()) {
-            return DEFAULT_PII_PATTERN;
-        }
-        return Pattern.compile("(?i)(" + DEFAULT_REGEX + "|" + customRegex + ")");
+    String customRegex = Arrays.stream(customPatterns.split(","))
+        .map(String::trim)
+        .filter(s -> !s.isEmpty())
+        .map(Pattern::quote)
+        .collect(Collectors.joining("|"));
+    if (customRegex.isEmpty()) {
+      return DEFAULT_PII_PATTERN;
     }
+    return Pattern.compile("(?i)(" + DEFAULT_REGEX + "|" + customRegex + ")");
+  }
 }

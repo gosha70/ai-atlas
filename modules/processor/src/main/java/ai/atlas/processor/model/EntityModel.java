@@ -14,22 +14,21 @@ import java.util.List;
  * fields for DTO generation.
  */
 public record EntityModel(
-        ClassName sourceClassName,
-        String dtoName,
-        String dtoPackageName,
-        /** Display name from @AgentVisibleClass.name (or simple class name) */
-        String displayName,
-        /** Class description from @AgentVisibleClass.description */
-        String classDescription,
-        /** Whether to include typeInfo block in enriched JSON */
-        boolean includeTypeInfo,
-        List<FieldModel> fields
+    ClassName sourceClassName,
+    String dtoName,
+    String dtoPackageName,
+    /* Display name from @AgentVisibleClass.name (or simple class name) */
+    String displayName,
+    String classDescription,
+    /* Whether to include typeInfo block in enriched JSON */
+    boolean includeTypeInfo,
+    List<FieldModel> fields
 ) {
 
-    /**
-     * Returns the fully qualified ClassName for the generated DTO.
-     */
-    public ClassName dtoClassName() {
-        return ClassName.get(dtoPackageName, dtoName);
-    }
+  /**
+   * Returns the fully qualified ClassName for the generated DTO.
+   */
+  public ClassName dtoClassName() {
+    return ClassName.get(dtoPackageName, dtoName);
+  }
 }

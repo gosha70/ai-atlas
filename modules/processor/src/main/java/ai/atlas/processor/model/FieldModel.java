@@ -13,18 +13,18 @@ import java.util.List;
  * and field metadata for enriched JSON serialization.
  */
 public record FieldModel(
-        /** Java field name (e.g., "status") */
-        String name,
-        /** Display name from @AgentVisible.name, or field name if empty */
-        String displayName,
-        TypeName typeName,
-        String description,
-        boolean sensitive,
-        /** Whether to check for circular references during serialization */
-        boolean checkCircularReference,
-        /** True if the field type is a Java enum */
-        boolean enumType,
-        /** Enum constant names (empty list if not an enum type) */
-        List<String> enumValues
+    /* Java field name (e.g., "status") */
+    String name,
+    /* Display name from @AgentVisible.name, or field name if empty */
+    String displayName,
+    TypeName typeName,
+    String description,
+    boolean sensitive,
+    /* Whether to check for circular references during serialization */
+    boolean checkCircularReference,
+    /* True if the field type is a Java enum */
+    boolean enumType,
+    /* Enum constant names (empty list if not an enum type) */
+    List<String> enumValues
 ) {
 }

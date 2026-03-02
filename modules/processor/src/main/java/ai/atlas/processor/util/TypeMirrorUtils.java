@@ -15,35 +15,35 @@ import javax.lang.model.type.TypeMirror;
  */
 public final class TypeMirrorUtils {
 
-    private TypeMirrorUtils() {
-    }
+  private TypeMirrorUtils() {
+  }
 
-    /**
-     * Converts a TypeMirror to a JavaPoet TypeName.
-     */
-    public static TypeName toTypeName(TypeMirror typeMirror) {
-        return TypeName.get(typeMirror);
-    }
+  /**
+   * Converts a TypeMirror to a JavaPoet TypeName.
+   */
+  public static TypeName toTypeName(TypeMirror typeMirror) {
+    return TypeName.get(typeMirror);
+  }
 
-    /**
-     * Extracts the ClassName from a DeclaredType's TypeElement.
-     */
-    public static ClassName toClassName(TypeElement typeElement) {
-        return ClassName.get(typeElement);
-    }
+  /**
+   * Extracts the ClassName from a DeclaredType's TypeElement.
+   */
+  public static ClassName toClassName(TypeElement typeElement) {
+    return ClassName.get(typeElement);
+  }
 
-    /**
-     * Extracts the TypeElement from a DeclaredType.
-     *
-     * @return the TypeElement, or null if the TypeMirror is not a DeclaredType
-     */
-    public static TypeElement asTypeElement(TypeMirror typeMirror) {
-        if (typeMirror instanceof DeclaredType declaredType) {
-            var element = declaredType.asElement();
-            if (element instanceof TypeElement typeElement) {
-                return typeElement;
-            }
-        }
-        return null;
+  /**
+   * Extracts the TypeElement from a DeclaredType.
+   *
+   * @return the TypeElement, or null if the TypeMirror is not a DeclaredType
+   */
+  public static TypeElement asTypeElement(TypeMirror typeMirror) {
+    if (typeMirror instanceof DeclaredType declaredType) {
+      var element = declaredType.asElement();
+      if (element instanceof TypeElement typeElement) {
+        return typeElement;
+      }
     }
+    return null;
+  }
 }
