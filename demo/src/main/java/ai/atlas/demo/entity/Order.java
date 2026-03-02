@@ -6,6 +6,9 @@ package ai.atlas.demo.entity;
 import ai.atlas.annotations.AgentVisible;
 import ai.atlas.annotations.AgentVisibleClass;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Demo entity representing a customer order.
  * Only fields annotated with {@code @AgentVisible} will appear
@@ -16,6 +19,7 @@ import ai.atlas.annotations.AgentVisibleClass;
  *   <li>Enum field auto-detection for validValues</li>
  *   <li>Custom field name via {@code @AgentVisible(name = ...)}</li>
  *   <li>Class-level metadata for enriched JSON output</li>
+ *   <li>Bidirectional relationship with {@link OrderAction} (circular reference handling)</li>
  * </ul>
  */
 @AgentVisibleClass(
@@ -43,6 +47,9 @@ public class Order {
 
     @AgentVisible(description = "Number of items in the order")
     private int itemCount;
+
+    @AgentVisible(description = "Actions performed on this order")
+    private List<OrderAction> actions = new ArrayList<>();
 
     // PII fields — intentionally NOT annotated
     private String customerName;
@@ -81,6 +88,14 @@ public class Order {
 
     public void setItemCount(int itemCount) {
         this.itemCount = itemCount;
+    }
+
+    public List<OrderAction> getActions() {
+        return actions;
+    }
+
+    public void setActions(List<OrderAction> actions) {
+        this.actions = actions;
     }
 
     public String getCustomerName() {

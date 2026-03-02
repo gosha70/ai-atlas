@@ -500,6 +500,8 @@ plugins {
 }
 ```
 
+The plugin automatically adds `annotations` to `implementation`, `processor` to `annotationProcessor`, and `runtime` to `implementation` — no manual dependency declarations needed.
+
 ### Option B: Manual dependencies
 
 ```kotlin
@@ -511,6 +513,38 @@ dependencies {
 ```
 
 Then annotate your entities with `@AgentVisibleClass` + `@AgentVisible`, your services with `@AgenticExposed`, and build. Generated code appears in `build/generated/sources/annotationProcessor/`.
+
+### Using the plugin from source (monorepo development)
+
+If you're working within the AI-ATLAS monorepo and want to test the plugin against the `demo` module:
+
+1. Publish all modules to your local Maven repository:
+
+```bash
+./gradlew publishToMavenLocal
+```
+
+2. Add `mavenLocal()` to `settings.gradle.kts` plugin repositories:
+
+```kotlin
+pluginManagement {
+    repositories {
+        mavenLocal()
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+```
+
+3. Replace manual dependencies in your `build.gradle.kts` with the plugin:
+
+```kotlin
+plugins {
+    id("ai.atlas.gradle-plugin") version "0.1.0-SNAPSHOT"
+}
+```
+
+This replaces the three manual `implementation`/`annotationProcessor` lines. Note: after changing `annotations`, `processor`, or `runtime` source code, re-run `publishToMavenLocal` before building the consumer module. For active development within the monorepo, direct `project(":modules:...")` references (Option B) avoid this extra step.
 
 ## Annotation Reference
 
