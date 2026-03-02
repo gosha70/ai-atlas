@@ -10,7 +10,7 @@
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-Instead, please report them via email to: **security@egoge.com**
+Instead, please report them via email to: **[security@egoge.com](mailto:i.am.goga@gmail.com)**
 
 Include the following in your report:
 
