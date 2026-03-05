@@ -6,6 +6,7 @@ package ai.atlas.plugin;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.plugins.JavaPlugin;
+import org.gradle.api.tasks.compile.JavaCompile;
 
 import java.io.File;
 
@@ -38,8 +39,11 @@ public class AgenticPlugin implements Plugin<Project> {
         extension.getRestEnabled().convention(true);
         extension.getOpenApiEnabled().convention(true);
 
-        // Add dependencies after project evaluation (so extension values are resolved)
-        project.afterEvaluate(p -> addDependencies(p, extension));
+        // Add dependencies and processor options after evaluation (so extension values are resolved)
+        project.afterEvaluate(p -> {
+            addDependencies(p, extension);
+            configureProcessorOptions(p, extension);
+        });
 
         // Configure IntelliJ IDEA generated source directories
         configureIdea(project);
@@ -64,6 +68,15 @@ public class AgenticPlugin implements Plugin<Project> {
             project.getDependencies().add(
                     JavaPlugin.IMPLEMENTATION_CONFIGURATION_NAME,
                     group + ":runtime:" + version);
+        }
+    }
+
+    private void configureProcessorOptions(Project project, AgenticExtension extension) {
+        if (extension.getPiiPatternsFile().isPresent()) {
+            String filePath = extension.getPiiPatternsFile().get();
+            project.getTasks().withType(JavaCompile.class,
+                    task -> task.getOptions().getCompilerArgs()
+                            .add("-Aai.atlas.pii.patterns.file=" + filePath));
         }
     }
 

@@ -54,7 +54,10 @@ import java.util.Set;
         "ai.atlas.annotations.AgentVisibleClass",
         "ai.atlas.annotations.AgenticExposed"
 })
-@javax.annotation.processing.SupportedOptions("ai.atlas.pii.patterns")
+@javax.annotation.processing.SupportedOptions({
+        "ai.atlas.pii.patterns",
+        "ai.atlas.pii.patterns.file"
+})
 @SupportedSourceVersion(SourceVersion.RELEASE_21)
 public class AgenticProcessor extends AbstractProcessor {
 
@@ -364,6 +367,7 @@ public class AgenticProcessor extends AbstractProcessor {
 
     private void emitPiiWarnings(TypeElement typeElement) {
         String customPatterns = processingEnv.getOptions().get("ai.atlas.pii.patterns");
+        String patternsFile = processingEnv.getOptions().get("ai.atlas.pii.patterns.file");
         for (var enclosed : typeElement.getEnclosedElements()) {
             if (enclosed.getKind() == ElementKind.FIELD
                     && enclosed.getAnnotation(AgentVisible.class) == null) {
@@ -371,7 +375,8 @@ public class AgenticProcessor extends AbstractProcessor {
                         enclosed.getSimpleName().toString(),
                         enclosed,
                         processingEnv.getMessager(),
-                        customPatterns
+                        customPatterns,
+                        patternsFile
                 );
             }
         }

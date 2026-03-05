@@ -43,4 +43,12 @@ public abstract class AgenticExtension {
      * Enable OpenAPI spec generation. Defaults to true.
      */
     public abstract Property<Boolean> getOpenApiEnabled();
+
+    /**
+     * Path to a custom PII patterns file. Each line is a regex fragment;
+     * lines starting with {@code #} are comments. When set, the custom file
+     * replaces the built-in defaults. The {@code -Aai.atlas.pii.patterns}
+     * additive option still works on top.
+     */
+    public abstract Property<String> getPiiPatternsFile();
 }

@@ -26,7 +26,7 @@ import java.io.IOException;
  * Generates Spring {@code @Service} classes with {@code @Tool}-annotated methods
  * that delegate to the original service and map entity results to DTOs.
  *
- * <p>Generated tools are auto-discovered by Spring AI's MCP server auto-configuration
+ * <p>Generated tools are auto-discovered by Spring AI's MCP server autoconfiguration
  * via {@code MethodToolCallbackProvider}.
  */
 public final class McpToolGenerator {
