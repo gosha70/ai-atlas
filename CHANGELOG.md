@@ -4,9 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+---
+
+## [1.1.0] — 2026-03-05
+
 ### Annotations
 - `@AgentVisible` — added `name` attribute for custom display names in metadata and enriched JSON
 - `@AgentVisible` — added `checkCircularReference` attribute (default `true`) for controlling circular reference detection during serialization
+- `@AgentVisible` — added `allowedValues` attribute for explicit value constraints on non-enum fields
 - `@AgentVisibleClass` — added `name` attribute for entity display name in enriched JSON `typeInfo` block
 - `@AgentVisibleClass` — added `description` attribute for class-level descriptions
 - `@AgentVisibleClass` — added `includeTypeInfo` attribute (default `true`) for controlling `typeInfo` block in enriched output
@@ -16,6 +21,7 @@ All notable changes to this project will be documented in this file.
 - **Enum field detection** — enum field types are auto-detected; their constant names are extracted into `FIELD_METADATA.validValues` and OpenAPI `enum` constraints
 - **Duplicate name validation** — compile error emitted when two `@AgentVisible` fields share the same display name within a class
 - **OpenAPI enrichment** — class descriptions used in schema docs; enum constraints in field schemas
+- **Externalised PII patterns** — default PII detection patterns moved from hardcoded regex to `META-INF/ai-atlas/pii-patterns.conf` resource file; customers can replace the defaults with a custom file via `-Aai.atlas.pii.patterns.file=path`
 
 ### Runtime
 - **AgentSafeModule** — Jackson module that registers the `AgentSafeSerializer` for all `@AgentVisibleClass` entities
@@ -24,8 +30,14 @@ All notable changes to this project will be documented in this file.
 - **SerializationContext** — ThreadLocal-based circular reference tracker using object identity
 - **Configuration** — `ai.atlas.json.enriched`, `ai.atlas.json.include-descriptions`, `ai.atlas.json.include-valid-values` properties
 
+### Gradle Plugin
+- `piiPatternsFile` extension property — wires custom PII patterns file path to the annotation processor
+
 ### Demo
 - `Order` entity updated with class-level metadata, `OrderStatus` enum, and custom field name (`totalCents`)
+
+### Project
+- Renamed from AI-ADAM to AI-ATLAS
 
 ---
 
