@@ -3,13 +3,20 @@
 plugins {
     `java-gradle-plugin`
     `maven-publish`
+    id("com.gradle.plugin-publish") version "1.3.1"
 }
 
 gradlePlugin {
+    website.set("https://github.com/gosha70/ai-atlas")
+    vcsUrl.set("https://github.com/gosha70/ai-atlas")
+
     plugins {
         create("agenticPlugin") {
             id = "ai.atlas.gradle-plugin"
             implementationClass = "ai.atlas.plugin.AgenticPlugin"
+            displayName = "AI-ATLAS Gradle Plugin"
+            description = "Compile-time annotation processor that generates PII-safe MCP tools, REST controllers, DTOs, and OpenAPI specs from annotated Java services"
+            tags.set(listOf("ai", "mcp", "annotation-processor", "code-generation", "pii", "openapi", "spring-boot"))
         }
     }
 }
