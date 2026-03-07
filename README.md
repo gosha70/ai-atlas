@@ -461,6 +461,22 @@ The app starts on port 8080 with:
 - **REST API** at `http://localhost:8080/api/v1/order-service/`
 - **MCP server** over SSE at `http://localhost:8080/sse` (for AI agent connections)
 
+### Running with Docker
+
+```bash
+# Build and start the containerized demo
+docker compose up --build -d
+
+# Check it's healthy (wait ~15-20s for startup)
+docker compose ps
+
+# Test the API
+curl -X POST "http://localhost:8080/api/v1/order-service/find-by-id?id=1"
+
+# Stop
+docker compose down
+```
+
 ### Try the REST API
 
 ```bash

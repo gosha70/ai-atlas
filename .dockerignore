@@ -1,0 +1,11 @@
+.gradle/
+build/
+**/build/
+.idea/
+.claude/
+doc_internal/
+demo-frontend/node_modules/
+demo-frontend/.next/
+.git/
+*.iml
+.DS_Store

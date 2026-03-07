@@ -5,6 +5,8 @@ allprojects {
 
 subprojects {
     apply(plugin = "java-library")
+    apply(plugin = "checkstyle")
+    apply(plugin = "jacoco")
 
     configure<JavaPluginExtension> {
         toolchain {
@@ -29,5 +31,25 @@ subprojects {
 
     tasks.withType<Test> {
         useJUnitPlatform()
+        finalizedBy(tasks.named("jacocoTestReport"))
+    }
+
+    configure<CheckstyleExtension> {
+        toolVersion = "10.21.4"
+        configFile = rootProject.file("config/checkstyle/checkstyle.xml")
+        isIgnoreFailures = false
+        maxWarnings = 0
+    }
+
+    configure<JacocoPluginExtension> {
+        toolVersion = "0.8.12"
+    }
+
+    tasks.named<JacocoReport>("jacocoTestReport") {
+        dependsOn(tasks.named("test"))
+        reports {
+            xml.required.set(true)
+            html.required.set(true)
+        }
     }
 }

@@ -14,7 +14,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.gradle.testkit.runner.TaskOutcome.SUCCESS;
 
 /**
  * Functional tests for the AI-ATLAS Gradle plugin using Gradle TestKit.

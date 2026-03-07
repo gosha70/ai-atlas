@@ -8,7 +8,6 @@ import ai.atlas.processor.model.ServiceModel.MethodModel;
 import ai.atlas.processor.model.ServiceModel.ParameterModel;
 import com.palantir.javapoet.AnnotationSpec;
 import com.palantir.javapoet.ClassName;
-import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.FieldSpec;
 import com.palantir.javapoet.JavaFile;
 import com.palantir.javapoet.MethodSpec;
@@ -140,7 +139,9 @@ public final class McpToolGenerator {
     private static String buildCallArgs(MethodModel method) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < method.parameters().size(); i++) {
-            if (i > 0) sb.append(", ");
+            if (i > 0) {
+                sb.append(", ");
+            }
             sb.append(method.parameters().get(i).name());
         }
         return sb.toString();

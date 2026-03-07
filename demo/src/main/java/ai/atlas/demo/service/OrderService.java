@@ -49,7 +49,16 @@ public class OrderService {
     }
 
     public List<Order> findByStatus(String status) {
-        // Stub
-        return List.of();
+        // Stub — return sample data when status matches
+        Order.OrderStatus requested;
+        try {
+            requested = Order.OrderStatus.valueOf(status);
+        } catch (IllegalArgumentException e) {
+            return List.of();
+        }
+
+        Order order = findById(1L);
+        order.setStatus(requested);
+        return List.of(order);
     }
 }

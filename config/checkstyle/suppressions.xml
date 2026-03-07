@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+
+<suppressions>
+  <!-- Generated code in demo module -->
+  <suppress files="[\\/]generated[\\/]" checks=".*"/>
+
+  <!-- package-info.java files -->
+  <suppress files="package-info\.java" checks=".*"/>
+
+  <!-- SLF4J logger convention: private static final Logger log -->
+  <suppress checks="ConstantName" message="'log'"/>
+
+  <!-- Test methods use descriptive naming with underscores -->
+  <suppress files="[\\/]test[\\/]" checks="MethodName"/>
+  <suppress files="[\\/]functionalTest[\\/]" checks="MethodName"/>
+</suppressions>

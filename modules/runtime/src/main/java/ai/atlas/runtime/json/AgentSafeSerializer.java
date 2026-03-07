@@ -16,8 +16,6 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
 
 /**
  * Jackson serializer that safely converts {@code @AgentVisibleClass}-annotated
