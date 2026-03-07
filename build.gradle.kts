@@ -1,5 +1,5 @@
 allprojects {
-    group = "ai.atlas"
+    group = "io.github.gosha70"
     version = providers.gradleProperty("version").getOrElse("0.1.0-SNAPSHOT")
 }
 

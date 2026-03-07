@@ -247,9 +247,9 @@ The key differentiator: AI-ATLAS is the only tool that combines **automatic MCP 
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation("ai.atlas:annotations:1.1.0")
-    implementation("ai.atlas:runtime:1.1.0")
-    annotationProcessor("ai.atlas:processor:1.1.0")
+    implementation("io.github.gosha70:ai-atlas-annotations:1.1.0")
+    implementation("io.github.gosha70:ai-atlas-runtime:1.1.0")
+    annotationProcessor("io.github.gosha70:ai-atlas-processor:1.1.0")
 
     // Spring Boot (required for MCP tool and REST controller generation)
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -322,9 +322,9 @@ Your MCP tools are now registered and discoverable by any MCP-compatible AI agen
 
 AI-ATLAS is a multi-module Gradle project with strict dependency boundaries:
 
-- **`ai.atlas:annotations`** -- Zero external dependencies. Just annotation definitions. Add to your `implementation` configuration.
-- **`ai.atlas:processor`** -- JSR 269 annotation processor using JavaPoet for code generation. Add to your `annotationProcessor` configuration. Runs at compile time only -- zero runtime footprint.
-- **`ai.atlas:runtime`** -- Spring Boot auto-configuration for MCP server setup, PII interceptors, and audit logging. Add to your `implementation` configuration.
+- **`io.github.gosha70:ai-atlas-annotations`** -- Zero external dependencies. Just annotation definitions. Add to your `implementation` configuration.
+- **`io.github.gosha70:ai-atlas-processor`** -- JSR 269 annotation processor using JavaPoet for code generation. Add to your `annotationProcessor` configuration. Runs at compile time only -- zero runtime footprint.
+- **`io.github.gosha70:ai-atlas-runtime`** -- Spring Boot auto-configuration for MCP server setup, PII interceptors, and audit logging. Add to your `implementation` configuration.
 
 The processor supports Gradle incremental compilation in `AGGREGATING` mode and integrates cleanly with Lombok, MapStruct, and other annotation processors.
 
@@ -351,9 +351,9 @@ AI-ATLAS is open source and available today.
 **Maven Central coordinates**:
 
 ```
-ai.atlas:annotations:1.1.0
-ai.atlas:processor:1.1.0
-ai.atlas:runtime:1.1.0
+io.github.gosha70:ai-atlas-annotations:1.1.0
+io.github.gosha70:ai-atlas-processor:1.1.0
+io.github.gosha70:ai-atlas-runtime:1.1.0
 ```
 
 **Built with**: Java 21, Spring Boot 3.4, Spring AI 1.0, JavaPoet, JSR 269

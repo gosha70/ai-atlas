@@ -14,11 +14,12 @@ configure<PublishingExtension> {
     publications {
         create<MavenPublication>("mavenJava") {
             from(components["java"])
+            artifactId = "ai-atlas-${project.name}"
 
             pom {
                 name.set("AI-ATLAS :: ${project.name}")
                 description.set("AI-ATLAS: AI Annotation-Driven Tooling & Layered API Synthesis — ${project.name} module")
-                url.set("https://github.com/ai-atlas/ai-atlas")
+                url.set("https://github.com/gosha70/ai-atlas")
 
                 licenses {
                     license {
@@ -29,16 +30,16 @@ configure<PublishingExtension> {
 
                 developers {
                     developer {
-                        id.set("ai-atlas")
-                        name.set("AI-ATLAS Team")
-                        email.set("dev@egoge.com")
+                        id.set("gosha70")
+                        name.set("George Ivan")
+                        email.set("i.am.goga@gmail.com")
                     }
                 }
 
                 scm {
-                    connection.set("scm:git:git://github.com/ai-atlas/ai-atlas.git")
-                    developerConnection.set("scm:git:ssh://github.com/ai-atlas/ai-atlas.git")
-                    url.set("https://github.com/ai-atlas/ai-atlas")
+                    connection.set("scm:git:git://github.com/gosha70/ai-atlas.git")
+                    developerConnection.set("scm:git:ssh://github.com/gosha70/ai-atlas.git")
+                    url.set("https://github.com/gosha70/ai-atlas")
                 }
             }
         }
@@ -53,8 +54,8 @@ configure<PublishingExtension> {
         if (ossrhUsername != null && ossrhPassword != null) {
             maven {
                 name = "ossrh"
-                val releasesUrl = uri("https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/")
-                val snapshotsUrl = uri("https://s01.oss.sonatype.org/content/repositories/snapshots/")
+                val releasesUrl = uri("https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/")
+                val snapshotsUrl = uri("https://central.sonatype.com/repository/maven-snapshots/")
                 url = if (version.toString().endsWith("SNAPSHOT")) snapshotsUrl else releasesUrl
                 credentials {
                     username = ossrhUsername

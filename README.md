@@ -1,5 +1,5 @@
 [![CI](https://github.com/gosha70/ai-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/gosha70/ai-atlas/actions/workflows/ci.yml)
-[![Maven Central](https://img.shields.io/maven-central/v/ai.atlas/annotations?label=Maven%20Central)](https://central.sonatype.com/artifact/ai.atlas/annotations)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.gosha70/annotations?label=Maven%20Central)](https://central.sonatype.com/artifact/io.github.gosha70/annotations)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-21+-orange.svg)](https://openjdk.org/projects/jdk/21/)
 
@@ -526,9 +526,9 @@ The plugin automatically adds `annotations` to `implementation`, `processor` to 
 
 ```kotlin
 dependencies {
-    implementation("ai.atlas:annotations:0.1.0")
-    implementation("ai.atlas:runtime:0.1.0")
-    annotationProcessor("ai.atlas:processor:0.1.0")
+    implementation("io.github.gosha70:ai-atlas-annotations:0.1.0")
+    implementation("io.github.gosha70:ai-atlas-runtime:0.1.0")
+    annotationProcessor("io.github.gosha70:ai-atlas-processor:0.1.0")
 }
 ```
 
