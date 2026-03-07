@@ -1,3 +1,7 @@
+[![CI](https://github.com/gosha70/ai-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/gosha70/ai-atlas/actions/workflows/ci.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/ai.atlas/annotations?label=Maven%20Central)](https://central.sonatype.com/artifact/ai.atlas/annotations)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Java](https://img.shields.io/badge/Java-21+-orange.svg)](https://openjdk.org/projects/jdk/21/)
 
 <h2>
   <img
