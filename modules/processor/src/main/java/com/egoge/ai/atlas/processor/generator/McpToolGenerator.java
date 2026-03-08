@@ -123,8 +123,9 @@ public final class McpToolGenerator {
 
         if (method.returnDtoType() != null && method.returnEntityType() != null) {
             if (method.collectionReturn()) {
-                methodBuilder.addStatement("return service.$L($L).stream().map($T::fromEntity).toList()",
-                        method.methodName(), callArgs, method.returnDtoType());
+                methodBuilder.addStatement(
+                        "return service.$L($L).stream().map(e -> $T.fromEntity(($T) e)).toList()",
+                        method.methodName(), callArgs, method.returnDtoType(), method.returnEntityType());
             } else {
                 methodBuilder.addStatement("return $T.fromEntity(service.$L($L))",
                         method.returnDtoType(), method.methodName(), callArgs);

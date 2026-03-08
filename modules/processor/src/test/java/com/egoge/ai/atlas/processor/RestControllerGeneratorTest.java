@@ -85,7 +85,7 @@ class RestControllerGeneratorTest {
 
         String source = getGeneratedSource(compilation, "test.generated.ProductServiceRestController");
         assertThat(source).contains("List<ProductDto>");
-        assertThat(source).contains("stream().map(ProductDto::fromEntity).toList()");
+        assertThat(source).contains("stream().map(e -> ProductDto.fromEntity((Product) e)).toList()");
     }
 
     private static String getGeneratedSource(Compilation compilation, String qualifiedName) {

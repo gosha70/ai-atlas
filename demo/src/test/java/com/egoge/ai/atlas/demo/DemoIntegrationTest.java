@@ -183,4 +183,67 @@ class DemoIntegrationTest {
         org.assertj.core.api.Assertions.assertThat(
                 applicationContext.containsBean("orderServiceRestController")).isTrue();
     }
+
+    // --- CustomerService: method-level @AgenticExposed ---
+
+    @Test
+    void getCustomers_returnsCustomerList() throws Exception {
+        mockMvc.perform(get("/api/v1/customer-service/get-customers"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].id", is(1)))
+                .andExpect(jsonPath("$[0].name", is("Alice")))
+                .andExpect(jsonPath("$[1].id", is(2)))
+                .andExpect(jsonPath("$[1].name", is("Bob")));
+    }
+
+    @Test
+    void getCustomers_addressesMappedToDtoType() throws Exception {
+        mockMvc.perform(get("/api/v1/customer-service/get-customers"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].addresses", hasSize(2)))
+                .andExpect(jsonPath("$[0].addresses[0].street", is("123 Main St")))
+                .andExpect(jsonPath("$[0].addresses[0].city", is("Springfield")))
+                .andExpect(jsonPath("$[0].addresses[0].state", is("IL")))
+                .andExpect(jsonPath("$[0].addresses[0].zipCode", is("62701")));
+    }
+
+    @Test
+    void getCustomers_excludesPiiFields() throws Exception {
+        mockMvc.perform(get("/api/v1/customer-service/get-customers"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].email").doesNotExist())
+                .andExpect(jsonPath("$[0].creditCardNumber").doesNotExist())
+                .andExpect(jsonPath("$[0].ssn").doesNotExist());
+    }
+
+    @Test
+    void getCustomersWithCreditInfo_notExposed() throws Exception {
+        mockMvc.perform(get("/api/v1/customer-service/get-customers-with-credit-info"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/v1/customer-service/get-customers-with-credit-info"))
+                .andExpect(status().isNotFound());
+    }
+
+    // --- CustomerService: generated beans and metadata ---
+
+    @Test
+    void customerServiceBeans_existInApplicationContext() {
+        org.assertj.core.api.Assertions.assertThat(
+                applicationContext.containsBean("customerServiceMcpTool")).isTrue();
+        org.assertj.core.api.Assertions.assertThat(
+                applicationContext.containsBean("customerServiceRestController")).isTrue();
+    }
+
+    @Test
+    void customerDto_hasCorrectMetadata() {
+        var metadata = com.egoge.ai.atlas.demo.entity.generated.CustomerDto.FIELD_METADATA;
+
+        org.assertj.core.api.Assertions.assertThat(metadata).containsKeys("id", "name", "addresses");
+        org.assertj.core.api.Assertions.assertThat(metadata).doesNotContainKeys(
+                "email", "creditCardNumber", "ssn");
+
+        org.assertj.core.api.Assertions.assertThat(
+                com.egoge.ai.atlas.demo.entity.generated.CustomerDto.CLASS_NAME).isEqualTo("customer");
+    }
 }

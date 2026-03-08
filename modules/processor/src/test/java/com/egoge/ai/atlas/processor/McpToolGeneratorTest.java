@@ -86,7 +86,7 @@ class McpToolGeneratorTest {
                 .compile(entity, service);
 
         String toolSource = getGeneratedSource(compilation, "test.generated.ItemServiceMcpTool");
-        assertThat(toolSource).contains("stream().map(ItemDto::fromEntity).toList()");
+        assertThat(toolSource).contains("stream().map(e -> ItemDto.fromEntity((Item) e)).toList()");
         assertThat(toolSource).contains("List<ItemDto>");
     }
 
