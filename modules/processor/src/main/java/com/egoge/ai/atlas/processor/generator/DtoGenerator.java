@@ -5,6 +5,7 @@ package com.egoge.ai.atlas.processor.generator;
 
 import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.FieldModel;
+import com.egoge.ai.atlas.processor.model.FieldModel.CollectionKind;
 import com.palantir.javapoet.AnnotationSpec;
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.CodeBlock;
@@ -13,6 +14,7 @@ import com.palantir.javapoet.JavaFile;
 import com.palantir.javapoet.MethodSpec;
 import com.palantir.javapoet.ParameterSpec;
 import com.palantir.javapoet.ParameterizedTypeName;
+import com.palantir.javapoet.TypeName;
 import com.palantir.javapoet.TypeSpec;
 
 import javax.annotation.processing.Filer;
@@ -20,14 +22,25 @@ import javax.annotation.processing.Messager;
 import javax.lang.model.element.Modifier;
 import javax.tools.Diagnostic;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.StreamSupport;
 
 /**
  * Generates Java record DTOs from {@link EntityModel} instances.
  * Each generated record contains only the whitelisted {@code @AgentVisible}
  * fields, a static {@code fromEntity()} factory method for null-safe mapping,
  * and static metadata constants for enriched JSON serialization.
+ *
+ * <p>When a field's type (or collection/array element type) is another registered
+ * {@code @AgentVisibleClass} entity, the generated DTO uses the corresponding
+ * DTO type and maps through {@code XxxDto.fromEntity()} in the factory method.
+ * Bidirectional entity relationships are handled via ThreadLocal-based cycle
+ * detection to prevent infinite recursion.
  */
 public final class DtoGenerator {
 
@@ -42,12 +55,14 @@ public final class DtoGenerator {
   /**
    * Generates a DTO record and writes it to the filer.
    *
-   * @param model    the entity model to generate from
-   * @param filer    the annotation processing filer
-   * @param messager the compiler messager for diagnostics
+   * @param model          the entity model to generate from
+   * @param entityRegistry all registered entity models (for resolving cross-references)
+   * @param filer          the annotation processing filer
+   * @param messager       the compiler messager for diagnostics
    */
-  public static void generate(EntityModel model, Filer filer, Messager messager) {
-    TypeSpec recordSpec = buildRecordSpec(model);
+  public static void generate(EntityModel model, Map<String, EntityModel> entityRegistry,
+                              Filer filer, Messager messager) {
+    TypeSpec recordSpec = buildRecordSpec(model, entityRegistry);
     JavaFile javaFile = JavaFile.builder(model.dtoPackageName(), recordSpec)
         .indent("    ")
         .build();
@@ -66,11 +81,15 @@ public final class DtoGenerator {
   /**
    * Builds the TypeSpec for the DTO record (visible for testing).
    */
-  public static TypeSpec buildRecordSpec(EntityModel model) {
+  public static TypeSpec buildRecordSpec(EntityModel model, Map<String, EntityModel> entityRegistry) {
+    boolean hasEntityRefs = model.fields().stream()
+        .anyMatch(f -> resolveEntityRef(f, entityRegistry) != null);
+
     // Build record constructor — its parameters define the record components
     MethodSpec.Builder ctorBuilder = MethodSpec.constructorBuilder();
     for (FieldModel field : model.fields()) {
-      ctorBuilder.addParameter(ParameterSpec.builder(field.typeName(), field.name()).build());
+      TypeName componentType = resolvedFieldType(field, entityRegistry);
+      ctorBuilder.addParameter(ParameterSpec.builder(componentType, field.name()).build());
     }
 
     ClassName dtoClassName = ClassName.get(model.dtoPackageName(), model.dtoName());
@@ -111,8 +130,20 @@ public final class DtoGenerator {
         .initializer(buildFieldMetadataInitializer(model, fieldMetaType))
         .build());
 
+    // Add ThreadLocal for cycle detection (only when entity refs exist)
+    if (hasEntityRefs) {
+      ParameterizedTypeName setOfObject = ParameterizedTypeName.get(
+          ClassName.get(Set.class), ClassName.get(Object.class));
+      ParameterizedTypeName threadLocalType = ParameterizedTypeName.get(
+          ClassName.get(ThreadLocal.class), setOfObject);
+      recordBuilder.addField(FieldSpec.builder(threadLocalType, "_visiting",
+              Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
+          .initializer("new $T<>()", ThreadLocal.class)
+          .build());
+    }
+
     // Add static fromEntity() factory method
-    recordBuilder.addMethod(buildFromEntityMethod(model));
+    recordBuilder.addMethod(buildFromEntityMethod(model, entityRegistry, hasEntityRefs));
 
     return recordBuilder.build();
   }
@@ -179,7 +210,9 @@ public final class DtoGenerator {
     return builder.build();
   }
 
-  private static MethodSpec buildFromEntityMethod(EntityModel model) {
+  private static MethodSpec buildFromEntityMethod(EntityModel model,
+                                                   Map<String, EntityModel> entityRegistry,
+                                                   boolean hasEntityRefs) {
     ClassName entityType = model.sourceClassName();
     ClassName dtoType = model.dtoClassName();
 
@@ -191,6 +224,19 @@ public final class DtoGenerator {
     // Null guard
     methodBuilder.addStatement("if (entity == null) return null");
 
+    // Cycle detection preamble (only when entity refs exist)
+    if (hasEntityRefs) {
+      methodBuilder.addStatement("$T<$T> v = _visiting.get()", Set.class, Object.class);
+      methodBuilder.addStatement("boolean root = v == null");
+      methodBuilder.beginControlFlow("if (root)");
+      methodBuilder.addStatement("v = $T.newSetFromMap(new $T<>())",
+          Collections.class, IdentityHashMap.class);
+      methodBuilder.addStatement("_visiting.set(v)");
+      methodBuilder.endControlFlow();
+      methodBuilder.addStatement("if (!v.add(entity)) return null");
+      methodBuilder.beginControlFlow("try");
+    }
+
     // Build constructor call with getter expressions
     CodeBlock.Builder constructorArgs = CodeBlock.builder();
     for (int i = 0; i < model.fields().size(); i++) {
@@ -199,12 +245,47 @@ public final class DtoGenerator {
       if (i > 0) {
         constructorArgs.add(",\n");
       }
-      constructorArgs.add("entity.$L()", getter);
+
+      EntityRefInfo ref = resolveEntityRef(field, entityRegistry);
+      if (ref != null) {
+        constructorArgs.add(buildMappingExpression(ref, getter));
+      } else {
+        constructorArgs.add("entity.$L()", getter);
+      }
     }
 
-    methodBuilder.addStatement("return new $T(\n$L\n)", dtoType, constructorArgs.build());
+    if (hasEntityRefs) {
+      methodBuilder.addStatement("return new $T(\n$L\n)", dtoType, constructorArgs.build());
+      methodBuilder.nextControlFlow("finally");
+      methodBuilder.addStatement("v.remove(entity)");
+      methodBuilder.beginControlFlow("if (root)");
+      methodBuilder.addStatement("_visiting.remove()");
+      methodBuilder.endControlFlow();
+      methodBuilder.endControlFlow(); // end try-finally
+    } else {
+      methodBuilder.addStatement("return new $T(\n$L\n)", dtoType, constructorArgs.build());
+    }
 
     return methodBuilder.build();
+  }
+
+  /**
+   * Builds the mapping expression for an entity reference field in fromEntity().
+   */
+  private static CodeBlock buildMappingExpression(EntityRefInfo ref, String getter) {
+    return switch (ref.collectionKind) {
+      case COLLECTION -> CodeBlock.of(
+          "entity.$L() == null ? null : entity.$L().stream().map($T::fromEntity).toList()",
+          getter, getter, ref.dtoClass);
+      case ITERABLE -> CodeBlock.of(
+          "entity.$L() == null ? null : $T.stream(entity.$L().spliterator(), false)"
+              + ".map($T::fromEntity).toList()",
+          getter, StreamSupport.class, getter, ref.dtoClass);
+      case ARRAY -> CodeBlock.of(
+          "entity.$L() == null ? null : $T.stream(entity.$L()).map($T::fromEntity).toList()",
+          getter, Arrays.class, getter, ref.dtoClass);
+      case NONE -> CodeBlock.of("$T.fromEntity(entity.$L())", ref.dtoClass, getter);
+    };
   }
 
   /**
@@ -219,5 +300,63 @@ public final class DtoGenerator {
       return "is" + capitalized;
     }
     return "get" + capitalized;
+  }
+
+  // --- Entity reference resolution helpers ---
+
+  /**
+   * Info about a field that references another @AgentVisibleClass entity.
+   */
+  private record EntityRefInfo(ClassName dtoClass, CollectionKind collectionKind) {}
+
+  /**
+   * Checks if a field references another registered @AgentVisibleClass entity
+   * (directly, as a collection/iterable element, or as an array component).
+   * Uses {@link FieldModel#collectionKind()} which was resolved via
+   * {@code TypeUtils.isAssignable()} in the FieldScanner (hierarchy-aware).
+   *
+   * @return entity ref info, or null if the field does not reference a registered entity
+   */
+  private static EntityRefInfo resolveEntityRef(FieldModel field, Map<String, EntityModel> entityRegistry) {
+    CollectionKind kind = field.collectionKind();
+
+    if (kind == CollectionKind.NONE) {
+      // Direct entity reference: e.g., Order order
+      TypeName typeName = field.typeName();
+      if (typeName instanceof ClassName className) {
+        EntityModel ref = entityRegistry.get(className.canonicalName());
+        if (ref != null) {
+          return new EntityRefInfo(ref.dtoClassName(), CollectionKind.NONE);
+        }
+      }
+      return null;
+    }
+
+    // Collection/Iterable/Array — check element type against registry
+    TypeName elementType = field.elementTypeName();
+    if (elementType instanceof ClassName elementClassName) {
+      EntityModel ref = entityRegistry.get(elementClassName.canonicalName());
+      if (ref != null) {
+        return new EntityRefInfo(ref.dtoClassName(), kind);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Returns the type to use in the generated DTO record component.
+   * Maps entity references to their DTO types; leaves other types unchanged.
+   * Collections and arrays of entities are always mapped to {@code List<DtoType>}.
+   */
+  private static TypeName resolvedFieldType(FieldModel field, Map<String, EntityModel> entityRegistry) {
+    EntityRefInfo ref = resolveEntityRef(field, entityRegistry);
+    if (ref == null) {
+      return field.typeName();
+    }
+    if (ref.collectionKind != CollectionKind.NONE) {
+      return ParameterizedTypeName.get(LIST, ref.dtoClass);
+    }
+    return ref.dtoClass;
   }
 }

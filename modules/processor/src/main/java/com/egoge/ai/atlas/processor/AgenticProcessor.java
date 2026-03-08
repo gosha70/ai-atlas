@@ -97,6 +97,8 @@ public class AgenticProcessor extends AbstractProcessor {
     }
 
     private void processEntities(RoundEnvironment roundEnv) {
+        // Pass 1: Validate and register all entity models
+        List<String> roundEntityKeys = new ArrayList<>();
         for (var element : roundEnv.getElementsAnnotatedWith(AgentVisibleClass.class)) {
             if (element.getKind() == ElementKind.INTERFACE) {
                 processingEnv.getMessager().printMessage(
@@ -137,13 +139,23 @@ public class AgenticProcessor extends AbstractProcessor {
                 );
             }
 
+            String key = typeElement.getQualifiedName().toString();
             processEntity(typeElement);
+            if (entityRegistry.containsKey(key)) {
+                roundEntityKeys.add(key);
+            }
+        }
+
+        // Pass 2: Generate DTOs (all entities registered — can resolve cross-references)
+        for (String key : roundEntityKeys) {
+            EntityModel model = entityRegistry.get(key);
+            DtoGenerator.generate(model, entityRegistry, processingEnv.getFiler(), processingEnv.getMessager());
         }
     }
 
     private void processEntity(TypeElement typeElement) {
         var annotation = typeElement.getAnnotation(AgentVisibleClass.class);
-        var fields = FieldScanner.scan(typeElement);
+        var fields = FieldScanner.scan(typeElement, processingEnv);
 
         emitPiiWarnings(typeElement);
 
@@ -205,10 +217,8 @@ public class AgenticProcessor extends AbstractProcessor {
                 fields
         );
 
-        // Register for service processing lookup
+        // Register for service processing lookup (DTO generation deferred to processEntities pass 2)
         entityRegistry.put(typeElement.getQualifiedName().toString(), model);
-
-        DtoGenerator.generate(model, processingEnv.getFiler(), processingEnv.getMessager());
     }
 
     private void processServices(RoundEnvironment roundEnv) {

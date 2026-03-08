@@ -25,6 +25,25 @@ public record FieldModel(
     /* True if the field type is a Java enum */
     boolean enumType,
     /* Enum constant names (empty list if not an enum type) */
-    List<String> enumValues
+    List<String> enumValues,
+    /* How this field relates to collections/arrays */
+    CollectionKind collectionKind,
+    /* Element type for collections/arrays (null if NONE) */
+    TypeName elementTypeName
 ) {
+
+    /**
+     * Classifies how a field type relates to iteration.
+     * Used by the DtoGenerator to emit correct mapping code.
+     */
+    public enum CollectionKind {
+        /** Not a collection or array */
+        NONE,
+        /** Assignable to java.util.Collection — has .stream() */
+        COLLECTION,
+        /** Assignable to java.lang.Iterable but NOT java.util.Collection — needs StreamSupport */
+        ITERABLE,
+        /** Java array type (Entity[]) — needs Arrays.stream() */
+        ARRAY
+    }
 }

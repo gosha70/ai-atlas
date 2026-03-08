@@ -14,7 +14,6 @@ import static com.google.testing.compile.Compiler.javac;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class DtoGeneratorTest {
-
     @Test
     void generatesRecordWithOnlyAnnotatedFields() {
         JavaFileObject source = JavaFileObjects.forSourceString("test.MyEntity",
@@ -418,6 +417,75 @@ class DtoGeneratorTest {
         assertThat(dto).contains("\"RED\"");
         assertThat(dto).contains("\"GREEN\"");
         assertThat(dto).contains("\"BLUE\"");
+    }
+
+    @Test
+    void mapsEntityReferenceFieldsToDtoTypesWithCycleDetection() {
+        JavaFileObject parent = JavaFileObjects.forSourceString("test.Parent", """
+                package test;
+                import com.egoge.ai.atlas.annotations.*;
+                import java.util.List;
+                @AgentVisibleClass public class Parent {
+                    @AgentVisible(description = "ID") private Long id;
+                    @AgentVisible(description = "Children") private List<Child> children;
+                    public Long getId() { return id; }
+                    public List<Child> getChildren() { return children; }
+                }""");
+        JavaFileObject child = JavaFileObjects.forSourceString("test.Child", """
+                package test;
+                import com.egoge.ai.atlas.annotations.*;
+                @AgentVisibleClass public class Child {
+                    @AgentVisible(description = "ID") private Long id;
+                    @AgentVisible(description = "Parent ref") private Parent parent;
+                    public Long getId() { return id; }
+                    public Parent getParent() { return parent; }
+                }""");
+
+        Compilation compilation = javac().withProcessors(new AgenticProcessor()).compile(parent, child);
+        CompilationSubject.assertThat(compilation).succeeded();
+
+        String parentDto = getGeneratedSource(compilation, "test.generated.ParentDto");
+        String childDto = getGeneratedSource(compilation, "test.generated.ChildDto");
+
+        // Entity refs mapped to DTO types with cycle detection
+        assertThat(parentDto).contains("List<ChildDto> children").doesNotContain("List<Child>")
+                .contains("ChildDto::fromEntity").contains("ThreadLocal<Set<Object>> _visiting");
+        assertThat(childDto).contains("ParentDto parent")
+                .contains("ParentDto.fromEntity(entity.getParent())")
+                .contains("ThreadLocal<Set<Object>> _visiting");
+    }
+    @Test
+    void mapsArrayListIterableAndArrayEntityFields() {
+        JavaFileObject item = JavaFileObjects.forSourceString("test.Item", """
+                package test;
+                import com.egoge.ai.atlas.annotations.*;
+                @AgentVisibleClass public class Item {
+                    @AgentVisible(description = "ID") private Long id;
+                    public Long getId() { return id; }
+                }""");
+        JavaFileObject container = JavaFileObjects.forSourceString("test.Container", """
+                package test;
+                import com.egoge.ai.atlas.annotations.*;
+                import java.util.ArrayList;
+                @AgentVisibleClass public class Container {
+                    @AgentVisible(description = "ID") private Long id;
+                    @AgentVisible(description = "a") private ArrayList<Item> listItems;
+                    @AgentVisible(description = "b") private Iterable<Item> iterItems;
+                    @AgentVisible(description = "c") private Item[] arrItems;
+                    public Long getId() { return id; }
+                    public ArrayList<Item> getListItems() { return listItems; }
+                    public Iterable<Item> getIterItems() { return iterItems; }
+                    public Item[] getArrItems() { return arrItems; }
+                }""");
+        Compilation compilation = javac().withProcessors(new AgenticProcessor()).compile(item, container);
+        CompilationSubject.assertThat(compilation).succeeded();
+        String dto = getGeneratedSource(compilation, "test.generated.ContainerDto");
+        // All three map to List<ItemDto>; each uses the correct streaming path
+        assertThat(dto).contains("List<ItemDto> listItems").contains("List<ItemDto> iterItems")
+                .contains("List<ItemDto> arrItems");
+        assertThat(dto).contains("entity.getListItems().stream().map(ItemDto::fromEntity)");
+        assertThat(dto).contains("StreamSupport.stream(entity.getIterItems().spliterator()");
+        assertThat(dto).contains("Arrays.stream(entity.getArrItems()).map(ItemDto::fromEntity)");
     }
 
     private static String getGeneratedSource(Compilation compilation, String qualifiedName) {

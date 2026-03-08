@@ -5,16 +5,25 @@ package com.egoge.ai.atlas.processor.util;
 
 import com.egoge.ai.atlas.annotations.AgentVisible;
 import com.egoge.ai.atlas.processor.model.FieldModel;
+import com.egoge.ai.atlas.processor.model.FieldModel.CollectionKind;
 import com.palantir.javapoet.TypeName;
 
+import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
+import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.WildcardType;
+import javax.lang.model.util.Elements;
+import javax.lang.model.util.Types;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -22,7 +31,8 @@ import java.util.Set;
 /**
  * Scans a TypeElement and its superclass chain for fields annotated
  * with {@code @AgentVisible} and converts them to {@link FieldModel} instances.
- * Detects enum field types and extracts their constant names automatically.
+ * Detects enum field types, collection/iterable/array types, and extracts
+ * their element types for cross-entity DTO mapping.
  */
 public final class FieldScanner {
 
@@ -34,12 +44,17 @@ public final class FieldScanner {
    * for {@code @AgentVisible} fields. Fields from supertypes appear
    * before subtype fields. Duplicate field names are skipped (subtype wins).
    *
+   * @param typeElement   the entity class to scan
+   * @param processingEnv the annotation processing environment (for type hierarchy checks)
    * @return list of FieldModel for each annotated field
    */
-  public static List<FieldModel> scan(TypeElement typeElement) {
+  public static List<FieldModel> scan(TypeElement typeElement, ProcessingEnvironment processingEnv) {
     if (typeElement == null) {
       return Collections.emptyList();
     }
+
+    Types typeUtils = processingEnv.getTypeUtils();
+    Elements elementUtils = processingEnv.getElementUtils();
 
     Set<String> seenFieldNames = new LinkedHashSet<>();
     List<FieldModel> allFields = new ArrayList<>();
@@ -87,6 +102,35 @@ public final class FieldScanner {
             allowedValues = Collections.emptyList();
           }
 
+          // Detect collection/iterable/array kind and extract element type
+          CollectionKind collectionKind = CollectionKind.NONE;
+          TypeName elementTypeName = null;
+
+          if (fieldType.getKind() == TypeKind.ARRAY) {
+            ArrayType arrayType = (ArrayType) fieldType;
+            collectionKind = CollectionKind.ARRAY;
+            elementTypeName = TypeName.get(arrayType.getComponentType());
+          } else if (fieldType instanceof DeclaredType) {
+            TypeElement collectionEl = elementUtils.getTypeElement("java.util.Collection");
+            TypeElement iterableEl = elementUtils.getTypeElement("java.lang.Iterable");
+            TypeMirror erasedField = typeUtils.erasure(fieldType);
+
+            if (collectionEl != null
+                && typeUtils.isAssignable(erasedField, typeUtils.erasure(collectionEl.asType()))) {
+              collectionKind = CollectionKind.COLLECTION;
+            } else if (iterableEl != null
+                && typeUtils.isAssignable(erasedField, typeUtils.erasure(iterableEl.asType()))) {
+              collectionKind = CollectionKind.ITERABLE;
+            }
+
+            if (collectionKind != CollectionKind.NONE) {
+              TypeMirror elementMirror = resolveElementType(fieldType, typeUtils, elementUtils);
+              if (elementMirror != null) {
+                elementTypeName = TypeName.get(elementMirror);
+              }
+            }
+          }
+
           allFields.add(new FieldModel(
               fieldName,
               displayName,
@@ -95,13 +139,78 @@ public final class FieldScanner {
               annotation.sensitive(),
               annotation.checkCircularReference(),
               isEnum,
-              allowedValues
+              allowedValues,
+              collectionKind,
+              elementTypeName
           ));
         }
       }
     }
 
     return allFields;
+  }
+
+  /**
+   * Resolves the element type for a collection/iterable field type.
+   * Handles three cases:
+   * <ol>
+   *   <li>Direct type args: {@code List<Item>} → {@code Item}</li>
+   *   <li>Wildcard type args: {@code List<? extends Item>} → {@code Item}</li>
+   *   <li>Non-generic concrete subtypes: {@code class ItemBag extends ArrayList<Item>}
+   *       → walks supertypes to find the parameterized {@code Iterable<Item>} ancestor</li>
+   * </ol>
+   * <p>Conservative: takes the first declared type argument when present.
+   * For multi-type-parameter collections (e.g., {@code Bucket<K, V> implements Iterable<V>}),
+   * arg[0] is {@code K}, which will not match a registered entity — the field passes
+   * through unchanged. This avoids generating incorrect mapping code.
+   *
+   * @return the resolved element TypeMirror, or null if unresolvable
+   */
+  private static TypeMirror resolveElementType(TypeMirror fieldType,
+                                                Types typeUtils, Elements elementUtils) {
+    // Try direct type arguments first (covers List<Item>, List<? extends Item>, etc.)
+    if (fieldType instanceof DeclaredType declaredType && !declaredType.getTypeArguments().isEmpty()) {
+      return unwrapWildcard(declaredType.getTypeArguments().get(0));
+    }
+
+    // Non-generic concrete subtype (e.g., class ItemBag extends ArrayList<Item>):
+    // walk supertypes to find the first parameterized Iterable/Collection ancestor
+    TypeElement iterableEl = elementUtils.getTypeElement("java.lang.Iterable");
+    if (iterableEl == null) {
+      return null;
+    }
+    TypeMirror erasedIterable = typeUtils.erasure(iterableEl.asType());
+
+    Set<String> visited = new HashSet<>();
+    Deque<TypeMirror> queue = new ArrayDeque<>(typeUtils.directSupertypes(fieldType));
+    while (!queue.isEmpty()) {
+      TypeMirror supertype = queue.poll();
+      if (!(supertype instanceof DeclaredType dt)) {
+        continue;
+      }
+      String qname = ((TypeElement) dt.asElement()).getQualifiedName().toString();
+      if (!visited.add(qname)) {
+        continue;
+      }
+      if (!dt.getTypeArguments().isEmpty()
+          && typeUtils.isAssignable(typeUtils.erasure(supertype), erasedIterable)) {
+        return unwrapWildcard(dt.getTypeArguments().get(0));
+      }
+      queue.addAll(typeUtils.directSupertypes(supertype));
+    }
+    return null;
+  }
+
+  /**
+   * Unwraps a wildcard type to its upper bound.
+   * {@code ? extends Item} → {@code Item}.
+   * {@code ?} or {@code ? super Item} → {@code null} (not useful for entity mapping).
+   */
+  private static TypeMirror unwrapWildcard(TypeMirror type) {
+    if (type instanceof WildcardType wildcardType) {
+      return wildcardType.getExtendsBound();
+    }
+    return type;
   }
 
   /**
