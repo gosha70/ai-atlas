@@ -92,7 +92,7 @@
 - OpenAPI specs generated via swagger-models (io.swagger.v3:swagger-models)
 
 ## Gradle Plugin Rules
-- Plugin ID follows reverse domain: `ai.atlas.gradle-plugin`
+- Plugin ID follows reverse domain: `com.egoge.ai-atlas`
 - Plugin creates extension object for user configuration
 - Plugin auto-adds `annotations` to `implementation` configuration
 - Plugin auto-adds `processor` to `annotationProcessor` configuration

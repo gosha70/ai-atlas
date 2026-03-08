@@ -1,1 +1,1 @@
-ai.atlas.runtime.autoconfigure.AgenticAutoConfiguration
+com.egoge.ai.atlas.runtime.autoconfigure.AgenticAutoConfiguration

@@ -70,7 +70,7 @@ Initial release of AI-ATLAS (AI Annotation-Driven Tooling & Layered API Synthesi
 - **Configuration properties** — `ai.atlas.mcp.enabled` and `ai.atlas.audit.enabled` (both default `true`)
 
 ### Gradle Plugin (`modules/gradle-plugin`)
-- Plugin ID: `ai.atlas.gradle-plugin`
+- Plugin ID: `com.egoge.ai-atlas`
 - Auto-adds `annotations` to `implementation`, `processor` to `annotationProcessor`, `runtime` to `implementation`
 - Configures IntelliJ IDEA generated source directories
 - Extension with `version`, `group`, `mcpEnabled`, `restEnabled`, `openApiEnabled` properties

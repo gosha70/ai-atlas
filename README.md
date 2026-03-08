@@ -1,5 +1,5 @@
 [![CI](https://github.com/gosha70/ai-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/gosha70/ai-atlas/actions/workflows/ci.yml)
-[![Maven Central](https://img.shields.io/maven-central/v/io.github.gosha70/annotations?label=Maven%20Central)](https://central.sonatype.com/artifact/io.github.gosha70/annotations)
+[![Maven Central](https://img.shields.io/maven-central/v/com.egoge/ai-atlas-annotations?label=Maven%20Central)](https://central.sonatype.com/artifact/com.egoge/ai-atlas-annotations)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-21+-orange.svg)](https://openjdk.org/projects/jdk/21/)
 
@@ -516,7 +516,7 @@ The frontend displays order data with only the 4 PII-safe fields. It includes a 
 
 ```kotlin
 plugins {
-    id("ai.atlas.gradle-plugin") version "0.1.0"
+    id("com.egoge.ai-atlas") version "0.1.0"
 }
 ```
 
@@ -526,9 +526,9 @@ The plugin automatically adds `annotations` to `implementation`, `processor` to 
 
 ```kotlin
 dependencies {
-    implementation("io.github.gosha70:ai-atlas-annotations:0.1.0")
-    implementation("io.github.gosha70:ai-atlas-runtime:0.1.0")
-    annotationProcessor("io.github.gosha70:ai-atlas-processor:0.1.0")
+    implementation("com.egoge:ai-atlas-annotations:0.1.0")
+    implementation("com.egoge:ai-atlas-runtime:0.1.0")
+    annotationProcessor("com.egoge:ai-atlas-processor:0.1.0")
 }
 ```
 
@@ -560,7 +560,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("ai.atlas.gradle-plugin") version "0.1.0-SNAPSHOT"
+    id("com.egoge.ai-atlas") version "0.1.0-SNAPSHOT"
 }
 ```
 

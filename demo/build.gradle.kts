@@ -5,7 +5,7 @@ plugins {
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
-    mainClass.set("ai.atlas.demo.DemoApplication")
+    mainClass.set("com.egoge.ai.atlas.demo.DemoApplication")
 }
 
 dependencies {

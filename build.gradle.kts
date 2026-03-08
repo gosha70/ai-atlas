@@ -1,5 +1,5 @@
 allprojects {
-    group = "io.github.gosha70"
+    group = "com.egoge"
     version = providers.gradleProperty("version").getOrElse("0.1.0-SNAPSHOT")
 }
 
