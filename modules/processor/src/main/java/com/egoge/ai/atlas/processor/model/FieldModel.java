@@ -29,7 +29,9 @@ public record FieldModel(
     /* How this field relates to collections/arrays */
     CollectionKind collectionKind,
     /* Element type for collections/arrays (null if NONE) */
-    TypeName elementTypeName
+    TypeName elementTypeName,
+    /* User-declared element type from @AgentVisible(type = ...), null if void.class */
+    TypeName hintTypeName
 ) {
 
     /**

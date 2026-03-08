@@ -23,7 +23,8 @@ public class CustomerService {
      */
     @AgenticExposed(
             description = "Retrieve all customers with their addresses",
-            returnType = Customer.class
+            returnType = Customer.class,
+            channels = { AgenticExposed.Channel.API }
     )
     public List<?> getCustomers() {
         return List.of(stubCustomer(1L, "Alice"), stubCustomer(2L, "Bob"));

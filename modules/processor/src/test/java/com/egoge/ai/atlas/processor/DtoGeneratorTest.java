@@ -449,7 +449,7 @@ class DtoGeneratorTest {
 
         // Entity refs mapped to DTO types with cycle detection
         assertThat(parentDto).contains("List<ChildDto> children").doesNotContain("List<Child>")
-                .contains("ChildDto::fromEntity").contains("ThreadLocal<Set<Object>> _visiting");
+                .contains("ChildDto.fromEntity((Child) e)").contains("ThreadLocal<Set<Object>> _visiting");
         assertThat(childDto).contains("ParentDto parent")
                 .contains("ParentDto.fromEntity(entity.getParent())")
                 .contains("ThreadLocal<Set<Object>> _visiting");
@@ -483,9 +483,9 @@ class DtoGeneratorTest {
         // All three map to List<ItemDto>; each uses the correct streaming path
         assertThat(dto).contains("List<ItemDto> listItems").contains("List<ItemDto> iterItems")
                 .contains("List<ItemDto> arrItems");
-        assertThat(dto).contains("entity.getListItems().stream().map(ItemDto::fromEntity)");
+        assertThat(dto).contains("entity.getListItems().stream().map(e -> ItemDto.fromEntity((Item) e))");
         assertThat(dto).contains("StreamSupport.stream(entity.getIterItems().spliterator()");
-        assertThat(dto).contains("Arrays.stream(entity.getArrItems()).map(ItemDto::fromEntity)");
+        assertThat(dto).contains("Arrays.stream(entity.getArrItems()).map(e -> ItemDto.fromEntity((Item) e))");
     }
 
     private static String getGeneratedSource(Compilation compilation, String qualifiedName) {

@@ -88,6 +88,61 @@ class RestControllerGeneratorTest {
         assertThat(source).contains("stream().map(e -> ProductDto.fromEntity((Product) e)).toList()");
     }
 
+    @Test
+    void channelFiltering_apiOnly_generatesRestEndpoint() {
+        JavaFileObject entity = JavaFileObjects.forSourceString("test.Item",
+                """
+                package test;
+                import com.egoge.ai.atlas.annotations.*;
+                @AgentVisibleClass public class Item {
+                    @AgentVisible(description = "ID") private Long id;
+                    public Long getId() { return id; }
+                }
+                """);
+        JavaFileObject service = JavaFileObjects.forSourceString("test.ApiService",
+                """
+                package test;
+                import com.egoge.ai.atlas.annotations.AgenticExposed;
+                public class ApiService {
+                    @AgenticExposed(description = "API only", returnType = Item.class,
+                                    channels = { AgenticExposed.Channel.API })
+                    public Item find() { return null; }
+                }
+                """);
+
+        Compilation compilation = javac().withProcessors(new AgenticProcessor()).compile(entity, service);
+        String source = getGeneratedSource(compilation, "test.generated.ApiServiceRestController");
+        assertThat(source).contains("@RestController");
+        assertThat(source).contains("@GetMapping(\"/find\")");
+    }
+
+    @Test
+    void channelFiltering_aiOnly_skipsRestEndpoint() {
+        JavaFileObject entity = JavaFileObjects.forSourceString("test.Item",
+                """
+                package test;
+                import com.egoge.ai.atlas.annotations.*;
+                @AgentVisibleClass public class Item {
+                    @AgentVisible(description = "ID") private Long id;
+                    public Long getId() { return id; }
+                }
+                """);
+        JavaFileObject service = JavaFileObjects.forSourceString("test.AiOnlyService",
+                """
+                package test;
+                import com.egoge.ai.atlas.annotations.AgenticExposed;
+                public class AiOnlyService {
+                    @AgenticExposed(description = "AI only", returnType = Item.class,
+                                    channels = { AgenticExposed.Channel.AI })
+                    public Item find() { return null; }
+                }
+                """);
+
+        Compilation compilation = javac().withProcessors(new AgenticProcessor()).compile(entity, service);
+        var file = compilation.generatedSourceFile("test.generated.AiOnlyServiceRestController");
+        assertThat(file).as("REST controller should NOT be generated for AI-only service").isEmpty();
+    }
+
     private static String getGeneratedSource(Compilation compilation, String qualifiedName) {
         var file = compilation.generatedSourceFile(qualifiedName);
         assertThat(file).as("Generated file: " + qualifiedName).isPresent();

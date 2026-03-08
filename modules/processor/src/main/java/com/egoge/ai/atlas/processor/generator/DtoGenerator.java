@@ -275,15 +275,15 @@ public final class DtoGenerator {
   private static CodeBlock buildMappingExpression(EntityRefInfo ref, String getter) {
     return switch (ref.collectionKind) {
       case COLLECTION -> CodeBlock.of(
-          "entity.$L() == null ? null : entity.$L().stream().map($T::fromEntity).toList()",
-          getter, getter, ref.dtoClass);
+          "entity.$L() == null ? null : entity.$L().stream().map(e -> $T.fromEntity(($T) e)).toList()",
+          getter, getter, ref.dtoClass, ref.entityClass);
       case ITERABLE -> CodeBlock.of(
           "entity.$L() == null ? null : $T.stream(entity.$L().spliterator(), false)"
-              + ".map($T::fromEntity).toList()",
-          getter, StreamSupport.class, getter, ref.dtoClass);
+              + ".map(e -> $T.fromEntity(($T) e)).toList()",
+          getter, StreamSupport.class, getter, ref.dtoClass, ref.entityClass);
       case ARRAY -> CodeBlock.of(
-          "entity.$L() == null ? null : $T.stream(entity.$L()).map($T::fromEntity).toList()",
-          getter, Arrays.class, getter, ref.dtoClass);
+          "entity.$L() == null ? null : $T.stream(entity.$L()).map(e -> $T.fromEntity(($T) e)).toList()",
+          getter, Arrays.class, getter, ref.dtoClass, ref.entityClass);
       case NONE -> CodeBlock.of("$T.fromEntity(entity.$L())", ref.dtoClass, getter);
     };
   }
@@ -307,7 +307,7 @@ public final class DtoGenerator {
   /**
    * Info about a field that references another @AgentVisibleClass entity.
    */
-  private record EntityRefInfo(ClassName dtoClass, CollectionKind collectionKind) {}
+  private record EntityRefInfo(ClassName dtoClass, ClassName entityClass, CollectionKind collectionKind) {}
 
   /**
    * Checks if a field references another registered @AgentVisibleClass entity
@@ -326,7 +326,7 @@ public final class DtoGenerator {
       if (typeName instanceof ClassName className) {
         EntityModel ref = entityRegistry.get(className.canonicalName());
         if (ref != null) {
-          return new EntityRefInfo(ref.dtoClassName(), CollectionKind.NONE);
+          return new EntityRefInfo(ref.dtoClassName(), className, CollectionKind.NONE);
         }
       }
       return null;
@@ -337,7 +337,16 @@ public final class DtoGenerator {
     if (elementType instanceof ClassName elementClassName) {
       EntityModel ref = entityRegistry.get(elementClassName.canonicalName());
       if (ref != null) {
-        return new EntityRefInfo(ref.dtoClassName(), kind);
+        return new EntityRefInfo(ref.dtoClassName(), elementClassName, kind);
+      }
+    }
+
+    // Fallback: use @AgentVisible(type = ...) hint for raw/unresolvable collections
+    TypeName hintType = field.hintTypeName();
+    if (hintType instanceof ClassName hintClassName) {
+      EntityModel ref = entityRegistry.get(hintClassName.canonicalName());
+      if (ref != null) {
+        return new EntityRefInfo(ref.dtoClassName(), hintClassName, kind);
       }
     }
 

@@ -89,4 +89,19 @@ public @interface AgentVisible {
      * @return the range of values this field might be set to
      */
     String[] allowedValues() default {};
+
+    /**
+     * Declares the runtime element type for legacy collection fields whose
+     * signatures use raw or wildcard types (e.g. {@code Collection} without
+     * a type parameter). The annotation processor uses this hint as a
+     * fallback when static type inference cannot resolve the element type.
+     *
+     * <p>At compile time this is read via {@code MirroredTypeException}
+     * to obtain the {@code TypeMirror}, following the same pattern as
+     * {@link AgenticExposed#returnType()}.
+     *
+     * <p>Only meaningful on collection, iterable, or array fields.
+     * A compile warning is emitted if set on a non-collection field.
+     */
+    Class<?> type() default void.class;
 }

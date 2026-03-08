@@ -229,8 +229,9 @@ class DemoIntegrationTest {
 
     @Test
     void customerServiceBeans_existInApplicationContext() {
+        // CustomerService.getCustomers() uses channels={API} so no MCP tool is generated
         org.assertj.core.api.Assertions.assertThat(
-                applicationContext.containsBean("customerServiceMcpTool")).isTrue();
+                applicationContext.containsBean("customerServiceMcpTool")).isFalse();
         org.assertj.core.api.Assertions.assertThat(
                 applicationContext.containsBean("customerServiceRestController")).isTrue();
     }

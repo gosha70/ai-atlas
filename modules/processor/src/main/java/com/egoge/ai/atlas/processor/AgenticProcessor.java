@@ -16,6 +16,7 @@ import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
 import com.egoge.ai.atlas.processor.util.FieldScanner;
 import com.egoge.ai.atlas.processor.util.PiiDetector;
+import com.egoge.ai.atlas.processor.util.ReturnTypeValidator;
 import com.google.auto.service.AutoService;
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.TypeName;
@@ -34,6 +35,8 @@ import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -222,16 +225,38 @@ public class AgenticProcessor extends AbstractProcessor {
     }
 
     private void processServices(RoundEnvironment roundEnv) {
-        // Collect type-level @AgenticExposed
+        // Collect methods per enclosing type to avoid duplicate generation
+        // when both type-level and method-level @AgenticExposed are present.
+        Set<String> typeLevelTypes = new LinkedHashSet<>();
+        Map<String, TypeElement> typesByQName = new LinkedHashMap<>();
+        Map<String, List<ExecutableElement>> methodsByType = new LinkedHashMap<>();
+
         for (var element : roundEnv.getElementsAnnotatedWith(AgenticExposed.class)) {
             if (element.getKind() == ElementKind.CLASS || element.getKind() == ElementKind.INTERFACE) {
                 TypeElement typeElement = (TypeElement) element;
-                processServiceType(typeElement);
+                String qName = typeElement.getQualifiedName().toString();
+                typeLevelTypes.add(qName);
+                typesByQName.put(qName, typeElement);
             } else if (element.getKind() == ElementKind.METHOD) {
-                // Method-level: collect by enclosing type
                 ExecutableElement method = (ExecutableElement) element;
                 TypeElement enclosingType = (TypeElement) method.getEnclosingElement();
-                processServiceWithMethods(enclosingType, List.of(method));
+                String qName = enclosingType.getQualifiedName().toString();
+                typesByQName.put(qName, enclosingType);
+                methodsByType.computeIfAbsent(qName, k -> new ArrayList<>()).add(method);
+            }
+        }
+
+        // Process each service type exactly once
+        for (var entry : typesByQName.entrySet()) {
+            String qName = entry.getKey();
+            TypeElement typeElement = entry.getValue();
+
+            if (typeLevelTypes.contains(qName)) {
+                // Type-level: expose all public methods
+                processServiceType(typeElement);
+            } else {
+                // Method-level only: expose only annotated methods
+                processServiceWithMethods(typeElement, methodsByType.get(qName));
             }
         }
     }
@@ -311,10 +336,40 @@ public class AgenticProcessor extends AbstractProcessor {
         ClassName returnDtoType = null;
         TypeName returnType = TypeName.get(method.getReturnType());
 
-        // Detect if method returns a collection (List, Collection, etc.)
-        boolean collectionReturn = isCollectionReturn(method);
+        // Classify return type shape for correct mapping code generation
+        ServiceModel.ReturnKind returnKind = resolveReturnKind(method);
 
+        // Validate returnType compatibility before allowing cast-based DTO mapping
         if (returnEntityType != null) {
+            TypeMirror returnEntityMirror = ReturnTypeValidator.resolveReturnEntityTypeMirror(annotation);
+            if (returnEntityMirror != null) {
+                var compat = ReturnTypeValidator.validateReturnTypeCompat(
+                        method, returnEntityMirror, returnKind != ServiceModel.ReturnKind.NONE,
+                        processingEnv.getTypeUtils());
+                if (compat == ReturnTypeValidator.Result.INCOMPATIBLE) {
+                    processingEnv.getMessager().printMessage(
+                            Diagnostic.Kind.ERROR,
+                            "@AgenticExposed(returnType = " + returnEntityType.simpleName()
+                                    + ") is not compatible with method return type "
+                                    + method.getReturnType()
+                                    + " — generated code would cast elements to "
+                                    + returnEntityType.simpleName()
+                                    + ", causing ClassCastException at runtime",
+                            method
+                    );
+                    return null;
+                }
+                if (compat == ReturnTypeValidator.Result.INCONCLUSIVE) {
+                    processingEnv.getMessager().printMessage(
+                            Diagnostic.Kind.WARNING,
+                            "@AgenticExposed(returnType = " + returnEntityType.simpleName()
+                                    + ") on method '" + methodName
+                                    + "' — return type is raw/wildcard, cast safety cannot be verified at compile time",
+                            method
+                    );
+                }
+            }
+
             EntityModel entityModel = entityRegistry.get(returnEntityType.canonicalName());
             if (entityModel != null) {
                 returnDtoType = entityModel.dtoClassName();
@@ -330,28 +385,44 @@ public class AgenticProcessor extends AbstractProcessor {
                 ))
                 .toList();
 
-        return new MethodModel(methodName, toolName, description, returnType, returnEntityType, returnDtoType, collectionReturn, params);
+        // Read channels — method-level overrides type-level
+        AgenticExposed channelSource = methodAnnotation != null ? methodAnnotation : typeAnnotation;
+        Set<String> channels = new LinkedHashSet<>();
+        for (AgenticExposed.Channel ch : channelSource.channels()) {
+            channels.add(ch.name());
+        }
+
+        return new MethodModel(methodName, toolName, description, returnType, returnEntityType, returnDtoType, returnKind, params, channels);
     }
 
     /**
-     * Checks if a method's return type is a collection (List, Collection, Set, Iterable).
+     * Classifies the method's return type as COLLECTION, ITERABLE, ARRAY, or NONE.
+     * Collection is checked first (has .stream()), then Iterable (needs StreamSupport).
      */
-    private boolean isCollectionReturn(ExecutableElement method) {
+    private ServiceModel.ReturnKind resolveReturnKind(ExecutableElement method) {
         TypeMirror returnType = method.getReturnType();
         var typeUtils = processingEnv.getTypeUtils();
         var elementUtils = processingEnv.getElementUtils();
 
-        for (String collectionType : List.of("java.util.List", "java.util.Collection", "java.util.Set", "java.lang.Iterable")) {
-            TypeElement collectionElement = elementUtils.getTypeElement(collectionType);
-            if (collectionElement != null) {
-                TypeMirror erasedReturn = typeUtils.erasure(returnType);
-                TypeMirror erasedCollection = typeUtils.erasure(collectionElement.asType());
-                if (typeUtils.isAssignable(erasedReturn, erasedCollection)) {
-                    return true;
-                }
-            }
+        if (returnType.getKind() == javax.lang.model.type.TypeKind.ARRAY) {
+            return ServiceModel.ReturnKind.ARRAY;
         }
-        return false;
+
+        TypeMirror erasedReturn = typeUtils.erasure(returnType);
+
+        TypeElement collectionEl = elementUtils.getTypeElement("java.util.Collection");
+        if (collectionEl != null
+                && typeUtils.isAssignable(erasedReturn, typeUtils.erasure(collectionEl.asType()))) {
+            return ServiceModel.ReturnKind.COLLECTION;
+        }
+
+        TypeElement iterableEl = elementUtils.getTypeElement("java.lang.Iterable");
+        if (iterableEl != null
+                && typeUtils.isAssignable(erasedReturn, typeUtils.erasure(iterableEl.asType()))) {
+            return ServiceModel.ReturnKind.ITERABLE;
+        }
+
+        return ServiceModel.ReturnKind.NONE;
     }
 
     /**

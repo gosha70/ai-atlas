@@ -6,6 +6,7 @@ package com.egoge.ai.atlas.processor.generator;
 import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
+import com.egoge.ai.atlas.processor.model.ServiceModel.ReturnKind;
 import com.palantir.javapoet.AnnotationSpec;
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.FieldSpec;
@@ -47,6 +48,12 @@ public final class RestControllerGenerator {
     public static void generate(ServiceModel model, String packageName, Filer filer, Messager messager) {
         String controllerName = model.serviceClassName().simpleName() + "RestController";
         TypeSpec controllerSpec = buildControllerSpec(model, controllerName);
+        if (controllerSpec == null) {
+            messager.printMessage(Diagnostic.Kind.NOTE,
+                    "[ai-atlas] Skipped REST controller for " + model.serviceClassName().simpleName()
+                            + " — no methods with API channel");
+            return;
+        }
         JavaFile javaFile = JavaFile.builder(packageName, controllerSpec)
                 .indent("    ")
                 .build();
@@ -63,6 +70,14 @@ public final class RestControllerGenerator {
     }
 
     static TypeSpec buildControllerSpec(ServiceModel model, String controllerName) {
+        // Filter to API-channel methods only
+        var apiMethods = model.methods().stream()
+                .filter(m -> m.channels().contains("API"))
+                .toList();
+        if (apiMethods.isEmpty()) {
+            return null;
+        }
+
         ClassName serviceType = model.serviceClassName();
 
         // Derive base path from service name: OrderService → /api/v1/order-service
@@ -90,7 +105,7 @@ public final class RestControllerGenerator {
                 .build());
 
         // Endpoint methods
-        for (MethodModel method : model.methods()) {
+        for (MethodModel method : apiMethods) {
             classBuilder.addMethod(buildEndpointMethod(method));
         }
 
@@ -118,8 +133,9 @@ public final class RestControllerGenerator {
                 .addAnnotation(mappingAnnotation);
 
         // Return type
+        boolean isCollection = method.returnKind() != ReturnKind.NONE;
         if (method.returnDtoType() != null) {
-            if (method.collectionReturn()) {
+            if (isCollection) {
                 methodBuilder.returns(ParameterizedTypeName.get(
                         ClassName.get("java.util", "List"), method.returnDtoType()));
             } else {
@@ -140,14 +156,7 @@ public final class RestControllerGenerator {
         String callArgs = buildCallArgs(method);
 
         if (method.returnDtoType() != null && method.returnEntityType() != null) {
-            if (method.collectionReturn()) {
-                methodBuilder.addStatement(
-                        "return service.$L($L).stream().map(e -> $T.fromEntity(($T) e)).toList()",
-                        method.methodName(), callArgs, method.returnDtoType(), method.returnEntityType());
-            } else {
-                methodBuilder.addStatement("return $T.fromEntity(service.$L($L))",
-                        method.returnDtoType(), method.methodName(), callArgs);
-            }
+            addMappingStatement(methodBuilder, method, callArgs);
         } else {
             methodBuilder.addStatement("return service.$L($L)", method.methodName(), callArgs);
         }
@@ -155,10 +164,26 @@ public final class RestControllerGenerator {
         return methodBuilder.build();
     }
 
-    /**
-     * Converts camelCase to kebab-case for URL paths.
-     * e.g. "OrderService" → "order-service", "findByStatus" → "find-by-status"
-     */
+    private static void addMappingStatement(MethodSpec.Builder methodBuilder,
+                                               MethodModel method, String callArgs) {
+        switch (method.returnKind()) {
+            case COLLECTION -> methodBuilder.addStatement(
+                    "return service.$L($L).stream().map(e -> $T.fromEntity(($T) e)).toList()",
+                    method.methodName(), callArgs, method.returnDtoType(), method.returnEntityType());
+            case ITERABLE -> methodBuilder.addStatement(
+                    "return $T.stream(service.$L($L).spliterator(), false)"
+                            + ".map(e -> $T.fromEntity(($T) e)).toList()",
+                    ClassName.get("java.util.stream", "StreamSupport"),
+                    method.methodName(), callArgs, method.returnDtoType(), method.returnEntityType());
+            case ARRAY -> methodBuilder.addStatement(
+                    "return $T.stream(service.$L($L)).map(e -> $T.fromEntity(($T) e)).toList()",
+                    ClassName.get("java.util", "Arrays"),
+                    method.methodName(), callArgs, method.returnDtoType(), method.returnEntityType());
+            default -> methodBuilder.addStatement("return $T.fromEntity(service.$L($L))",
+                    method.returnDtoType(), method.methodName(), callArgs);
+        }
+    }
+
     private static String buildCallArgs(MethodModel method) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < method.parameters().size(); i++) {

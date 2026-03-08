@@ -6,6 +6,7 @@ package com.egoge.ai.atlas.processor.generator;
 import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
+import com.egoge.ai.atlas.processor.model.ServiceModel.ReturnKind;
 import com.palantir.javapoet.AnnotationSpec;
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.FieldSpec;
@@ -44,6 +45,12 @@ public final class McpToolGenerator {
     public static void generate(ServiceModel model, String packageName, Filer filer, Messager messager) {
         String toolClassName = model.serviceClassName().simpleName() + "McpTool";
         TypeSpec toolSpec = buildToolSpec(model, toolClassName);
+        if (toolSpec == null) {
+            messager.printMessage(Diagnostic.Kind.NOTE,
+                    "[ai-atlas] Skipped MCP tool for " + model.serviceClassName().simpleName()
+                            + " — no methods with AI channel");
+            return;
+        }
         JavaFile javaFile = JavaFile.builder(packageName, toolSpec)
                 .indent("    ")
                 .build();
@@ -60,6 +67,14 @@ public final class McpToolGenerator {
     }
 
     static TypeSpec buildToolSpec(ServiceModel model, String toolClassName) {
+        // Filter to AI-channel methods only
+        var aiMethods = model.methods().stream()
+                .filter(m -> m.channels().contains("AI"))
+                .toList();
+        if (aiMethods.isEmpty()) {
+            return null;
+        }
+
         ClassName serviceType = model.serviceClassName();
 
         TypeSpec.Builder classBuilder = TypeSpec.classBuilder(toolClassName)
@@ -81,7 +96,7 @@ public final class McpToolGenerator {
                 .build());
 
         // @Tool methods
-        for (MethodModel method : model.methods()) {
+        for (MethodModel method : aiMethods) {
             classBuilder.addMethod(buildToolMethod(method));
         }
 
@@ -97,8 +112,9 @@ public final class McpToolGenerator {
                         .build());
 
         // Return type
+        boolean isCollection = method.returnKind() != ReturnKind.NONE;
         if (method.returnDtoType() != null) {
-            if (method.collectionReturn()) {
+            if (isCollection) {
                 methodBuilder.returns(ParameterizedTypeName.get(
                         ClassName.get("java.util", "List"), method.returnDtoType()));
             } else {
@@ -122,19 +138,32 @@ public final class McpToolGenerator {
         String callArgs = buildCallArgs(method);
 
         if (method.returnDtoType() != null && method.returnEntityType() != null) {
-            if (method.collectionReturn()) {
-                methodBuilder.addStatement(
-                        "return service.$L($L).stream().map(e -> $T.fromEntity(($T) e)).toList()",
-                        method.methodName(), callArgs, method.returnDtoType(), method.returnEntityType());
-            } else {
-                methodBuilder.addStatement("return $T.fromEntity(service.$L($L))",
-                        method.returnDtoType(), method.methodName(), callArgs);
-            }
+            addMappingStatement(methodBuilder, method, callArgs);
         } else {
             methodBuilder.addStatement("return service.$L($L)", method.methodName(), callArgs);
         }
 
         return methodBuilder.build();
+    }
+
+    private static void addMappingStatement(MethodSpec.Builder methodBuilder,
+                                               MethodModel method, String callArgs) {
+        switch (method.returnKind()) {
+            case COLLECTION -> methodBuilder.addStatement(
+                    "return service.$L($L).stream().map(e -> $T.fromEntity(($T) e)).toList()",
+                    method.methodName(), callArgs, method.returnDtoType(), method.returnEntityType());
+            case ITERABLE -> methodBuilder.addStatement(
+                    "return $T.stream(service.$L($L).spliterator(), false)"
+                            + ".map(e -> $T.fromEntity(($T) e)).toList()",
+                    ClassName.get("java.util.stream", "StreamSupport"),
+                    method.methodName(), callArgs, method.returnDtoType(), method.returnEntityType());
+            case ARRAY -> methodBuilder.addStatement(
+                    "return $T.stream(service.$L($L)).map(e -> $T.fromEntity(($T) e)).toList()",
+                    ClassName.get("java.util", "Arrays"),
+                    method.methodName(), callArgs, method.returnDtoType(), method.returnEntityType());
+            default -> methodBuilder.addStatement("return $T.fromEntity(service.$L($L))",
+                    method.returnDtoType(), method.methodName(), callArgs);
+        }
     }
 
     private static String buildCallArgs(MethodModel method) {

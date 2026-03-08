@@ -8,6 +8,7 @@ import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
+import com.egoge.ai.atlas.processor.model.ServiceModel.ReturnKind;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -157,6 +158,9 @@ public final class OpenApiGenerator {
     String basePath = "/api/v1/" + toKebabCase(serviceName);
 
     for (MethodModel method : service.methods()) {
+      if (!method.channels().contains("API")) {
+        continue;
+      }
       String path = basePath + "/" + toKebabCase(method.methodName());
       PathItem pathItem = new PathItem();
       Operation operation = buildOperation(method);
@@ -202,7 +206,7 @@ public final class OpenApiGenerator {
     if (method.returnDtoType() != null) {
       Schema<?> responseSchema;
       String dtoRef = "#/components/schemas/" + method.returnDtoType().simpleName();
-      if (method.collectionReturn()) {
+      if (method.returnKind() != ReturnKind.NONE) {
         responseSchema = new ArraySchema().items(new Schema<>().$ref(dtoRef));
       } else {
         responseSchema = new Schema<>().$ref(dtoRef);

@@ -54,4 +54,23 @@ public @interface AgenticExposed {
      * to obtain the {@code TypeMirror}.
      */
     Class<?> returnType() default void.class;
+
+    /**
+     * Controls which channels this method is exposed to.
+     * Defaults to both AI (MCP tools) and API (REST controllers + OpenAPI).
+     *
+     * <p>Use {@code channels = {Channel.API}} to expose only as a REST
+     * endpoint, or {@code channels = {Channel.AI}} for MCP-only exposure.
+     */
+    Channel[] channels() default { Channel.AI, Channel.API };
+
+    /**
+     * Exposure channel for generated service artifacts.
+     */
+    enum Channel {
+        /** MCP tool generation */
+        AI,
+        /** REST controller and OpenAPI generation */
+        API
+    }
 }

@@ -34,8 +34,9 @@ public class Customer {
     @AgentVisible(description = "Customer display name")
     private String name;
 
-    @AgentVisible(description = "Customer mailing addresses")
-    private Collection<Address> addresses = new ArrayList<>();
+    @AgentVisible(description = "Customer mailing addresses", type = Address.class)
+    @SuppressWarnings("rawtypes")
+    private Collection addresses = new ArrayList<>();
 
     // PII fields — intentionally NOT annotated
     private String email;
@@ -48,8 +49,10 @@ public class Customer {
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
 
-    public Collection<Address> getAddresses() { return addresses; }
-    public void setAddresses(Collection<Address> addresses) { this.addresses = addresses; }
+    @SuppressWarnings("rawtypes")
+    public Collection getAddresses() { return addresses; }
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    public void setAddresses(Collection addresses) { this.addresses = addresses; }
 
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }

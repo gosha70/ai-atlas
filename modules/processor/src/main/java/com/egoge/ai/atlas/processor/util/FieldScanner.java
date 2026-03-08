@@ -8,17 +8,20 @@ import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.egoge.ai.atlas.processor.model.FieldModel.CollectionKind;
 import com.palantir.javapoet.TypeName;
 
+import javax.annotation.processing.Messager;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.MirroredTypeException;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.type.WildcardType;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
+import javax.tools.Diagnostic;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -131,6 +134,47 @@ public final class FieldScanner {
             }
           }
 
+          // Read @AgentVisible(type = ...) hint via MirroredTypeException
+          TypeMirror hintMirror = resolveTypeHintMirror(annotation);
+          TypeName hintTypeName = hintMirror != null ? TypeName.get(hintMirror) : null;
+
+          Messager messager = processingEnv.getMessager();
+
+          // Warn if type hint is set on a non-collection/non-iterable/non-array field
+          if (hintTypeName != null && collectionKind == CollectionKind.NONE) {
+            messager.printMessage(
+                Diagnostic.Kind.WARNING,
+                "@AgentVisible(type = ...) on non-collection field '"
+                    + fieldName + "' has no effect — hint is only used for collection element types",
+                field
+            );
+          }
+
+          // Validate assignability: element type must be assignable TO the hint
+          // (upcast is safe; downcast would produce ClassCastException in generated code).
+          // e.g. List<InternalCustomer> + type=BaseCustomer → OK (InternalCustomer → BaseCustomer)
+          //      List<BaseCustomer> + type=InternalCustomer → ERROR (would cast Base → Internal)
+          if (hintMirror != null && elementTypeName != null && collectionKind != CollectionKind.NONE) {
+            TypeMirror elementMirror = resolveElementTypeForValidation(
+                fieldType, collectionKind, typeUtils, elementUtils);
+            if (elementMirror != null) {
+              TypeMirror erasedHint = typeUtils.erasure(hintMirror);
+              TypeMirror erasedElement = typeUtils.erasure(elementMirror);
+              if (!typeUtils.isAssignable(erasedElement, erasedHint)) {
+                messager.printMessage(
+                    Diagnostic.Kind.ERROR,
+                    "@AgentVisible(type = " + hintMirror + ") is not assignable from "
+                        + "collection element type " + elementMirror + " on field '"
+                        + fieldName + "' — generated code would cast "
+                        + elementMirror + " to " + hintMirror
+                        + ", causing ClassCastException at runtime",
+                    field
+                );
+                hintTypeName = null;
+              }
+            }
+          }
+
           allFields.add(new FieldModel(
               fieldName,
               displayName,
@@ -141,13 +185,37 @@ public final class FieldScanner {
               isEnum,
               allowedValues,
               collectionKind,
-              elementTypeName
+              elementTypeName,
+              hintTypeName
           ));
         }
       }
     }
 
     return allFields;
+  }
+
+  /**
+   * Reads the {@code type()} attribute from {@code @AgentVisible}, handling
+   * {@code MirroredTypeException} as required by JSR 269.
+   *
+   * @return the hint TypeMirror, or null if {@code void.class} (the default)
+   */
+  private static TypeMirror resolveTypeHintMirror(AgentVisible annotation) {
+    try {
+      Class<?> hintClass = annotation.type();
+      if (hintClass == void.class) {
+        return null;
+      }
+      // Reflective path (shouldn't happen during annotation processing, but handle it)
+      return null;
+    } catch (MirroredTypeException e) {
+      TypeMirror typeMirror = e.getTypeMirror();
+      if (typeMirror.getKind() == TypeKind.VOID) {
+        return null;
+      }
+      return typeMirror;
+    }
   }
 
   /**
@@ -170,7 +238,7 @@ public final class FieldScanner {
                                                 Types typeUtils, Elements elementUtils) {
     // Try direct type arguments first (covers List<Item>, List<? extends Item>, etc.)
     if (fieldType instanceof DeclaredType declaredType && !declaredType.getTypeArguments().isEmpty()) {
-      return unwrapWildcard(declaredType.getTypeArguments().get(0));
+      return unwrapWildcard(declaredType.getTypeArguments().getFirst());
     }
 
     // Non-generic concrete subtype (e.g., class ItemBag extends ArrayList<Item>):
@@ -194,11 +262,26 @@ public final class FieldScanner {
       }
       if (!dt.getTypeArguments().isEmpty()
           && typeUtils.isAssignable(typeUtils.erasure(supertype), erasedIterable)) {
-        return unwrapWildcard(dt.getTypeArguments().get(0));
+        return unwrapWildcard(dt.getTypeArguments().getFirst());
       }
       queue.addAll(typeUtils.directSupertypes(supertype));
     }
     return null;
+  }
+
+  /**
+   * Resolves element/component type for assignability validation.
+   * Uses array component type for arrays and generic element resolution for
+   * collections/iterables.
+   */
+  private static TypeMirror resolveElementTypeForValidation(TypeMirror fieldType,
+                                                             CollectionKind collectionKind,
+                                                             Types typeUtils,
+                                                             Elements elementUtils) {
+    if (collectionKind == CollectionKind.ARRAY && fieldType.getKind() == TypeKind.ARRAY) {
+      return ((ArrayType) fieldType).getComponentType();
+    }
+    return resolveElementType(fieldType, typeUtils, elementUtils);
   }
 
   /**

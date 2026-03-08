@@ -7,6 +7,7 @@ import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.TypeName;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Internal model representing a service class annotated with
@@ -19,6 +20,20 @@ public record ServiceModel(
 ) {
 
   /**
+   * Classifies the return type shape for correct stream/mapping code generation.
+   */
+  public enum ReturnKind {
+      /** Not a collection or array — direct mapping */
+      NONE,
+      /** Assignable to java.util.Collection — has .stream() */
+      COLLECTION,
+      /** Assignable to java.lang.Iterable but NOT Collection — needs StreamSupport */
+      ITERABLE,
+      /** Java array type — needs Arrays.stream() */
+      ARRAY
+  }
+
+  /**
    * Represents a single exposed method on the service.
    */
   public record MethodModel(
@@ -28,8 +43,9 @@ public record ServiceModel(
       TypeName returnType,
       ClassName returnEntityType,
       ClassName returnDtoType,
-      boolean collectionReturn,
-      List<ParameterModel> parameters
+      ReturnKind returnKind,
+      List<ParameterModel> parameters,
+      Set<String> channels
   ) {
   }
 
