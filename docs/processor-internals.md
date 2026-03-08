@@ -24,7 +24,7 @@ Phase 1: Entity Processing          Phase 2: Service Processing        Phase 3: 
 For each class annotated with `@AgentVisibleClass`:
 
 1. **Validate** — reject interfaces, enums, non-class elements (emit warnings/errors)
-2. **Scan fields** — `FieldScanner.scan()` walks the superclass chain top-down, collecting `@AgentVisible` fields. Subclass fields override same-named superclass fields.
+2. **Scan fields** — `FieldScanner.scan()` walks the superclass chain top-down, collecting `@AgentVisible` fields. Subclass fields override same-named superclass fields. For fields whose type is another `@AgentVisibleClass` entity, the scanner records the cross-reference (including collection element types) for DTO-to-DTO mapping. Raw/wildcard collection fields fall back to `@AgentVisible(type = ...)` hints.
 3. **PII warnings** — `PiiDetector.check()` runs on all fields **not** annotated with `@AgentVisible`, emitting NOTE diagnostics for suspicious names
 4. **Build model** — construct an `EntityModel` record with DTO name, package, display name, description, and the ordered list of `FieldModel` records
 5. **Generate DTO** — `DtoGenerator.generate()` produces a Java record via JavaPoet
@@ -36,10 +36,12 @@ For each class or method annotated with `@AgenticExposed`:
 
 1. **Collect methods** — type-level annotation exposes all public methods; method-level exposes only that method
 2. **Resolve return types** — read `returnType` attribute via `MirroredTypeException` handling (required by JSR 269 for `Class<?>` attributes)
-3. **Detect collections** — check if the method return type extends `List`, `Collection`, `Set`, or `Iterable`
-4. **Map to DTOs** — look up the return entity's `EntityModel` in the registry to find the DTO class name
-5. **Build model** — construct a `ServiceModel` with `MethodModel` entries for each exposed method
-6. **Generate** — invoke `McpToolGenerator.generate()` and `RestControllerGenerator.generate()`
+3. **Detect return kind** — classify the return type as `NONE`, `COLLECTION`, `ITERABLE`, or `ARRAY`. Wildcard/raw return types are resolved via the `returnType` attribute.
+4. **Validate return type** — `ReturnTypeValidator` checks that the method's return type is assignable to the declared `returnType` entity, emitting a compile warning on mismatches
+5. **Read channels** — extract the `channels` attribute (`AI`, `API`, or both) to determine which generators to invoke
+6. **Map to DTOs** — look up the return entity's `EntityModel` in the registry to find the DTO class name
+7. **Build model** — construct a `ServiceModel` with `MethodModel` entries for each exposed method
+8. **Generate** — invoke `McpToolGenerator` (if channels include `AI`) and `RestControllerGenerator` (if channels include `API`)
 
 ### Phase 3: OpenAPI Generation
 
@@ -77,7 +79,10 @@ record FieldModel(
     boolean sensitive,             // From @AgentVisible.sensitive()
     boolean checkCircularReference,// From @AgentVisible.checkCircularReference()
     boolean enumType,              // Auto-detected if field type is enum
-    List<String> enumValues        // Enum constants or @AgentVisible.allowedValues()
+    List<String> enumValues,       // Enum constants or @AgentVisible.allowedValues()
+    CollectionKind collectionKind, // NONE, COLLECTION, ITERABLE, or ARRAY
+    TypeName elementTypeName,      // Element type for collections/arrays (null if NONE)
+    TypeName hintTypeName          // From @AgentVisible(type = ...), null if void.class
 )
 ```
 
@@ -96,8 +101,9 @@ record MethodModel(
     TypeName returnType,           // Actual return type (e.g., List<Order>)
     ClassName returnEntityType,    // Resolved entity class
     ClassName returnDtoType,       // Resolved DTO class
-    boolean collectionReturn,      // List/Collection/Set/Iterable
-    List<ParameterModel> parameters
+    ReturnKind returnKind,         // NONE, COLLECTION, ITERABLE, or ARRAY
+    List<ParameterModel> parameters,
+    Set<String> channels           // From @AgenticExposed.channels() — "AI", "API", or both
 )
 
 record ParameterModel(String name, TypeName typeName, String description)
@@ -116,13 +122,16 @@ Produces a Java record with:
 - `FIELD_METADATA` map (`Map<String, FieldMeta>`) with per-field metadata
 - Nested `FieldMeta` record
 - `fromEntity(Entity)` null-safe factory method using getter conventions (`isX()` for boolean, `getX()` for others)
+- Entity cross-reference fields map to referenced DTOs (e.g., `List<Address>` → `List<AddressDto>`) with `fromEntity()` stream mapping
+- Cycle detection via visited-set tracking for bidirectional JPA relationships
 
 ### McpToolGenerator
 
 Produces a Spring `@Service` class with:
 - Constructor injection of the original service
 - `@Tool`-annotated wrapper methods with `@ToolParam` parameters
-- DTO mapping: single results via `Dto.fromEntity()`, collections via `.stream().map(Dto::fromEntity).toList()`
+- DTO mapping: single results via `Dto.fromEntity()`, collections via `.stream().map(Dto::fromEntity).toList()`, iterables via `StreamSupport`, arrays via `Arrays.stream()`
+- Only methods with `channels` containing `AI` are included; API-only methods are skipped
 
 ### RestControllerGenerator
 
@@ -131,12 +140,13 @@ Produces a Spring `@RestController` with:
 - Methods with no parameters use `@GetMapping`, with parameters use `@PostMapping`
 - Parameters annotated with `@RequestParam`
 - Same DTO mapping logic as MCP tools
+- Only methods with `channels` containing `API` are included; AI-only methods are skipped
 
 ### OpenApiGenerator
 
 Produces `META-INF/openapi/openapi.json` (OpenAPI 3.0.3) using swagger-models:
 - Schema definitions from entity DTOs with property types and enum constraints
-- Path definitions from service methods with request/response bodies
+- Path definitions from service methods with request/response bodies (only methods with `API` channel)
 - Java-to-OpenAPI type mapping (Long→int64, Integer→int32, etc.)
 
 ## Key Implementation Details
@@ -207,4 +217,7 @@ The `ProcessingEnvironment` is never mocked — tests run actual `javac` compila
 | OpenAPI | Schema properties, enum constraints, path definitions |
 | PII warnings | Default patterns, custom patterns, file-based patterns |
 | Inheritance | Superclass field walking, override behavior |
+| Entity cross-references | DTO-to-DTO mapping, cycle detection, collection variants |
+| Channel filtering | AI-only/API-only method exclusion from generators |
+| Return type validation | Wildcard/raw returns, incompatible return type warnings |
 | Edge cases | Interfaces, enums, abstract classes, inner classes |

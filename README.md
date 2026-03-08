@@ -48,9 +48,11 @@ AI-ATLAS is designed to retrofit **existing** enterprise codebases. Add two anno
 AI-ATLAS is a **compile-time annotation processor** that generates PII-safe API layers from two simple annotations:
 
 - **`@AgentVisible`** on entity fields — whitelist what AI agents can see
-- **`@AgenticExposed`** on service classes — expose methods as MCP tools and REST endpoints
+- **`@AgenticExposed`** on service classes or methods — expose operations as MCP tools and/or REST endpoints
 
 Everything else is structurally excluded. There is no way for unannotated fields to reach the generated API — the safety guarantee is enforced by the Java compiler, not runtime checks.
+
+Methods can be selectively routed to different channels: `channels = {Channel.AI}` for MCP-only, `channels = {Channel.API}` for REST-only, or both (the default).
 
 From these annotations, the processor generates four artifacts at compile time:
 
@@ -224,6 +226,7 @@ classDiagram
             +toolName : String
             +description : String
             +returnType : Class
+            +channels : Channel[]
         }
     }
 
@@ -245,10 +248,14 @@ classDiagram
             +typeName : TypeName
             +enumType : boolean
             +enumValues : List~String~
+            +collectionKind : CollectionKind
+            +elementTypeName : TypeName
+            +hintTypeName : TypeName
         }
         class ServiceModel {
             +serviceClassName : ClassName
             +methods : List~MethodModel~
+            +ReturnKind : enum
         }
         class DtoGenerator {
             +generate(EntityModel, Filer)
@@ -579,6 +586,7 @@ Applied to fields. Marks a field for inclusion in the generated DTO.
 | `sensitive` | `boolean` | `false` | If true, runtime interceptors may mask this field in audit logs |
 | `checkCircularReference` | `boolean` | `true` | When true, the JSON serializer tracks object identity to prevent infinite recursion in bidirectional JPA relationships. Set to false for leaf fields (primitives, strings, enums). |
 | `allowedValues` | `String[]` | `{}` | Explicit allowed values for this field. Overrides auto-detected enum constants when non-empty. Populated into `FIELD_METADATA.validValues` and OpenAPI `enum` constraints. |
+| `type` | `Class<?>` | `void.class` | Element type hint for legacy collection fields with raw or wildcard types (e.g., `Collection` without a type parameter). Used as a fallback when static type inference cannot resolve the element type. |
 
 ### `@AgentVisibleClass`
 
@@ -601,8 +609,9 @@ Applied to types or individual methods. Triggers MCP tool and REST controller ge
 | `toolName` | `String` | method name | Name for the generated MCP tool |
 | `description` | `String` | `"Invokes {methodName}"` | Description for MCP tool and OpenAPI operation |
 | `returnType` | `Class<?>` | `void.class` | Entity class to map to DTO in responses |
+| `channels` | `Channel[]` | `{AI, API}` | Which channels to generate for: `AI` (MCP tools), `API` (REST controllers + OpenAPI), or both |
 
-When applied to a type, all public methods are exposed. When applied to a method, only that method is exposed.
+When applied to a type, all public methods are exposed. When applied to a method, only that method is exposed. Method-level annotations override type-level settings, allowing selective exposure of individual operations to specific channels.
 
 ## Enriched JSON Serialization
 
@@ -650,6 +659,12 @@ The serializer handles Hibernate proxies (lazy-loaded associations), uninitializ
 | Custom field display names | `@AgentVisible(name = "totalCents")` uses custom key in `FIELD_METADATA` and enriched JSON |
 | Hibernate proxies | Automatically unwrapped by the runtime serializer (reflection-based, no Hibernate dependency) |
 | Circular JPA references | Detected via `SerializationContext`; serialized as `null` to prevent infinite recursion |
+| Entity cross-references | `@AgentVisible` field whose type is another `@AgentVisibleClass` entity maps to the referenced DTO with cycle detection |
+| Collection-of-entity fields | `List<Address>`, `Set<Order>`, arrays — mapped to `List<AddressDto>` in generated DTO with stream conversion |
+| Raw/wildcard collections | `Collection` or `List<?>` — resolved via `@AgentVisible(type = Address.class)` hint |
+| Channel-selective exposure | `@AgenticExposed(channels = {Channel.AI})` generates MCP tools only; `{Channel.API}` generates REST + OpenAPI only |
+| Method-level `@AgenticExposed` | Fine-grained control: individual methods can specify their own `returnType`, `description`, and `channels` |
+| Wildcard return types | `List<?>` or raw `Collection` on service methods — resolved via `returnType` attribute |
 
 ## Modules
 

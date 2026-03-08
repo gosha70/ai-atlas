@@ -7,7 +7,7 @@ This guide covers all AI-ATLAS annotations, their attributes, and practical usag
 Marks an entity class for DTO generation. The annotation processor generates a Java record containing only fields annotated with `@AgentVisible`.
 
 **Target:** Classes only (not interfaces or enums)
-**Retention:** Source (discarded after compilation)
+**Retention:** Runtime (required for reflection by `AgentSafeSerializer`)
 
 ### Attributes
 
@@ -59,6 +59,7 @@ Marks a field for inclusion in the generated DTO. Fields without this annotation
 | `sensitive` | boolean | `false` | Whether the field should be masked in audit logs |
 | `checkCircularReference` | boolean | `true` | Enable identity-based cycle detection during serialization |
 | `allowedValues` | String[] | `{}` | Explicit list of valid values (overrides automatic enum detection) |
+| `type` | Class<?> | `void.class` | Element type hint for raw/wildcard collection fields (e.g., `Collection` without a type parameter) |
 
 ### Example
 
@@ -102,6 +103,27 @@ If a field's type is a Java enum, the processor automatically extracts the enum 
 
 The processor walks the superclass chain. `@AgentVisible` fields from parent classes are included in the generated DTO, with subclass fields taking precedence on name collisions.
 
+### Entity Cross-References
+
+When an `@AgentVisible` field's type is another `@AgentVisibleClass` entity, the generated DTO maps it to the corresponding DTO type:
+
+```java
+@AgentVisibleClass
+public class Customer {
+    @AgentVisible(description = "Customer ID") private Long id;
+    @AgentVisible(description = "Addresses") private List<Address> addresses;
+}
+```
+
+The generated `CustomerDto` contains `List<AddressDto>`, with `fromEntity()` mapping via `AddressDto.fromEntity()` and cycle detection for bidirectional relationships.
+
+For raw or wildcard collection types, use the `type` hint:
+
+```java
+@AgentVisible(description = "Addresses", type = Address.class)
+private Collection addresses;  // raw type — hint resolves element type
+```
+
 ---
 
 ## @AgenticExposed
@@ -109,7 +131,7 @@ The processor walks the superclass chain. `@AgentVisible` fields from parent cla
 Marks a service class or individual method for MCP tool, REST controller, and OpenAPI spec generation.
 
 **Target:** Types and methods
-**Retention:** Source
+**Retention:** Runtime
 
 ### Attributes
 
@@ -118,6 +140,7 @@ Marks a service class or individual method for MCP tool, REST controller, and Op
 | `toolName` | String | Method or class name | MCP tool name |
 | `description` | String | `"Invokes {methodName}"` | Tool and OpenAPI description |
 | `returnType` | Class<?> | `void.class` | Entity class for DTO mapping |
+| `channels` | Channel[] | `{AI, API}` | Which channels to generate: `AI` (MCP tools), `API` (REST + OpenAPI), or both |
 
 ### Type-Level Usage
 
@@ -153,6 +176,24 @@ public class OrderService {
 
     // Not exposed — no annotation
     public void internalReconcile() { ... }
+}
+```
+
+### Channel Filtering
+
+Control which artifacts are generated per method:
+
+```java
+@Service
+public class OrderService {
+
+    @AgenticExposed(description = "Find order", returnType = Order.class,
+                    channels = { AgenticExposed.Channel.AI })
+    public Order findById(Long id) { ... }  // MCP tool only
+
+    @AgenticExposed(description = "List orders", returnType = Order.class,
+                    channels = { AgenticExposed.Channel.API })
+    public List<Order> listAll() { ... }    // REST + OpenAPI only
 }
 ```
 
