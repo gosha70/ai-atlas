@@ -364,7 +364,7 @@ Running `./gradlew build` generates:
 **PII-safe DTO** — only the 4 whitelisted fields, no customer name, no SSN, no credit card. Includes compile-time metadata (field descriptions, enum valid values, circular reference flags) for runtime enriched JSON:
 
 ```java
-@Generated("ai.atlas.processor")
+@Generated("com.egoge.ai.atlas.processor")
 public record OrderDto(Long id, OrderStatus status, long totalAmountCents, int itemCount) {
 
     public record FieldMeta(String description, List<String> validValues,
@@ -394,7 +394,7 @@ public record OrderDto(Long id, OrderStatus status, long totalAmountCents, int i
 **MCP tool** — AI agents call this via MCP protocol, responses are always DTOs:
 
 ```java
-@Generated("ai.atlas.processor")
+@Generated("com.egoge.ai.atlas.processor")
 @Service
 public class OrderServiceMcpTool {
     private final OrderService service;
@@ -410,7 +410,7 @@ public class OrderServiceMcpTool {
 **REST controller** — standard Spring endpoints, also returning DTOs:
 
 ```java
-@Generated("ai.atlas.processor")
+@Generated("com.egoge.ai.atlas.processor")
 @RestController
 @RequestMapping("/api/v1/order-service")
 public class OrderServiceRestController {
