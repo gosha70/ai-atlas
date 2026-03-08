@@ -117,7 +117,7 @@ All generators use [JavaPoet](https://github.com/palantir/javapoet) (Palantir fo
 
 Produces a Java record with:
 - Record components for each `@AgentVisible` field
-- `@Generated("ai.atlas.processor")` annotation
+- `@Generated("com.egoge.ai.atlas.processor")` annotation
 - `CLASS_NAME`, `CLASS_DESCRIPTION`, `INCLUDE_TYPE_INFO` static constants
 - `FIELD_METADATA` map (`Map<String, FieldMeta>`) with per-field metadata
 - Nested `FieldMeta` record

@@ -48,7 +48,7 @@ AI-ATLAS is designed to retrofit **existing** enterprise codebases. Add two anno
 AI-ATLAS is a **compile-time annotation processor** that generates PII-safe API layers from two simple annotations:
 
 - **`@AgentVisible`** on entity fields — whitelist what AI agents can see
-- **`@AgenticExposed`** on service classes or methods — expose operations as MCP tools and/or REST endpoints
+- **`@AgenticExposed`** on service classes or individual methods — expose as MCP tools and/or REST endpoints
 
 Everything else is structurally excluded. There is no way for unannotated fields to reach the generated API — the safety guarantee is enforced by the Java compiler, not runtime checks.
 
@@ -117,7 +117,7 @@ flowchart LR
     style Client fill:#FFB74D,stroke:#BF360C,color:#3b2006
     style FE fill:#FFB74D,stroke:#BF360C,color:#3b2006
 ```
-- _[JSR 269](https://jcp.org/en/jsr/detail?id=269)  Pluggable Annotation Processing API_
+- _[JSR 269](https://jcp.org/en/jsr/detail?id=269) — Pluggable Annotation Processing API_
 
 ### Module Architecture
 
