@@ -284,6 +284,34 @@ class OpenApiGeneratorTest {
         assertThat(json).contains("A configurable widget component");
     }
 
+    @Test
+    void channelFiltering_aiOnly_excludedFromOpenApiSpec() {
+        JavaFileObject entity = JavaFileObjects.forSourceString("test.Item",
+                """
+                package test;
+                import com.egoge.ai.atlas.annotations.*;
+                @AgentVisibleClass public class Item {
+                    @AgentVisible(description = "ID") private Long id;
+                    public Long getId() { return id; }
+                }
+                """);
+        JavaFileObject service = JavaFileObjects.forSourceString("test.AiOnlyService",
+                """
+                package test;
+                import com.egoge.ai.atlas.annotations.AgenticExposed;
+                public class AiOnlyService {
+                    @AgenticExposed(description = "AI only", returnType = Item.class,
+                                    channels = { AgenticExposed.Channel.AI })
+                    public Item find() { return null; }
+                }
+                """);
+
+        Compilation compilation = javac().withProcessors(new AgenticProcessor()).compile(entity, service);
+        String json = getGeneratedResource(compilation);
+
+        assertThat(json).doesNotContain("/api/v1/ai-only-service/find");
+    }
+
     private static String getGeneratedResource(Compilation compilation) {
         var file = compilation.generatedFile(StandardLocation.CLASS_OUTPUT, "META-INF/openapi/openapi.json");
         assertThat(file).as("OpenAPI spec resource file").isPresent();

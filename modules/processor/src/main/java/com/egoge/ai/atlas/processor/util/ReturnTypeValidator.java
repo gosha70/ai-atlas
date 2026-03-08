@@ -67,12 +67,12 @@ public final class ReturnTypeValidator {
      */
     public static Result validateReturnTypeCompat(ExecutableElement method,
                                                    TypeMirror returnEntityMirror,
-                                                   boolean collectionReturn,
+                                                   boolean multiValueReturn,
                                                    Types typeUtils) {
         TypeMirror methodReturnType = method.getReturnType();
         TypeMirror erasedEntity = typeUtils.erasure(returnEntityMirror);
 
-        if (collectionReturn) {
+        if (multiValueReturn) {
             TypeMirror elementType = extractCollectionElementType(methodReturnType);
             if (elementType == null) {
                 return Result.INCONCLUSIVE;

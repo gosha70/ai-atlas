@@ -161,7 +161,7 @@ public final class McpToolGenerator {
                     "return $T.stream(service.$L($L)).map(e -> $T.fromEntity(($T) e)).toList()",
                     ClassName.get("java.util", "Arrays"),
                     method.methodName(), callArgs, method.returnDtoType(), method.returnEntityType());
-            default -> methodBuilder.addStatement("return $T.fromEntity(service.$L($L))",
+            case NONE -> methodBuilder.addStatement("return $T.fromEntity(service.$L($L))",
                     method.returnDtoType(), method.methodName(), callArgs);
         }
     }

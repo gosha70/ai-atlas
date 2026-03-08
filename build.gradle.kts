@@ -52,4 +52,29 @@ subprojects {
             html.required.set(true)
         }
     }
+
+    // Coverage verification gates — per-module minimum line coverage
+    val coverageThresholds = mapOf(
+        "processor" to 0.85,
+        "runtime"   to 0.45,
+        "demo"      to 0.80
+    )
+
+    val threshold = coverageThresholds[project.name]
+    if (threshold != null) {
+        tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+            dependsOn(tasks.named("jacocoTestReport"))
+            violationRules {
+                rule {
+                    limit {
+                        counter = "LINE"
+                        minimum = threshold.toBigDecimal()
+                    }
+                }
+            }
+        }
+        tasks.named("check") {
+            dependsOn(tasks.named("jacocoTestCoverageVerification"))
+        }
+    }
 }

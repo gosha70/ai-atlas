@@ -16,4 +16,8 @@
   <!-- Test methods use descriptive naming with underscores -->
   <suppress files="[\\/]test[\\/]" checks="MethodName"/>
   <suppress files="[\\/]functionalTest[\\/]" checks="MethodName"/>
+
+  <!-- ReturnKind switches intentionally omit default to surface enum expansion issues -->
+  <suppress files="McpToolGenerator\.java" checks="MissingSwitchDefault"/>
+  <suppress files="RestControllerGenerator\.java" checks="MissingSwitchDefault"/>
 </suppressions>

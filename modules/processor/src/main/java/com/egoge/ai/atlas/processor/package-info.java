@@ -1,9 +1,9 @@
 /**
  * JSR 269 annotation processor for the AI-ATLAS framework.
  *
- * <p>The {@link ai.atlas.processor.AgenticProcessor} scans classes annotated with
- * {@link ai.atlas.annotations.AgentVisibleClass} and
- * {@link ai.atlas.annotations.AgenticExposed}, then generates:
+ * <p>The {@link com.egoge.ai.atlas.processor.AgenticProcessor} scans classes annotated with
+ * {@link com.egoge.ai.atlas.annotations.AgentVisibleClass} and
+ * {@link com.egoge.ai.atlas.annotations.AgenticExposed}, then generates:
  *
  * <ul>
  *   <li>PII-safe DTO records (via {@code generator.DtoGenerator})</li>
@@ -14,6 +14,6 @@
  *
  * <p>This module runs at compile time only and must not be added as a runtime dependency.
  *
- * @see ai.atlas.processor.AgenticProcessor
+ * @see com.egoge.ai.atlas.processor.AgenticProcessor
  */
 package com.egoge.ai.atlas.processor;
