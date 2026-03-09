@@ -16,12 +16,12 @@ import java.lang.annotation.Target;
  *
  * <p>Example usage:
  * <pre>{@code
- * @AgentVisibleClass
+ * @AgenticEntity
  * public class Order {
- *     @AgentVisible(description = "Unique order identifier")
+ *     @AgenticField(description = "Unique order identifier")
  *     private Long id;
  *
- *     @AgentVisible(description = "Order status", sensitive = true)
+ *     @AgenticField(description = "Order status", sensitive = true)
  *     private String status;
  *
  *     // Not annotated — excluded from generated DTO
@@ -32,7 +32,7 @@ import java.lang.annotation.Target;
 @Documented
 @Target(ElementType.FIELD)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface AgentVisible {
+public @interface AgenticField {
 
     /**
      * Human-readable description of the field for LLM consumption.
@@ -52,11 +52,11 @@ public @interface AgentVisible {
      * the DTO record component or OpenAPI schema property — those always use
      * the Java field name to maintain getter compatibility.
      *
-     * <p>Must be unique across all {@code @AgentVisible} fields within the
+     * <p>Must be unique across all {@code @AgenticField} fields within the
      * same class. A compile error is emitted if two fields share the same
      * display name.
      *
-     * <p>Example: {@code @AgentVisible(name = "totalCents")} on a field
+     * <p>Example: {@code @AgenticField(name = "totalCents")} on a field
      * named {@code total} will produce a FIELD_METADATA entry keyed by
      * {@code "totalCents"} and serialize as {@code "totalCents"} in
      * enriched JSON output.

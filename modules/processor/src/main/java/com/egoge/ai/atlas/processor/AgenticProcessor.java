@@ -3,8 +3,8 @@
  */
 package com.egoge.ai.atlas.processor;
 
-import com.egoge.ai.atlas.annotations.AgentVisible;
-import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+import com.egoge.ai.atlas.annotations.AgenticField;
+import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.egoge.ai.atlas.annotations.AgenticExposed;
 import com.egoge.ai.atlas.processor.generator.DtoGenerator;
 import com.egoge.ai.atlas.processor.generator.McpToolGenerator;
@@ -46,7 +46,7 @@ import java.util.Set;
  *
  * <p>Processing order:
  * <ol>
- *   <li>{@code @AgentVisibleClass} entities → DTO records</li>
+ *   <li>{@code @AgenticEntity} entities → DTO records</li>
  *   <li>{@code @AgenticExposed} services → MCP tools + REST controllers</li>
  * </ol>
  *
@@ -54,7 +54,7 @@ import java.util.Set;
  */
 @AutoService(Processor.class)
 @SupportedAnnotationTypes({
-        "com.egoge.ai.atlas.annotations.AgentVisibleClass",
+        "com.egoge.ai.atlas.annotations.AgenticEntity",
         "com.egoge.ai.atlas.annotations.AgenticExposed"
 })
 @javax.annotation.processing.SupportedOptions({
@@ -79,7 +79,7 @@ public class AgenticProcessor extends AbstractProcessor {
             return false;
         }
 
-        // Phase 1: Process @AgentVisibleClass entities → generate DTOs
+        // Phase 1: Process @AgenticEntity entities → generate DTOs
         processEntities(roundEnv);
 
         // Phase 2: Process @AgenticExposed services → generate MCP tools + REST controllers
@@ -102,11 +102,11 @@ public class AgenticProcessor extends AbstractProcessor {
     private void processEntities(RoundEnvironment roundEnv) {
         // Pass 1: Validate and register all entity models
         List<String> roundEntityKeys = new ArrayList<>();
-        for (var element : roundEnv.getElementsAnnotatedWith(AgentVisibleClass.class)) {
+        for (var element : roundEnv.getElementsAnnotatedWith(AgenticEntity.class)) {
             if (element.getKind() == ElementKind.INTERFACE) {
                 processingEnv.getMessager().printMessage(
                         Diagnostic.Kind.WARNING,
-                        "@AgentVisibleClass on interface " + element.getSimpleName()
+                        "@AgenticEntity on interface " + element.getSimpleName()
                                 + " is not supported — interfaces have no fields. Skipping.",
                         element
                 );
@@ -115,7 +115,7 @@ public class AgenticProcessor extends AbstractProcessor {
             if (element.getKind() == ElementKind.ENUM) {
                 processingEnv.getMessager().printMessage(
                         Diagnostic.Kind.WARNING,
-                        "@AgentVisibleClass on enum " + element.getSimpleName()
+                        "@AgenticEntity on enum " + element.getSimpleName()
                                 + " is not supported — use on concrete classes. Skipping.",
                         element
                 );
@@ -124,7 +124,7 @@ public class AgenticProcessor extends AbstractProcessor {
             if (element.getKind() != ElementKind.CLASS) {
                 processingEnv.getMessager().printMessage(
                         Diagnostic.Kind.ERROR,
-                        "@AgentVisibleClass can only be applied to classes",
+                        "@AgenticEntity can only be applied to classes",
                         element
                 );
                 continue;
@@ -136,7 +136,7 @@ public class AgenticProcessor extends AbstractProcessor {
             if (typeElement.getModifiers().contains(javax.lang.model.element.Modifier.ABSTRACT)) {
                 processingEnv.getMessager().printMessage(
                         Diagnostic.Kind.WARNING,
-                        "@AgentVisibleClass on abstract class " + typeElement.getSimpleName()
+                        "@AgenticEntity on abstract class " + typeElement.getSimpleName()
                                 + " — DTO will be generated but fromEntity() may not be callable directly",
                         typeElement
                 );
@@ -157,7 +157,7 @@ public class AgenticProcessor extends AbstractProcessor {
     }
 
     private void processEntity(TypeElement typeElement) {
-        var annotation = typeElement.getAnnotation(AgentVisibleClass.class);
+        var annotation = typeElement.getAnnotation(AgenticEntity.class);
         var fields = FieldScanner.scan(typeElement, processingEnv);
 
         emitPiiWarnings(typeElement);
@@ -165,8 +165,8 @@ public class AgenticProcessor extends AbstractProcessor {
         if (fields.isEmpty()) {
             processingEnv.getMessager().printMessage(
                     Diagnostic.Kind.WARNING,
-                    "@AgentVisibleClass on " + typeElement.getSimpleName()
-                            + " has no @AgentVisible fields — no DTO will be generated",
+                    "@AgenticEntity on " + typeElement.getSimpleName()
+                            + " has no @AgenticField fields — no DTO will be generated",
                     typeElement
             );
             return;
@@ -181,7 +181,7 @@ public class AgenticProcessor extends AbstractProcessor {
             if (previous != null) {
                 processingEnv.getMessager().printMessage(
                         Diagnostic.Kind.ERROR,
-                        "@AgentVisible name \"" + field.displayName()
+                        "@AgenticField name \"" + field.displayName()
                                 + "\" on field '" + field.name()
                                 + "' conflicts with field '" + previous
                                 + "' — metadata keys must be unique within "
@@ -451,7 +451,7 @@ public class AgenticProcessor extends AbstractProcessor {
         String patternsFile = processingEnv.getOptions().get("ai.atlas.pii.patterns.file");
         for (var enclosed : typeElement.getEnclosedElements()) {
             if (enclosed.getKind() == ElementKind.FIELD
-                    && enclosed.getAnnotation(AgentVisible.class) == null) {
+                    && enclosed.getAnnotation(AgenticField.class) == null) {
                 PiiDetector.check(
                         enclosed.getSimpleName().toString(),
                         enclosed,

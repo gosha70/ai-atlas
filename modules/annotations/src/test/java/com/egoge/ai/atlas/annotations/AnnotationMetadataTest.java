@@ -14,25 +14,25 @@ class AnnotationMetadataTest {
 
     @Test
     void agentVisible_hasFieldTarget() {
-        var target = AgentVisible.class.getAnnotation(java.lang.annotation.Target.class);
+        var target = AgenticField.class.getAnnotation(java.lang.annotation.Target.class);
         assertThat(target.value()).containsExactly(ElementType.FIELD);
     }
 
     @Test
     void agentVisible_hasRuntimeRetention() {
-        var retention = AgentVisible.class.getAnnotation(java.lang.annotation.Retention.class);
+        var retention = AgenticField.class.getAnnotation(java.lang.annotation.Retention.class);
         assertThat(retention.value()).isEqualTo(RetentionPolicy.RUNTIME);
     }
 
     @Test
     void agentVisibleClass_hasTypeTarget() {
-        var target = AgentVisibleClass.class.getAnnotation(java.lang.annotation.Target.class);
+        var target = AgenticEntity.class.getAnnotation(java.lang.annotation.Target.class);
         assertThat(target.value()).containsExactly(ElementType.TYPE);
     }
 
     @Test
     void agentVisibleClass_hasRuntimeRetention() {
-        var retention = AgentVisibleClass.class.getAnnotation(java.lang.annotation.Retention.class);
+        var retention = AgenticEntity.class.getAnnotation(java.lang.annotation.Retention.class);
         assertThat(retention.value()).isEqualTo(RetentionPolicy.RUNTIME);
     }
 
@@ -50,55 +50,55 @@ class AnnotationMetadataTest {
 
     @Test
     void agentVisible_defaultDescriptionIsEmpty() throws Exception {
-        var method = AgentVisible.class.getDeclaredMethod("description");
+        var method = AgenticField.class.getDeclaredMethod("description");
         assertThat(method.getDefaultValue()).isEqualTo("");
     }
 
     @Test
     void agentVisible_defaultSensitiveIsFalse() throws Exception {
-        var method = AgentVisible.class.getDeclaredMethod("sensitive");
+        var method = AgenticField.class.getDeclaredMethod("sensitive");
         assertThat(method.getDefaultValue()).isEqualTo(false);
     }
 
     @Test
     void agentVisible_defaultNameIsEmpty() throws Exception {
-        var method = AgentVisible.class.getDeclaredMethod("name");
+        var method = AgenticField.class.getDeclaredMethod("name");
         assertThat(method.getDefaultValue()).isEqualTo("");
     }
 
     @Test
     void agentVisible_defaultCheckCircularReferenceIsTrue() throws Exception {
-        var method = AgentVisible.class.getDeclaredMethod("checkCircularReference");
+        var method = AgenticField.class.getDeclaredMethod("checkCircularReference");
         assertThat(method.getDefaultValue()).isEqualTo(true);
     }
 
     @Test
     void agentVisibleClass_defaultNameIsEmpty() throws Exception {
-        var method = AgentVisibleClass.class.getDeclaredMethod("name");
+        var method = AgenticEntity.class.getDeclaredMethod("name");
         assertThat(method.getDefaultValue()).isEqualTo("");
     }
 
     @Test
     void agentVisibleClass_defaultDescriptionIsEmpty() throws Exception {
-        var method = AgentVisibleClass.class.getDeclaredMethod("description");
+        var method = AgenticEntity.class.getDeclaredMethod("description");
         assertThat(method.getDefaultValue()).isEqualTo("");
     }
 
     @Test
     void agentVisibleClass_defaultIncludeTypeInfoIsTrue() throws Exception {
-        var method = AgentVisibleClass.class.getDeclaredMethod("includeTypeInfo");
+        var method = AgenticEntity.class.getDeclaredMethod("includeTypeInfo");
         assertThat(method.getDefaultValue()).isEqualTo(true);
     }
 
     @Test
     void agentVisibleClass_defaultDtoNameIsEmpty() throws Exception {
-        var method = AgentVisibleClass.class.getDeclaredMethod("dtoName");
+        var method = AgenticEntity.class.getDeclaredMethod("dtoName");
         assertThat(method.getDefaultValue()).isEqualTo("");
     }
 
     @Test
     void agentVisibleClass_defaultPackageNameIsEmpty() throws Exception {
-        var method = AgentVisibleClass.class.getDeclaredMethod("packageName");
+        var method = AgenticEntity.class.getDeclaredMethod("packageName");
         assertThat(method.getDefaultValue()).isEqualTo("");
     }
 

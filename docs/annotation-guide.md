@@ -2,9 +2,9 @@
 
 This guide covers all AI-ATLAS annotations, their attributes, and practical usage patterns.
 
-## @AgentVisibleClass
+## @AgenticEntity
 
-Marks an entity class for DTO generation. The annotation processor generates a Java record containing only fields annotated with `@AgentVisible`.
+Marks an entity class for DTO generation. The annotation processor generates a Java record containing only fields annotated with `@AgenticField`.
 
 **Target:** Classes only (not interfaces or enums)
 **Retention:** Runtime (required for reflection by `AgentSafeSerializer`)
@@ -22,7 +22,7 @@ Marks an entity class for DTO generation. The annotation processor generates a J
 ### Example
 
 ```java
-@AgentVisibleClass(
+@AgenticEntity(
     name = "order",
     description = "A customer purchase order",
     dtoName = "OrderDto"  // optional — this is already the default
@@ -34,8 +34,8 @@ public class Order {
 
 ### What Gets Generated
 
-For each `@AgentVisibleClass`, the processor generates:
-- A DTO record with only `@AgentVisible` fields
+For each `@AgenticEntity`, the processor generates:
+- A DTO record with only `@AgenticField` fields
 - A `fromEntity()` null-safe factory method
 - `CLASS_NAME`, `CLASS_DESCRIPTION`, `INCLUDE_TYPE_INFO` constants
 - A `FIELD_METADATA` map with per-field descriptions, allowed values, and flags
@@ -43,7 +43,7 @@ For each `@AgentVisibleClass`, the processor generates:
 
 ---
 
-## @AgentVisible
+## @AgenticField
 
 Marks a field for inclusion in the generated DTO. Fields without this annotation are structurally excluded from all generated code.
 
@@ -64,22 +64,22 @@ Marks a field for inclusion in the generated DTO. Fields without this annotation
 ### Example
 
 ```java
-@AgentVisibleClass(name = "order")
+@AgenticEntity(name = "order")
 public class Order {
 
-    @AgentVisible(description = "Unique order identifier")
+    @AgenticField(description = "Unique order identifier")
     private Long id;
 
-    @AgentVisible(description = "Current order status")
+    @AgenticField(description = "Current order status")
     private OrderStatus status;  // enum values auto-extracted
 
-    @AgentVisible(
+    @AgenticField(
         description = "Total amount in cents",
         name = "totalCents"  // alias in enriched JSON
     )
     private long totalAmountCents;
 
-    @AgentVisible(
+    @AgenticField(
         description = "Payment method",
         allowedValues = {"CARD", "BANK_TRANSFER", "CASH"}
     )
@@ -101,17 +101,17 @@ If a field's type is a Java enum, the processor automatically extracts the enum 
 
 ### Inheritance
 
-The processor walks the superclass chain. `@AgentVisible` fields from parent classes are included in the generated DTO, with subclass fields taking precedence on name collisions.
+The processor walks the superclass chain. `@AgenticField` fields from parent classes are included in the generated DTO, with subclass fields taking precedence on name collisions.
 
 ### Entity Cross-References
 
-When an `@AgentVisible` field's type is another `@AgentVisibleClass` entity, the generated DTO maps it to the corresponding DTO type:
+When an `@AgenticField` field's type is another `@AgenticEntity` entity, the generated DTO maps it to the corresponding DTO type:
 
 ```java
-@AgentVisibleClass
+@AgenticEntity
 public class Customer {
-    @AgentVisible(description = "Customer ID") private Long id;
-    @AgentVisible(description = "Addresses") private List<Address> addresses;
+    @AgenticField(description = "Customer ID") private Long id;
+    @AgenticField(description = "Addresses") private List<Address> addresses;
 }
 ```
 
@@ -120,7 +120,7 @@ The generated `CustomerDto` contains `List<AddressDto>`, with `fromEntity()` map
 For raw or wildcard collection types, use the `type` hint:
 
 ```java
-@AgentVisible(description = "Addresses", type = Address.class)
+@AgenticField(description = "Addresses", type = Address.class)
 private Collection addresses;  // raw type — hint resolves element type
 ```
 
@@ -216,7 +216,7 @@ For each `@AgenticExposed` service, the processor generates:
 
 ## PII Detection
 
-The processor emits NOTE-level compiler diagnostics for fields that match known PII patterns but are not annotated with `@AgentVisible`. This is a heuristic safety net — the primary protection is the whitelist model itself.
+The processor emits NOTE-level compiler diagnostics for fields that match known PII patterns but are not annotated with `@AgenticField`. This is a heuristic safety net — the primary protection is the whitelist model itself.
 
 ### Default Patterns
 

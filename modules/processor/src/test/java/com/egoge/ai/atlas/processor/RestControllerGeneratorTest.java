@@ -24,11 +24,11 @@ class RestControllerGeneratorTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.Order",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Order {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -59,11 +59,11 @@ class RestControllerGeneratorTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.Product",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Product {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -94,8 +94,8 @@ class RestControllerGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Item {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -122,8 +122,8 @@ class RestControllerGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Item {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);

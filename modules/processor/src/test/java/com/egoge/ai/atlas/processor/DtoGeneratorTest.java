@@ -20,15 +20,15 @@ class DtoGeneratorTest {
                 """
                 package test;
 
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class MyEntity {
-                    @AgentVisible(description = "The ID")
+                    @AgenticField(description = "The ID")
                     private Long id;
 
-                    @AgentVisible(description = "The name")
+                    @AgenticField(description = "The name")
                     private String name;
 
                     private String secret;
@@ -83,15 +83,15 @@ class DtoGeneratorTest {
                 """
                 package test;
 
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass(dtoName = "ProductSummary", packageName = "test.api")
+                @AgenticEntity(dtoName = "ProductSummary", packageName = "test.api")
                 public class Product {
-                    @AgentVisible(description = "Product ID")
+                    @AgenticField(description = "Product ID")
                     private Long id;
 
-                    @AgentVisible(description = "Product title")
+                    @AgenticField(description = "Product title")
                     private String title;
 
                     public Long getId() { return id; }
@@ -113,7 +113,7 @@ class DtoGeneratorTest {
         assertThat(dto).contains("entity.getId()");
         assertThat(dto).contains("entity.getTitle()");
 
-        // Default class name when @AgentVisibleClass.name is empty
+        // Default class name when @AgenticEntity.name is empty
         assertThat(dto).contains("CLASS_NAME = \"Product\"");
     }
 
@@ -123,15 +123,15 @@ class DtoGeneratorTest {
                 """
                 package test;
 
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class Feature {
-                    @AgentVisible(description = "Whether the feature is active")
+                    @AgenticField(description = "Whether the feature is active")
                     private boolean active;
 
-                    @AgentVisible(description = "Feature name")
+                    @AgenticField(description = "Feature name")
                     private String name;
 
                     public boolean isActive() { return active; }
@@ -163,12 +163,12 @@ class DtoGeneratorTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.Task",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Task {
-                    @AgentVisible(description = "Task ID") private Long id;
-                    @AgentVisible(description = "Task priority") private Priority priority;
+                    @AgenticField(description = "Task ID") private Long id;
+                    @AgenticField(description = "Task priority") private Priority priority;
                     public Long getId() { return id; }
                     public Priority getPriority() { return priority; }
                 }
@@ -200,13 +200,13 @@ class DtoGeneratorTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.Invoice",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Invoice {
-                    @AgentVisible(name = "invoiceId", description = "Unique invoice identifier")
+                    @AgenticField(name = "invoiceId", description = "Unique invoice identifier")
                     private Long id;
-                    @AgentVisible(name = "totalCents", description = "Total amount in cents")
+                    @AgenticField(name = "totalCents", description = "Total amount in cents")
                     private Long total;
                     public Long getId() { return id; }
                     public Long getTotal() { return total; }
@@ -224,7 +224,7 @@ class DtoGeneratorTest {
         // Record params use Java field names (not display names)
         assertThat(dto).contains("record InvoiceDto(Long id, Long total)");
 
-        // FIELD_METADATA keys use display names from @AgentVisible(name=...)
+        // FIELD_METADATA keys use display names from @AgenticField(name=...)
         assertThat(dto).contains("Map.entry(\"invoiceId\"");
         assertThat(dto).contains("Map.entry(\"totalCents\"");
     }
@@ -234,11 +234,11 @@ class DtoGeneratorTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.Customer",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass(name = "customer", description = "A business customer", includeTypeInfo = false)
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity(name = "customer", description = "A business customer", includeTypeInfo = false)
                 public class Customer {
-                    @AgentVisible(description = "Customer ID") private Long id;
+                    @AgenticField(description = "Customer ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -261,12 +261,12 @@ class DtoGeneratorTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.Node",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Node {
-                    @AgentVisible(description = "Node ID") private Long id;
-                    @AgentVisible(description = "Node label", checkCircularReference = false) private String label;
+                    @AgenticField(description = "Node ID") private Long id;
+                    @AgenticField(description = "Node label", checkCircularReference = false) private String label;
                     public Long getId() { return id; }
                     public String getLabel() { return label; }
                 }
@@ -294,12 +294,12 @@ class DtoGeneratorTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.Account",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Account {
-                    @AgentVisible(description = "Account ID") private Long id;
-                    @AgentVisible(description = "Email address", sensitive = true) private String email;
+                    @AgenticField(description = "Account ID") private Long id;
+                    @AgenticField(description = "Email address", sensitive = true) private String email;
                     public Long getId() { return id; }
                     public String getEmail() { return email; }
                 }
@@ -324,11 +324,11 @@ class DtoGeneratorTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.Config",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Config {
-                    @AgentVisible(description = "Log level", allowedValues = {"DEBUG", "INFO", "WARN", "ERROR"})
+                    @AgenticField(description = "Log level", allowedValues = {"DEBUG", "INFO", "WARN", "ERROR"})
                     private String logLevel;
                     public String getLogLevel() { return logLevel; }
                 }
@@ -359,11 +359,11 @@ class DtoGeneratorTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.Ticket",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Ticket {
-                    @AgentVisible(description = "Ticket priority", allowedValues = {"LOW", "HIGH"})
+                    @AgenticField(description = "Ticket priority", allowedValues = {"LOW", "HIGH"})
                     private Priority priority;
                     public Priority getPriority() { return priority; }
                 }
@@ -395,11 +395,11 @@ class DtoGeneratorTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.Widget",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Widget {
-                    @AgentVisible(description = "Widget color", allowedValues = {})
+                    @AgenticField(description = "Widget color", allowedValues = {})
                     private Color color;
                     public Color getColor() { return color; }
                 }
@@ -425,18 +425,18 @@ class DtoGeneratorTest {
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
                 import java.util.List;
-                @AgentVisibleClass public class Parent {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "Children") private List<Child> children;
+                @AgenticEntity public class Parent {
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "Children") private List<Child> children;
                     public Long getId() { return id; }
                     public List<Child> getChildren() { return children; }
                 }""");
         JavaFileObject child = JavaFileObjects.forSourceString("test.Child", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Child {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "Parent ref") private Parent parent;
+                @AgenticEntity public class Child {
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "Parent ref") private Parent parent;
                     public Long getId() { return id; }
                     public Parent getParent() { return parent; }
                 }""");
@@ -459,19 +459,19 @@ class DtoGeneratorTest {
         JavaFileObject item = JavaFileObjects.forSourceString("test.Item", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Item {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }""");
         JavaFileObject container = JavaFileObjects.forSourceString("test.Container", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
                 import java.util.ArrayList;
-                @AgentVisibleClass public class Container {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "a") private ArrayList<Item> listItems;
-                    @AgentVisible(description = "b") private Iterable<Item> iterItems;
-                    @AgentVisible(description = "c") private Item[] arrItems;
+                @AgenticEntity public class Container {
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "a") private ArrayList<Item> listItems;
+                    @AgenticField(description = "b") private Iterable<Item> iterItems;
+                    @AgenticField(description = "c") private Item[] arrItems;
                     public Long getId() { return id; }
                     public ArrayList<Item> getListItems() { return listItems; }
                     public Iterable<Item> getIterItems() { return iterItems; }

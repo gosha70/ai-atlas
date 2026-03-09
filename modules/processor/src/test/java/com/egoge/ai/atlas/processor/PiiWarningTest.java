@@ -20,12 +20,12 @@ class PiiWarningTest {
                 """
                 package test;
 
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class Person {
-                    @AgentVisible(description = "Person ID")
+                    @AgenticField(description = "Person ID")
                     private Long id;
 
                     private String ssn;
@@ -49,12 +49,12 @@ class PiiWarningTest {
                 """
                 package test;
 
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class Account {
-                    @AgentVisible(description = "Account ID")
+                    @AgenticField(description = "Account ID")
                     private Long id;
 
                     private String password;
@@ -78,12 +78,12 @@ class PiiWarningTest {
                 """
                 package test;
 
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class Payment {
-                    @AgentVisible(description = "Payment ID")
+                    @AgenticField(description = "Payment ID")
                     private Long id;
 
                     private String creditCardNumber;
@@ -107,12 +107,12 @@ class PiiWarningTest {
                 """
                 package test;
 
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class Simple {
-                    @AgentVisible(description = "ID")
+                    @AgenticField(description = "ID")
                     private Long id;
 
                     private String description;

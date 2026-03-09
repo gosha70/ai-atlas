@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * Internal model representing an entity class annotated with
- * {@code @AgentVisibleClass}. Contains the entity's type information,
+ * {@code @AgenticEntity}. Contains the entity's type information,
  * class-level metadata for LLM context, and the list of whitelisted
  * fields for DTO generation.
  */
@@ -17,7 +17,7 @@ public record EntityModel(
     ClassName sourceClassName,
     String dtoName,
     String dtoPackageName,
-    /* Display name from @AgentVisibleClass.name (or simple class name) */
+    /* Display name from @AgenticEntity.name (or simple class name) */
     String displayName,
     String classDescription,
     /* Whether to include typeInfo block in enriched JSON */

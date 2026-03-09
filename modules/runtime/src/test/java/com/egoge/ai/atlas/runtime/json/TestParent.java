@@ -3,24 +3,24 @@
  */
 package com.egoge.ai.atlas.runtime.json;
 
-import com.egoge.ai.atlas.annotations.AgentVisible;
-import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+import com.egoge.ai.atlas.annotations.AgenticField;
+import com.egoge.ai.atlas.annotations.AgenticEntity;
 
 import java.util.List;
 
 /**
  * Test entity with circular reference for serializer tests.
  */
-@AgentVisibleClass(name = "parent", description = "A parent entity")
+@AgenticEntity(name = "parent", description = "A parent entity")
 public class TestParent {
 
-    @AgentVisible(description = "Parent ID")
+    @AgenticField(description = "Parent ID")
     private Long id;
 
-    @AgentVisible(description = "Child reference")
+    @AgenticField(description = "Child reference")
     private TestChild child;
 
-    @AgentVisible(description = "Children list")
+    @AgenticField(description = "Children list")
     private List<TestChild> children;
 
     public Long getId() { return id; }

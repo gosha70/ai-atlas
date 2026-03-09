@@ -15,14 +15,14 @@ import static com.google.testing.compile.Compiler.javac;
 class EmptyEntityTest {
 
     @Test
-    void warnsWhenNoAgentVisibleFields() {
+    void warnsWhenNoAgenticFieldFields() {
         JavaFileObject source = JavaFileObjects.forSourceString("test.EmptyEntity",
                 """
                 package test;
 
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class EmptyEntity {
                     private String name;
                     private String email;
@@ -38,7 +38,7 @@ class EmptyEntityTest {
 
         assertThat(compilation).succeeded();
         assertThat(compilation).hadWarningContaining(
-                "has no @AgentVisible fields — no DTO will be generated");
+                "has no @AgenticField fields — no DTO will be generated");
     }
 
     @Test
@@ -47,9 +47,9 @@ class EmptyEntityTest {
                 """
                 package test;
 
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class EmptyEntity2 {
                     private String internalField;
 
@@ -66,7 +66,7 @@ class EmptyEntityTest {
         // No DTO should be generated
         compilation.generatedSourceFiles().forEach(f -> {
             assert !f.getName().contains("EmptyEntity2Dto") :
-                    "Should not generate DTO for entity with no @AgentVisible fields";
+                    "Should not generate DTO for entity with no @AgenticField fields";
         });
     }
 }

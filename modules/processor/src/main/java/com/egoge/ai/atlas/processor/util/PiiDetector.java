@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 /**
  * Heuristic detector for fields that may contain PII.
  * Emits compiler NOTE diagnostics for suspicious field names
- * that are NOT annotated with {@code @AgentVisible} (which would be
+ * that are NOT annotated with {@code @AgenticField} (which would be
  * an intentional inclusion), helping developers catch accidental omissions
  * or confirm intentional exclusions.
  *
@@ -67,7 +67,7 @@ public final class PiiDetector {
           Diagnostic.Kind.NOTE,
           String.format(
               "[ai-atlas] Field '%s' matches PII pattern. "
-                  + "It is excluded from the generated DTO (not annotated with @AgentVisible). "
+                  + "It is excluded from the generated DTO (not annotated with @AgenticField). "
                   + "If this is intentional, no action needed.",
               fieldName
           ),

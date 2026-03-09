@@ -52,7 +52,7 @@ public class AgenticAutoConfiguration implements WebMvcConfigurer {
 
     /**
      * Registers the Hibernate-safe Jackson serialization module for
-     * {@code @AgentVisibleClass}-annotated entities.
+     * {@code @AgenticEntity}-annotated entities.
      */
     @Bean
     @ConditionalOnClass(name = "com.fasterxml.jackson.databind.ObjectMapper")

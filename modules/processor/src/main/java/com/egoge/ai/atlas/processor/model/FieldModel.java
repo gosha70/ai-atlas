@@ -8,14 +8,14 @@ import com.palantir.javapoet.TypeName;
 import java.util.List;
 
 /**
- * Internal model representing a single {@code @AgentVisible} field
+ * Internal model representing a single {@code @AgenticField} field
  * within an entity class. Used by generators to produce DTO components
  * and field metadata for enriched JSON serialization.
  */
 public record FieldModel(
     /* Java field name (e.g., "status") */
     String name,
-    /* Display name from @AgentVisible.name, or field name if empty */
+    /* Display name from @AgenticField.name, or field name if empty */
     String displayName,
     TypeName typeName,
     String description,
@@ -30,7 +30,7 @@ public record FieldModel(
     CollectionKind collectionKind,
     /* Element type for collections/arrays (null if NONE) */
     TypeName elementTypeName,
-    /* User-declared element type from @AgentVisible(type = ...), null if void.class */
+    /* User-declared element type from @AgenticField(type = ...), null if void.class */
     TypeName hintTypeName
 ) {
 

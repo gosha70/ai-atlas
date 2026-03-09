@@ -3,26 +3,26 @@
  */
 package com.egoge.ai.atlas.demo.entity;
 
-import com.egoge.ai.atlas.annotations.AgentVisible;
-import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+import com.egoge.ai.atlas.annotations.AgenticField;
+import com.egoge.ai.atlas.annotations.AgenticEntity;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Demo entity representing a customer order.
- * Only fields annotated with {@code @AgentVisible} will appear
+ * Only fields annotated with {@code @AgenticField} will appear
  * in the generated {@code OrderDto} record.
  *
  * <p>Demonstrates:
  * <ul>
  *   <li>Enum field auto-detection for validValues</li>
- *   <li>Custom field name via {@code @AgentVisible(name = ...)}</li>
+ *   <li>Custom field name via {@code @AgenticField(name = ...)}</li>
  *   <li>Class-level metadata for enriched JSON output</li>
  *   <li>Bidirectional relationship with {@link OrderAction} (circular reference handling)</li>
  * </ul>
  */
-@AgentVisibleClass(
+@AgenticEntity(
         name = "order",
         description = "A customer order with status tracking and item summary"
 )
@@ -36,19 +36,19 @@ public class Order {
         PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED
     }
 
-    @AgentVisible(description = "Unique order identifier")
+    @AgenticField(description = "Unique order identifier")
     private Long id;
 
-    @AgentVisible(description = "Current order status")
+    @AgenticField(description = "Current order status")
     private OrderStatus status;
 
-    @AgentVisible(name = "totalCents", description = "Total order amount in cents")
+    @AgenticField(name = "totalCents", description = "Total order amount in cents")
     private long totalAmountCents;
 
-    @AgentVisible(description = "Number of items in the order")
+    @AgenticField(description = "Number of items in the order")
     private int itemCount;
 
-    @AgentVisible(description = "Actions performed on this order")
+    @AgenticField(description = "Actions performed on this order")
     private List<OrderAction> actions = new ArrayList<>();
 
     // PII fields — intentionally NOT annotated

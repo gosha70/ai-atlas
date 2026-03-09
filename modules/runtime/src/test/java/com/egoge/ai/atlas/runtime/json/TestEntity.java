@@ -3,13 +3,13 @@
  */
 package com.egoge.ai.atlas.runtime.json;
 
-import com.egoge.ai.atlas.annotations.AgentVisible;
-import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+import com.egoge.ai.atlas.annotations.AgenticField;
+import com.egoge.ai.atlas.annotations.AgenticEntity;
 
 /**
  * Test entity for serializer tests.
  */
-@AgentVisibleClass(
+@AgenticEntity(
         name = "widget",
         description = "A test widget"
 )
@@ -19,19 +19,19 @@ public class TestEntity {
         ACTIVE, INACTIVE
     }
 
-    @AgentVisible(description = "Widget ID")
+    @AgenticField(description = "Widget ID")
     private Long id;
 
-    @AgentVisible(description = "Widget name")
+    @AgenticField(description = "Widget name")
     private String name;
 
-    @AgentVisible(description = "Widget status")
+    @AgenticField(description = "Widget status")
     private Status status;
 
-    @AgentVisible(name = "alias", description = "Display name", checkCircularReference = false)
+    @AgenticField(name = "alias", description = "Display name", checkCircularReference = false)
     private String displayName;
 
-    @AgentVisible(description = "Sensitive field", sensitive = true)
+    @AgenticField(description = "Sensitive field", sensitive = true)
     private String secret;
 
     // NOT annotated — should be excluded

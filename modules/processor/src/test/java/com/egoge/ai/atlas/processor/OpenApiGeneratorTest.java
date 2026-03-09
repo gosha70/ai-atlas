@@ -24,12 +24,12 @@ class OpenApiGeneratorTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.Order",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Order {
-                    @AgentVisible(description = "Order ID") private Long id;
-                    @AgentVisible(description = "Status") private String status;
+                    @AgenticField(description = "Order ID") private Long id;
+                    @AgenticField(description = "Status") private String status;
                     public Long getId() { return id; }
                     public String getStatus() { return status; }
                 }
@@ -71,12 +71,12 @@ class OpenApiGeneratorTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.Product",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Product {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "Name") private String name;
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "Name") private String name;
                     public Long getId() { return id; }
                     public String getName() { return name; }
                 }
@@ -109,11 +109,11 @@ class OpenApiGeneratorTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.Item",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -148,11 +148,11 @@ class OpenApiGeneratorTest {
         JavaFileObject entity1 = JavaFileObjects.forSourceString("test.Cat",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Cat {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -160,11 +160,11 @@ class OpenApiGeneratorTest {
         JavaFileObject entity2 = JavaFileObjects.forSourceString("test.Dog",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Dog {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -215,12 +215,12 @@ class OpenApiGeneratorTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.Task",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Task {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "Priority level") private Priority priority;
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "Priority level") private Priority priority;
                     public Long getId() { return id; }
                     public Priority getPriority() { return priority; }
                 }
@@ -255,11 +255,11 @@ class OpenApiGeneratorTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.Widget",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass(description = "A configurable widget component")
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity(description = "A configurable widget component")
                 public class Widget {
-                    @AgentVisible(description = "Widget ID") private Long id;
+                    @AgenticField(description = "Widget ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -290,8 +290,8 @@ class OpenApiGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Item {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);

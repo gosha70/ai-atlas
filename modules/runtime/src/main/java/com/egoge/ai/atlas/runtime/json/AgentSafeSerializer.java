@@ -3,8 +3,8 @@
  */
 package com.egoge.ai.atlas.runtime.json;
 
-import com.egoge.ai.atlas.annotations.AgentVisible;
-import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+import com.egoge.ai.atlas.annotations.AgenticField;
+import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.SerializerProvider;
@@ -18,7 +18,7 @@ import java.util.Collection;
 import java.util.Comparator;
 
 /**
- * Jackson serializer that safely converts {@code @AgentVisibleClass}-annotated
+ * Jackson serializer that safely converts {@code @AgenticEntity}-annotated
  * JPA entities to JSON, handling Hibernate proxies, PersistentCollections,
  * circular references, and enriched metadata output.
  *
@@ -26,7 +26,7 @@ import java.util.Comparator;
  * <ul>
  *   <li>Unwraps Hibernate proxies via {@link HibernateSupport}</li>
  *   <li>Detects circular references via {@link SerializationContext}</li>
- *   <li>Only serializes {@code @AgentVisible} fields (whitelist model)</li>
+ *   <li>Only serializes {@code @AgenticField} fields (whitelist model)</li>
  *   <li>In enriched mode, outputs {@code {value, description, validValues}} per field</li>
  *   <li>Skips uninitialized lazy fields instead of throwing LazyInitializationException</li>
  * </ul>
@@ -102,7 +102,7 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
 
     private void writeObject(Object value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
         Class<?> clazz = value.getClass();
-        AgentVisibleClass classAnnotation = clazz.getAnnotation(AgentVisibleClass.class);
+        AgenticEntity classAnnotation = clazz.getAnnotation(AgenticEntity.class);
 
         gen.writeStartObject();
 
@@ -111,9 +111,9 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
             writeTypeInfo(gen, clazz, classAnnotation);
         }
 
-        // Collect @AgentVisible getters sorted by field name for deterministic output
+        // Collect @AgenticField getters sorted by field name for deterministic output
         Method[] methods = Arrays.stream(clazz.getMethods())
-                .filter(this::isAgentVisibleGetter)
+                .filter(this::isAgenticFieldGetter)
                 .sorted(Comparator.comparing(m -> {
                     String name = extractFieldName(m);
                     return name != null ? name : m.getName();
@@ -121,8 +121,8 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
                 .toArray(Method[]::new);
 
         for (Method method : methods) {
-            // @AgentVisible targets FIELD only — resolve from the corresponding field
-            AgentVisible fieldAnnotation = findFieldAnnotation(clazz, method);
+            // @AgenticField targets FIELD only — resolve from the corresponding field
+            AgenticField fieldAnnotation = findFieldAnnotation(clazz, method);
             if (fieldAnnotation == null) {
                 continue;
             }
@@ -158,7 +158,7 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
         gen.writeEndObject();
     }
 
-    private void writeTypeInfo(JsonGenerator gen, Class<?> clazz, AgentVisibleClass annotation) throws IOException {
+    private void writeTypeInfo(JsonGenerator gen, Class<?> clazz, AgenticEntity annotation) throws IOException {
         gen.writeObjectFieldStart("typeInfo");
         String name = annotation.name().isEmpty() ? clazz.getSimpleName() : annotation.name();
         gen.writeStringField("name", name);
@@ -170,7 +170,7 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
 
     private void writeEnrichedField(JsonGenerator gen, SerializerProvider serializers,
                                      String fieldName, Object fieldValue,
-                                     AgentVisible annotation, Method method) throws IOException {
+                                     AgenticField annotation, Method method) throws IOException {
         gen.writeObjectFieldStart(fieldName);
 
         // Write value
@@ -179,7 +179,7 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
             gen.writeNull();
         } else if (fieldValue instanceof Collection<?> coll) {
             writeCollection(gen, serializers, coll);
-        } else if (isAgentVisibleType(fieldValue.getClass())) {
+        } else if (isAgenticFieldType(fieldValue.getClass())) {
             serialize(fieldValue, gen, serializers);
         } else {
             serializers.defaultSerializeValue(fieldValue, gen);
@@ -212,7 +212,7 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
             gen.writeNull();
         } else if (fieldValue instanceof Collection<?> coll) {
             writeCollection(gen, serializers, coll);
-        } else if (isAgentVisibleType(fieldValue.getClass())) {
+        } else if (isAgenticFieldType(fieldValue.getClass())) {
             serialize(fieldValue, gen, serializers);
         } else {
             serializers.defaultSerializeValue(fieldValue, gen);
@@ -229,7 +229,7 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
             } else if (SerializationContext.containsInstance(resolved)) {
                 LOG.debug("[ai-atlas] Skipping circular reference in collection");
                 continue;
-            } else if (isAgentVisibleType(resolved.getClass())) {
+            } else if (isAgenticFieldType(resolved.getClass())) {
                 serialize(resolved, gen, serializers);
             } else {
                 serializers.defaultSerializeValue(resolved, gen);
@@ -240,9 +240,9 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
 
     /**
      * Checks if a method is a getter whose corresponding field is
-     * annotated with {@code @AgentVisible}.
+     * annotated with {@code @AgenticField}.
      */
-    private boolean isAgentVisibleGetter(Method method) {
+    private boolean isAgenticFieldGetter(Method method) {
         if (method.getParameterCount() != 0) {
             return false;
         }
@@ -257,9 +257,9 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
     }
 
     /**
-     * Finds the @AgentVisible annotation on the field corresponding to a getter method.
+     * Finds the @AgenticField annotation on the field corresponding to a getter method.
      */
-    private AgentVisible findFieldAnnotation(Class<?> clazz, Method getter) {
+    private AgenticField findFieldAnnotation(Class<?> clazz, Method getter) {
         String fieldName = extractFieldName(getter);
         if (fieldName == null) {
             return null;
@@ -270,7 +270,7 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
         while (current != null && current != Object.class) {
             try {
                 var field = current.getDeclaredField(fieldName);
-                return field.getAnnotation(AgentVisible.class);
+                return field.getAnnotation(AgenticField.class);
             } catch (NoSuchFieldException e) {
                 current = current.getSuperclass();
             }
@@ -278,7 +278,7 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
         return null;
     }
 
-    private String resolveFieldName(Method method, AgentVisible annotation) {
+    private String resolveFieldName(Method method, AgenticField annotation) {
         if (!annotation.name().isEmpty()) {
             return annotation.name();
         }
@@ -295,8 +295,8 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
         return null;
     }
 
-    private static boolean isAgentVisibleType(Class<?> clazz) {
-        return clazz.isAnnotationPresent(AgentVisibleClass.class);
+    private static boolean isAgenticFieldType(Class<?> clazz) {
+        return clazz.isAnnotationPresent(AgenticEntity.class);
     }
 
     @Override

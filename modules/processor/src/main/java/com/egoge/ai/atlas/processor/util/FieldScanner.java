@@ -3,7 +3,7 @@
  */
 package com.egoge.ai.atlas.processor.util;
 
-import com.egoge.ai.atlas.annotations.AgentVisible;
+import com.egoge.ai.atlas.annotations.AgenticField;
 import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.egoge.ai.atlas.processor.model.FieldModel.CollectionKind;
 import com.palantir.javapoet.TypeName;
@@ -33,7 +33,7 @@ import java.util.Set;
 
 /**
  * Scans a TypeElement and its superclass chain for fields annotated
- * with {@code @AgentVisible} and converts them to {@link FieldModel} instances.
+ * with {@code @AgenticField} and converts them to {@link FieldModel} instances.
  * Detects enum field types, collection/iterable/array types, and extracts
  * their element types for cross-entity DTO mapping.
  */
@@ -44,7 +44,7 @@ public final class FieldScanner {
 
   /**
    * Scans the given type element and its entire superclass chain
-   * for {@code @AgentVisible} fields. Fields from supertypes appear
+   * for {@code @AgenticField} fields. Fields from supertypes appear
    * before subtype fields. Duplicate field names are skipped (subtype wins).
    *
    * @param typeElement   the entity class to scan
@@ -76,7 +76,7 @@ public final class FieldScanner {
         if (enclosed.getKind() != ElementKind.FIELD) {
           continue;
         }
-        AgentVisible annotation = enclosed.getAnnotation(AgentVisible.class);
+        AgenticField annotation = enclosed.getAnnotation(AgenticField.class);
         if (annotation == null) {
           continue;
         }
@@ -134,7 +134,7 @@ public final class FieldScanner {
             }
           }
 
-          // Read @AgentVisible(type = ...) hint via MirroredTypeException
+          // Read @AgenticField(type = ...) hint via MirroredTypeException
           TypeMirror hintMirror = resolveTypeHintMirror(annotation);
           TypeName hintTypeName = hintMirror != null ? TypeName.get(hintMirror) : null;
 
@@ -144,7 +144,7 @@ public final class FieldScanner {
           if (hintTypeName != null && collectionKind == CollectionKind.NONE) {
             messager.printMessage(
                 Diagnostic.Kind.WARNING,
-                "@AgentVisible(type = ...) on non-collection field '"
+                "@AgenticField(type = ...) on non-collection field '"
                     + fieldName + "' has no effect — hint is only used for collection element types",
                 field
             );
@@ -163,7 +163,7 @@ public final class FieldScanner {
               if (!typeUtils.isAssignable(erasedElement, erasedHint)) {
                 messager.printMessage(
                     Diagnostic.Kind.ERROR,
-                    "@AgentVisible(type = " + hintMirror + ") is not assignable from "
+                    "@AgenticField(type = " + hintMirror + ") is not assignable from "
                         + "collection element type " + elementMirror + " on field '"
                         + fieldName + "' — generated code would cast "
                         + elementMirror + " to " + hintMirror
@@ -196,12 +196,12 @@ public final class FieldScanner {
   }
 
   /**
-   * Reads the {@code type()} attribute from {@code @AgentVisible}, handling
+   * Reads the {@code type()} attribute from {@code @AgenticField}, handling
    * {@code MirroredTypeException} as required by JSR 269.
    *
    * @return the hint TypeMirror, or null if {@code void.class} (the default)
    */
-  private static TypeMirror resolveTypeHintMirror(AgentVisible annotation) {
+  private static TypeMirror resolveTypeHintMirror(AgenticField annotation) {
     try {
       Class<?> hintClass = annotation.type();
       if (hintClass == void.class) {

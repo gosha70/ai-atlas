@@ -32,12 +32,12 @@ import java.util.stream.StreamSupport;
 
 /**
  * Generates Java record DTOs from {@link EntityModel} instances.
- * Each generated record contains only the whitelisted {@code @AgentVisible}
+ * Each generated record contains only the whitelisted {@code @AgenticField}
  * fields, a static {@code fromEntity()} factory method for null-safe mapping,
  * and static metadata constants for enriched JSON serialization.
  *
  * <p>When a field's type (or collection/array element type) is another registered
- * {@code @AgentVisibleClass} entity, the generated DTO uses the corresponding
+ * {@code @AgenticEntity} entity, the generated DTO uses the corresponding
  * DTO type and maps through {@code XxxDto.fromEntity()} in the factory method.
  * Bidirectional entity relationships are handled via ThreadLocal-based cycle
  * detection to prevent infinite recursion.
@@ -305,12 +305,12 @@ public final class DtoGenerator {
   // --- Entity reference resolution helpers ---
 
   /**
-   * Info about a field that references another @AgentVisibleClass entity.
+   * Info about a field that references another @AgenticEntity entity.
    */
   private record EntityRefInfo(ClassName dtoClass, ClassName entityClass, CollectionKind collectionKind) {}
 
   /**
-   * Checks if a field references another registered @AgentVisibleClass entity
+   * Checks if a field references another registered @AgenticEntity entity
    * (directly, as a collection/iterable element, or as an array component).
    * Uses {@link FieldModel#collectionKind()} which was resolved via
    * {@code TypeUtils.isAssignable()} in the FieldScanner (hierarchy-aware).
@@ -341,7 +341,7 @@ public final class DtoGenerator {
       }
     }
 
-    // Fallback: use @AgentVisible(type = ...) hint for raw/unresolvable collections
+    // Fallback: use @AgenticField(type = ...) hint for raw/unresolvable collections
     TypeName hintType = field.hintTypeName();
     if (hintType instanceof ClassName hintClassName) {
       EntityModel ref = entityRegistry.get(hintClassName.canonicalName());

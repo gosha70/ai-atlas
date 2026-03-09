@@ -9,22 +9,22 @@ All notable changes to this project will be documented in this file.
 ## [1.1.0] — 2026-03-05
 
 ### Annotations
-- `@AgentVisible` — added `name` attribute for custom display names in metadata and enriched JSON
-- `@AgentVisible` — added `checkCircularReference` attribute (default `true`) for controlling circular reference detection during serialization
-- `@AgentVisible` — added `allowedValues` attribute for explicit value constraints on non-enum fields
-- `@AgentVisibleClass` — added `name` attribute for entity display name in enriched JSON `typeInfo` block
-- `@AgentVisibleClass` — added `description` attribute for class-level descriptions
-- `@AgentVisibleClass` — added `includeTypeInfo` attribute (default `true`) for controlling `typeInfo` block in enriched output
+- `@AgenticField` — added `name` attribute for custom display names in metadata and enriched JSON
+- `@AgenticField` — added `checkCircularReference` attribute (default `true`) for controlling circular reference detection during serialization
+- `@AgenticField` — added `allowedValues` attribute for explicit value constraints on non-enum fields
+- `@AgenticEntity` — added `name` attribute for entity display name in enriched JSON `typeInfo` block
+- `@AgenticEntity` — added `description` attribute for class-level descriptions
+- `@AgenticEntity` — added `includeTypeInfo` attribute (default `true`) for controlling `typeInfo` block in enriched output
 
 ### Processor
 - **Compile-time metadata** — generated DTOs now include `FieldMeta` nested record, `CLASS_NAME`, `CLASS_DESCRIPTION`, `INCLUDE_TYPE_INFO` constants, and `FIELD_METADATA` map
 - **Enum field detection** — enum field types are auto-detected; their constant names are extracted into `FIELD_METADATA.validValues` and OpenAPI `enum` constraints
-- **Duplicate name validation** — compile error emitted when two `@AgentVisible` fields share the same display name within a class
+- **Duplicate name validation** — compile error emitted when two `@AgenticField` fields share the same display name within a class
 - **OpenAPI enrichment** — class descriptions used in schema docs; enum constraints in field schemas
 - **Externalised PII patterns** — default PII detection patterns moved from hardcoded regex to `META-INF/ai-atlas/pii-patterns.conf` resource file; customers can replace the defaults with a custom file via `-Aai.atlas.pii.patterns.file=path`
 
 ### Runtime
-- **AgentSafeModule** — Jackson module that registers the `AgentSafeSerializer` for all `@AgentVisibleClass` entities
+- **AgentSafeModule** — Jackson module that registers the `AgentSafeSerializer` for all `@AgenticEntity` entities
 - **AgentSafeSerializer** — Hibernate-safe JSON serializer with enriched and flat output modes, circular reference detection, and PII-safe whitelisting
 - **HibernateSupport** — reflection-based Hibernate proxy unwrapping and uninitialized collection handling (no compile dependency on Hibernate)
 - **SerializationContext** — ThreadLocal-based circular reference tracker using object identity
@@ -46,16 +46,16 @@ All notable changes to this project will be documented in this file.
 Initial release of AI-ATLAS (AI Annotation-Driven Tooling & Layered API Synthesis).
 
 ### Annotations (`modules/annotations`)
-- `@AgentVisible` — field-level annotation for DTO inclusion with `description` and `sensitive` attributes
-- `@AgentVisibleClass` — class-level annotation triggering DTO generation with `dtoName` and `packageName` overrides
+- `@AgenticField` — field-level annotation for DTO inclusion with `description` and `sensitive` attributes
+- `@AgenticEntity` — class-level annotation triggering DTO generation with `dtoName` and `packageName` overrides
 - `@AgenticExposed` — type/method-level annotation triggering MCP tool + REST controller generation with `toolName`, `description`, and `returnType` attributes
 
 ### Annotation Processor (`modules/processor`)
-- **DTO Generator** — generates Java record DTOs with only `@AgentVisible` fields and a null-safe `fromEntity()` factory method
+- **DTO Generator** — generates Java record DTOs with only `@AgenticField` fields and a null-safe `fromEntity()` factory method
 - **MCP Tool Generator** — generates Spring AI `@Tool`-annotated classes that delegate to the original service and map entity responses to DTOs
 - **REST Controller Generator** — generates `@RestController` classes with `@GetMapping`/`@PostMapping` endpoints returning PII-safe DTOs
 - **OpenAPI Generator** — generates `META-INF/openapi/openapi.json` (OpenAPI 3.0.3) with paths from `@AgenticExposed` methods and schemas from entity models
-- **Superclass chain walking** — inherited `@AgentVisible` fields from parent classes are included in generated DTOs
+- **Superclass chain walking** — inherited `@AgenticField` fields from parent classes are included in generated DTOs
 - **Edge case handling** — interfaces and enums produce warnings (skipped), abstract classes produce warnings but still generate DTOs, static inner classes fully supported
 - **PII detection** — heuristic warnings for fields matching patterns like `ssn`, `password`, `creditCard`
 - **Configurable PII patterns** — additional patterns via `-Aai.atlas.pii.patterns=keyword1,keyword2`

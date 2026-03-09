@@ -24,17 +24,17 @@ class EntityRefMappingTest {
         JavaFileObject item = JavaFileObjects.forSourceString("test.Item", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Item {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }""");
         JavaFileObject box = JavaFileObjects.forSourceString("test.Box", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
                 import java.util.List;
-                @AgentVisibleClass public class Box {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "items") private List<? extends Item> items;
+                @AgenticEntity public class Box {
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "items") private List<? extends Item> items;
                     public Long getId() { return id; }
                     public List<? extends Item> getItems() { return items; }
                 }""");
@@ -52,8 +52,8 @@ class EntityRefMappingTest {
         JavaFileObject item = JavaFileObjects.forSourceString("test.Item", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Item {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }""");
         JavaFileObject itemBag = JavaFileObjects.forSourceString("test.ItemBag", """
@@ -64,9 +64,9 @@ class EntityRefMappingTest {
         JavaFileObject holder = JavaFileObjects.forSourceString("test.Holder", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Holder {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "bag") private ItemBag bag;
+                @AgenticEntity public class Holder {
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "bag") private ItemBag bag;
                     public Long getId() { return id; }
                     public ItemBag getBag() { return bag; }
                 }""");
@@ -86,9 +86,9 @@ class EntityRefMappingTest {
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
                 import java.util.List;
-                @AgentVisibleClass public class Misc {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "wild") private List<?> wild;
+                @AgenticEntity public class Misc {
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "wild") private List<?> wild;
                     public Long getId() { return id; }
                     public List<?> getWild() { return wild; }
                 }""");
@@ -108,17 +108,17 @@ class EntityRefMappingTest {
         JavaFileObject item = JavaFileObjects.forSourceString("test.Item", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Item {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }""");
         JavaFileObject holder = JavaFileObjects.forSourceString("test.Holder", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
                 import java.util.Collection;
-                @AgentVisibleClass public class Holder {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "items", type = Item.class)
+                @AgenticEntity public class Holder {
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "items", type = Item.class)
                     @SuppressWarnings("rawtypes")
                     private Collection items;
                     public Long getId() { return id; }
@@ -140,9 +140,9 @@ class EntityRefMappingTest {
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
                 import java.util.Collection;
-                @AgentVisibleClass public class Misc {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "stuff")
+                @AgenticEntity public class Misc {
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "stuff")
                     @SuppressWarnings("rawtypes")
                     private Collection stuff;
                     public Long getId() { return id; }
@@ -164,15 +164,15 @@ class EntityRefMappingTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.Bad", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Bad {
-                    @AgentVisible(description = "ID", type = Bad.class) private Long id;
+                @AgenticEntity public class Bad {
+                    @AgenticField(description = "ID", type = Bad.class) private Long id;
                     public Long getId() { return id; }
                 }""");
 
         Compilation compilation = javac().withProcessors(new AgenticProcessor()).compile(entity);
         CompilationSubject.assertThat(compilation).succeeded();
         CompilationSubject.assertThat(compilation).hadWarningContaining(
-                "@AgentVisible(type = ...) on non-collection field");
+                "@AgenticField(type = ...) on non-collection field");
     }
 
     @Test
@@ -180,24 +180,24 @@ class EntityRefMappingTest {
         JavaFileObject item = JavaFileObjects.forSourceString("test.Item", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Item {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }""");
         JavaFileObject other = JavaFileObjects.forSourceString("test.Other", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Other {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Other {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }""");
         JavaFileObject holder = JavaFileObjects.forSourceString("test.Holder", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
                 import java.util.List;
-                @AgentVisibleClass public class Holder {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "items", type = Other.class)
+                @AgenticEntity public class Holder {
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "items", type = Other.class)
                     private List<Item> items;
                     public Long getId() { return id; }
                     public List<Item> getItems() { return items; }
@@ -217,17 +217,17 @@ class EntityRefMappingTest {
         JavaFileObject base = JavaFileObjects.forSourceString("test.Base", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Base {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Base {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }""");
         JavaFileObject holder = JavaFileObjects.forSourceString("test.Holder", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
                 import java.util.Collection;
-                @AgentVisibleClass public class Holder {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "items", type = Base.class)
+                @AgenticEntity public class Holder {
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "items", type = Base.class)
                     @SuppressWarnings("rawtypes")
                     private Collection items;
                     public Long getId() { return id; }
@@ -248,24 +248,24 @@ class EntityRefMappingTest {
         JavaFileObject base = JavaFileObjects.forSourceString("test.Base", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Base {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Base {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }""");
         JavaFileObject internal = JavaFileObjects.forSourceString("test.Internal", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Internal extends Base {
-                    @AgentVisible(description = "label") private String label;
+                @AgenticEntity public class Internal extends Base {
+                    @AgenticField(description = "label") private String label;
                     public String getLabel() { return label; }
                 }""");
         JavaFileObject holder = JavaFileObjects.forSourceString("test.Holder", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
                 import java.util.List;
-                @AgentVisibleClass public class Holder {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "items", type = Internal.class)
+                @AgenticEntity public class Holder {
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "items", type = Internal.class)
                     private List<Base> items;
                     public Long getId() { return id; }
                     public List<Base> getItems() { return items; }
@@ -284,21 +284,21 @@ class EntityRefMappingTest {
         JavaFileObject base = JavaFileObjects.forSourceString("test.Base", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Base {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Base {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }""");
         JavaFileObject internal = JavaFileObjects.forSourceString("test.Internal", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Internal extends Base {}
+                @AgenticEntity public class Internal extends Base {}
                 """);
         JavaFileObject holder = JavaFileObjects.forSourceString("test.Holder", """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Holder {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "items", type = Internal.class)
+                @AgenticEntity public class Holder {
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "items", type = Internal.class)
                     private Base[] items;
                     public Long getId() { return id; }
                     public Base[] getItems() { return items; }

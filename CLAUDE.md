@@ -20,7 +20,7 @@
 ├── modules/
 │   ├── annotations/                 # Annotation definitions (zero dependencies)
 │   │   └── src/main/java/
-│   │       └── .../annotations/     # @AgenticExposed, @AgentVisible, etc.
+│   │       └── .../annotations/     # @AgenticExposed, @AgenticField, etc.
 │   ├── processor/                   # JSR 269 annotation processor
 │   │   ├── src/main/java/
 │   │   │   └── .../processor/
@@ -79,7 +79,7 @@
 - Generated sources go to `build/generated/sources/annotationProcessor/java/main/`
 - All generated files include `@Generated("ai.atlas.processor")` annotation
 - Generated code NEVER imports internal/private types from the consumer project
-- Processor must walk superclass chain for inherited `@AgentVisible` fields
+- Processor must walk superclass chain for inherited `@AgenticField` fields
 - Processor emits compile warnings (Messager.NOTE) for suspicious PII field names
 
 ## Code Generation Rules

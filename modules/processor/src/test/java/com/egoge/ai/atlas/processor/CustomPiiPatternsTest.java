@@ -22,12 +22,12 @@ class CustomPiiPatternsTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.Employee",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class Employee {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     private String salary;
                     private String homeAddress;
                     public Long getId() { return id; }
@@ -51,12 +51,12 @@ class CustomPiiPatternsTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.UserProfile",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class UserProfile {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     private String password;
                     private String phoneNumber;
                     public Long getId() { return id; }
@@ -82,12 +82,12 @@ class CustomPiiPatternsTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.Credentials",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class Credentials {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     private String password;
                     private String ssn;
                     public Long getId() { return id; }

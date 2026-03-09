@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Tests that AgentSafeModule correctly registers the serializer
- * for @AgentVisibleClass types and leaves other types alone.
+ * for @AgenticEntity types and leaves other types alone.
  */
 class AgentSafeModuleTest {
 
@@ -51,7 +51,7 @@ class AgentSafeModuleTest {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new AgentSafeModule(false, false, false));
 
-        // A plain POJO without @AgentVisibleClass should serialize normally
+        // A plain POJO without @AgenticEntity should serialize normally
         record PlainPojo(String value, int count) {}
         PlainPojo pojo = new PlainPojo("hello", 5);
 

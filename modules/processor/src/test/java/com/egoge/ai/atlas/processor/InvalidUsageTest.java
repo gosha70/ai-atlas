@@ -15,14 +15,14 @@ import static com.google.testing.compile.Compiler.javac;
 class InvalidUsageTest {
 
     @Test
-    void warnsOnAgentVisibleClassOnInterface() {
+    void warnsOnAgenticEntityOnInterface() {
         JavaFileObject source = JavaFileObjects.forSourceString("test.BadInterface",
                 """
                 package test;
 
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public interface BadInterface {
                 }
                 """);
@@ -37,20 +37,20 @@ class InvalidUsageTest {
     }
 
     @Test
-    void errorOnDuplicateAgentVisibleName() {
+    void errorOnDuplicateAgenticFieldName() {
         JavaFileObject source = JavaFileObjects.forSourceString("test.DuplicateNames",
                 """
                 package test;
 
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class DuplicateNames {
-                    @AgentVisible(name = "amount", description = "Price")
+                    @AgenticField(name = "amount", description = "Price")
                     private Long price;
 
-                    @AgentVisible(name = "amount", description = "Cost")
+                    @AgenticField(name = "amount", description = "Cost")
                     private Long cost;
 
                     public Long getPrice() { return price; }
@@ -75,15 +75,15 @@ class InvalidUsageTest {
                 """
                 package test;
 
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class ImplicitDuplicate {
-                    @AgentVisible(description = "ID")
+                    @AgenticField(description = "ID")
                     private Long id;
 
-                    @AgentVisible(name = "id", description = "Identifier alias")
+                    @AgenticField(name = "id", description = "Identifier alias")
                     private Long identifier;
 
                     public Long getId() { return id; }
@@ -101,14 +101,14 @@ class InvalidUsageTest {
     }
 
     @Test
-    void warnsOnAgentVisibleClassOnEnum() {
+    void warnsOnAgenticEntityOnEnum() {
         JavaFileObject source = JavaFileObjects.forSourceString("test.BadEnum",
                 """
                 package test;
 
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public enum BadEnum {
                     A, B
                 }

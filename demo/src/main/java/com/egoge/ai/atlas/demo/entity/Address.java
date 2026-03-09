@@ -3,32 +3,32 @@
  */
 package com.egoge.ai.atlas.demo.entity;
 
-import com.egoge.ai.atlas.annotations.AgentVisible;
-import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+import com.egoge.ai.atlas.annotations.AgenticField;
+import com.egoge.ai.atlas.annotations.AgenticEntity;
 
 /**
  * Demo entity representing a customer address.
  * All fields are safe for AI agent consumption.
  */
-@AgentVisibleClass(
+@AgenticEntity(
         name = "address",
         description = "A customer mailing address"
 )
 public class Address {
 
-    @AgentVisible(description = "Unique address identifier")
+    @AgenticField(description = "Unique address identifier")
     private Long id;
 
-    @AgentVisible(description = "Street line")
+    @AgenticField(description = "Street line")
     private String street;
 
-    @AgentVisible(description = "City name")
+    @AgenticField(description = "City name")
     private String city;
 
-    @AgentVisible(description = "State or province code")
+    @AgenticField(description = "State or province code")
     private String state;
 
-    @AgentVisible(description = "Postal / ZIP code")
+    @AgenticField(description = "Postal / ZIP code")
     private String zipCode;
 
     public Long getId() { return id; }

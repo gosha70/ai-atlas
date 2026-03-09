@@ -5,10 +5,10 @@
  * annotation processor:
  *
  * <ul>
- *   <li>{@link com.egoge.ai.atlas.annotations.AgentVisibleClass} — marks an entity class
- *       for DTO generation. Only fields annotated with {@code @AgentVisible}
+ *   <li>{@link com.egoge.ai.atlas.annotations.AgenticEntity} — marks an entity class
+ *       for DTO generation. Only fields annotated with {@code @AgenticField}
  *       are included in the generated DTO, ensuring PII-safe output by default.</li>
- *   <li>{@link com.egoge.ai.atlas.annotations.AgentVisible} — marks individual fields for
+ *   <li>{@link com.egoge.ai.atlas.annotations.AgenticField} — marks individual fields for
  *       inclusion in the generated DTO, with attributes for description, display
  *       name, sensitivity, and allowed values.</li>
  *   <li>{@link com.egoge.ai.atlas.annotations.AgenticExposed} — marks a service class or

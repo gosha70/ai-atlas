@@ -3,15 +3,15 @@
  */
 package com.egoge.ai.atlas.demo.entity;
 
-import com.egoge.ai.atlas.annotations.AgentVisible;
-import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+import com.egoge.ai.atlas.annotations.AgenticField;
+import com.egoge.ai.atlas.annotations.AgenticEntity;
 
 import java.util.ArrayList;
 import java.util.Collection;
 
 /**
  * Demo entity representing a customer.
- * Only fields annotated with {@code @AgentVisible} will appear
+ * Only fields annotated with {@code @AgenticField} will appear
  * in the generated {@code CustomerDto} record.
  *
  * <p>Demonstrates:
@@ -22,19 +22,19 @@ import java.util.Collection;
  *   <li>PII exclusion: email, creditCardNumber, ssn are not exposed</li>
  * </ul>
  */
-@AgentVisibleClass(
+@AgenticEntity(
         name = "customer",
         description = "A customer with addresses and contact info"
 )
 public class Customer {
 
-    @AgentVisible(description = "Unique customer identifier")
+    @AgenticField(description = "Unique customer identifier")
     private Long id;
 
-    @AgentVisible(description = "Customer display name")
+    @AgenticField(description = "Customer display name")
     private String name;
 
-    @AgentVisible(description = "Customer mailing addresses", type = Address.class)
+    @AgenticField(description = "Customer mailing addresses", type = Address.class)
     @SuppressWarnings("rawtypes")
     private Collection addresses = new ArrayList<>();
 

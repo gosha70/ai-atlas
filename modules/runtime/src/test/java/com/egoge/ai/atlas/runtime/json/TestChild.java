@@ -3,19 +3,19 @@
  */
 package com.egoge.ai.atlas.runtime.json;
 
-import com.egoge.ai.atlas.annotations.AgentVisible;
-import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+import com.egoge.ai.atlas.annotations.AgenticField;
+import com.egoge.ai.atlas.annotations.AgenticEntity;
 
 /**
  * Test entity with back-reference for circular reference tests.
  */
-@AgentVisibleClass(name = "child", description = "A child entity")
+@AgenticEntity(name = "child", description = "A child entity")
 public class TestChild {
 
-    @AgentVisible(description = "Child ID")
+    @AgenticField(description = "Child ID")
     private Long id;
 
-    @AgentVisible(description = "Back-reference to parent")
+    @AgenticField(description = "Back-reference to parent")
     private TestParent parent;
 
     public Long getId() { return id; }

@@ -24,7 +24,7 @@ Entity classes mix business data (order status, item count) with sensitive data 
 
 ### Whitelist Beats Blacklist
 
-Traditional approaches like `@JsonIgnore` use **blacklisting** — every PII field must be explicitly excluded. A developer adding a new PII field who forgets the exclusion annotation creates an immediate data leak. AI-ATLAS inverts this with **whitelisting** via `@AgentVisible`: only annotated fields are included. Forgetting the annotation is safe — the field simply does not exist in the generated DTO.
+Traditional approaches like `@JsonIgnore` use **blacklisting** — every PII field must be explicitly excluded. A developer adding a new PII field who forgets the exclusion annotation creates an immediate data leak. AI-ATLAS inverts this with **whitelisting** via `@AgenticField`: only annotated fields are included. Forgetting the annotation is safe — the field simply does not exist in the generated DTO.
 
 ### No Existing Tool Does This
 
@@ -47,7 +47,7 @@ AI-ATLAS is designed to retrofit **existing** enterprise codebases. Add two anno
 
 AI-ATLAS is a **compile-time annotation processor** that generates PII-safe API layers from two simple annotations:
 
-- **`@AgentVisible`** on entity fields — whitelist what AI agents can see
+- **`@AgenticField`** on entity fields — whitelist what AI agents can see
 - **`@AgenticExposed`** on service classes or individual methods — expose as MCP tools and/or REST endpoints
 
 Everything else is structurally excluded. There is no way for unannotated fields to reach the generated API — the safety guarantee is enforced by the Java compiler, not runtime checks.
@@ -58,7 +58,7 @@ From these annotations, the processor generates four artifacts at compile time:
 
 | Generated Artifact | Purpose |
 |---|---|
-| **Java record DTO** | Contains only `@AgentVisible` fields with a null-safe `fromEntity()` factory |
+| **Java record DTO** | Contains only `@AgenticField` fields with a null-safe `fromEntity()` factory |
 | **MCP tool class** | Spring AI `@Tool`-annotated service for AI agent interaction via [Model Context Protocol](https://modelcontextprotocol.io/) |
 | **REST controller** | Spring `@RestController` with `@PostMapping`/`@GetMapping` endpoints returning DTOs |
 | **OpenAPI 3.0 spec** | Machine-readable API description at `META-INF/openapi/openapi.json` |
@@ -71,7 +71,7 @@ From these annotations, the processor generates four artifacts at compile time:
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#FFE0B2', 'primaryTextColor': '#3b2006', 'primaryBorderColor': '#E65100', 'lineColor': '#8D6E63', 'textColor': '#3b2006'}}}%%
 flowchart LR
     subgraph INPUT["Annotated Java Source"]
-        Entity["@AgentVisibleClass<br/>Order.java<br/><i>id, status, itemCount</i><br/><s>ssn, creditCard</s>"]
+        Entity["@AgenticEntity<br/>Order.java<br/><i>id, status, itemCount</i><br/><s>ssn, creditCard</s>"]
         Service["@AgenticExposed<br/>OrderService.java<br/><i>findById, findByStatus</i>"]
     end
 
@@ -126,7 +126,7 @@ Six modules with strict dependency boundaries:
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#FFE0B2', 'primaryTextColor': '#3b2006', 'primaryBorderColor': '#E65100', 'lineColor': '#8D6E63', 'textColor': '#3b2006'}}}%%
 graph TD
-    annotations["<b>annotations</b><br/><i>zero dependencies</i><br/>@AgentVisible<br/>@AgentVisibleClass<br/>@AgenticExposed"]
+    annotations["<b>annotations</b><br/><i>zero dependencies</i><br/>@AgenticField<br/>@AgenticEntity<br/>@AgenticExposed"]
     processor["<b>processor</b><br/><i>compile-time only</i><br/>JSR 269 + JavaPoet"]
     runtime["<b>runtime</b><br/><i>Spring Boot</i><br/>MCP config, JSON serializer,<br/>PII audit interceptor"]
     plugin["<b>gradle-plugin</b><br/><i>configures all deps</i>"]
@@ -159,7 +159,7 @@ The processor executes in three phases during `compileJava`:
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#FFE0B2', 'primaryTextColor': '#3b2006', 'primaryBorderColor': '#E65100', 'lineColor': '#8D6E63', 'textColor': '#3b2006'}}}%%
 flowchart LR
     subgraph P1["Phase 1: Entity Processing"]
-        AVC["@AgentVisibleClass"] --> FS["FieldScanner<br/><i>walks superclass chain</i>"]
+        AVC["@AgenticEntity"] --> FS["FieldScanner<br/><i>walks superclass chain</i>"]
         FS --> EM["EntityModel"]
         EM --> DG["DtoGenerator"]
         DG --> DTO["Java Record DTO<br/>+ FieldMeta<br/>+ fromEntity()"]
@@ -208,14 +208,14 @@ flowchart LR
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#FFE0B2', 'primaryTextColor': '#3b2006', 'primaryBorderColor': '#E65100', 'secondaryColor': '#FFCC80', 'secondaryTextColor': '#3b2006', 'secondaryBorderColor': '#BF360C', 'tertiaryColor': '#EFEBE9', 'tertiaryTextColor': '#3b2006', 'tertiaryBorderColor': '#4E342E', 'lineColor': '#8D6E63', 'textColor': '#3b2006', 'classText': '#3b2006'}}}%%
 classDiagram
     namespace Annotations {
-        class AgentVisible {
+        class AgenticField {
             +description : String
             +name : String
             +sensitive : boolean
             +checkCircularReference : boolean
             +allowedValues : String[]
         }
-        class AgentVisibleClass {
+        class AgenticEntity {
             +dtoName : String
             +packageName : String
             +name : String
@@ -325,7 +325,7 @@ classDiagram
 Given an entity with mixed safe and sensitive fields:
 
 ```java
-@AgentVisibleClass(
+@AgenticEntity(
     name = "order",
     description = "A customer order with status tracking and item summary"
 )
@@ -334,16 +334,16 @@ public class Order {
         PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED
     }
 
-    @AgentVisible(description = "Unique order identifier")
+    @AgenticField(description = "Unique order identifier")
     private Long id;
 
-    @AgentVisible(description = "Current order status")
+    @AgenticField(description = "Current order status")
     private OrderStatus status;
 
-    @AgentVisible(name = "totalCents", description = "Total order amount in cents")
+    @AgenticField(name = "totalCents", description = "Total order amount in cents")
     private long totalAmountCents;
 
-    @AgentVisible(description = "Number of items in the order")
+    @AgenticField(description = "Number of items in the order")
     private int itemCount;
 
     // PII — NOT annotated, structurally excluded from all generated code
@@ -444,7 +444,7 @@ AI-ATLAS provides a layered security strategy for PII protection:
 
 ### Compile-Time Guarantees
 
-- Only `@AgentVisible` fields appear in generated DTOs — structural exclusion, not filtering
+- Only `@AgenticField` fields appear in generated DTOs — structural exclusion, not filtering
 - The processor warns about fields matching PII patterns (`ssn`, `password`, `creditCard`, etc.) that are *not* annotated, helping developers confirm intentional exclusions
 - Custom PII patterns: `-Aai.atlas.pii.patterns=salary,homeAddress,phoneNumber`
 
@@ -539,7 +539,7 @@ dependencies {
 }
 ```
 
-Then annotate your entities with `@AgentVisibleClass` + `@AgentVisible`, your services with `@AgenticExposed`, and build. Generated code appears in `build/generated/sources/annotationProcessor/`.
+Then annotate your entities with `@AgenticEntity` + `@AgenticField`, your services with `@AgenticExposed`, and build. Generated code appears in `build/generated/sources/annotationProcessor/`.
 
 ### Using the plugin from source (monorepo development)
 
@@ -575,7 +575,7 @@ This replaces the three manual `implementation`/`annotationProcessor` lines. Not
 
 ## Annotation Reference
 
-### `@AgentVisible`
+### `@AgenticField`
 
 Applied to fields. Marks a field for inclusion in the generated DTO.
 
@@ -588,7 +588,7 @@ Applied to fields. Marks a field for inclusion in the generated DTO.
 | `allowedValues` | `String[]` | `{}` | Explicit allowed values for this field. Overrides auto-detected enum constants when non-empty. Populated into `FIELD_METADATA.validValues` and OpenAPI `enum` constraints. |
 | `type` | `Class<?>` | `void.class` | Element type hint for legacy collection fields with raw or wildcard types (e.g., `Collection` without a type parameter). Used as a fallback when static type inference cannot resolve the element type. |
 
-### `@AgentVisibleClass`
+### `@AgenticEntity`
 
 Applied to classes. Triggers DTO record generation for the annotated entity.
 
@@ -648,20 +648,20 @@ The serializer handles Hibernate proxies (lazy-loaded associations), uninitializ
 
 | Scenario | Behavior |
 |----------|----------|
-| Interface with `@AgentVisibleClass` | Warning emitted, skipped (interfaces have no fields) |
-| Enum with `@AgentVisibleClass` | Warning emitted, skipped |
-| Abstract class with `@AgentVisibleClass` | Warning emitted, DTO still generated |
+| Interface with `@AgenticEntity` | Warning emitted, skipped (interfaces have no fields) |
+| Enum with `@AgenticEntity` | Warning emitted, skipped |
+| Abstract class with `@AgenticEntity` | Warning emitted, DTO still generated |
 | Static inner class | Fully supported |
-| Inherited `@AgentVisible` fields | Superclass chain walked; parent fields appear first |
+| Inherited `@AgenticField` fields | Superclass chain walked; parent fields appear first |
 | Boolean fields | Uses `isX()` getter convention |
 | Enum-typed fields | Preserved as-is in DTO; valid values auto-extracted into `FIELD_METADATA` and OpenAPI schema |
-| Duplicate `@AgentVisible(name=...)` | Compile error — metadata keys must be unique within a class |
-| Custom field display names | `@AgentVisible(name = "totalCents")` uses custom key in `FIELD_METADATA` and enriched JSON |
+| Duplicate `@AgenticField(name=...)` | Compile error — metadata keys must be unique within a class |
+| Custom field display names | `@AgenticField(name = "totalCents")` uses custom key in `FIELD_METADATA` and enriched JSON |
 | Hibernate proxies | Automatically unwrapped by the runtime serializer (reflection-based, no Hibernate dependency) |
 | Circular JPA references | Detected via `SerializationContext`; serialized as `null` to prevent infinite recursion |
-| Entity cross-references | `@AgentVisible` field whose type is another `@AgentVisibleClass` entity maps to the referenced DTO with cycle detection |
+| Entity cross-references | `@AgenticField` field whose type is another `@AgenticEntity` entity maps to the referenced DTO with cycle detection |
 | Collection-of-entity fields | `List<Address>`, `Set<Order>`, arrays — mapped to `List<AddressDto>` in generated DTO with stream conversion |
-| Raw/wildcard collections | `Collection` or `List<?>` — resolved via `@AgentVisible(type = Address.class)` hint |
+| Raw/wildcard collections | `Collection` or `List<?>` — resolved via `@AgenticField(type = Address.class)` hint |
 | Channel-selective exposure | `@AgenticExposed(channels = {Channel.AI})` generates MCP tools only; `{Channel.API}` generates REST + OpenAPI only |
 | Method-level `@AgenticExposed` | Fine-grained control: individual methods can specify their own `returnType`, `description`, and `channels` |
 | Wildcard return types | `List<?>` or raw `Collection` on service methods — resolved via `returnType` attribute |
@@ -670,7 +670,7 @@ The serializer handles Hibernate proxies (lazy-loaded associations), uninitializ
 
 | Module | Description |
 |--------|-------------|
-| `modules/annotations` | `@AgentVisible`, `@AgentVisibleClass`, `@AgenticExposed` — zero external dependencies |
+| `modules/annotations` | `@AgenticField`, `@AgenticEntity`, `@AgenticExposed` — zero external dependencies |
 | `modules/processor` | JSR 269 annotation processor — generates DTOs, MCP tools, REST controllers, OpenAPI specs using JavaPoet |
 | `modules/runtime` | Spring Boot auto-configuration — MCP server wiring (SSE transport), PII audit interceptor, Hibernate-safe Jackson serializer with enriched JSON mode |
 | `modules/gradle-plugin` | Gradle plugin — auto-adds all framework dependencies and configures IntelliJ generated source dirs |

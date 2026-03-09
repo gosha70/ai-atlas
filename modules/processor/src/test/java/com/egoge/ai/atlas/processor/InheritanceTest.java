@@ -13,7 +13,7 @@ import static com.google.testing.compile.Compiler.javac;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests for superclass chain walking — inherited @AgentVisible fields
+ * Tests for superclass chain walking — inherited @AgenticField fields
  * should appear in generated DTOs.
  */
 class InheritanceTest {
@@ -23,9 +23,9 @@ class InheritanceTest {
         JavaFileObject base = JavaFileObjects.forSourceString("test.BaseEntity",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
+                import com.egoge.ai.atlas.annotations.AgenticField;
                 public abstract class BaseEntity {
-                    @AgentVisible(description = "Base ID") private Long id;
+                    @AgenticField(description = "Base ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -33,11 +33,11 @@ class InheritanceTest {
         JavaFileObject child = JavaFileObjects.forSourceString("test.Product",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Product extends BaseEntity {
-                    @AgentVisible(description = "Product name") private String name;
+                    @AgenticField(description = "Product name") private String name;
                     public String getName() { return name; }
                 }
                 """);
@@ -59,9 +59,9 @@ class InheritanceTest {
         JavaFileObject base = JavaFileObjects.forSourceString("test.BaseItem",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
+                import com.egoge.ai.atlas.annotations.AgenticField;
                 public class BaseItem {
-                    @AgentVisible(description = "Base ID") private Long id;
+                    @AgenticField(description = "Base ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -69,11 +69,11 @@ class InheritanceTest {
         JavaFileObject child = JavaFileObjects.forSourceString("test.SpecialItem",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class SpecialItem extends BaseItem {
-                    @AgentVisible(description = "Label") private String label;
+                    @AgenticField(description = "Label") private String label;
                     public String getLabel() { return label; }
                 }
                 """);
@@ -94,9 +94,9 @@ class InheritanceTest {
         JavaFileObject grandparent = JavaFileObjects.forSourceString("test.GrandParent",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
+                import com.egoge.ai.atlas.annotations.AgenticField;
                 public class GrandParent {
-                    @AgentVisible(description = "GP field") private String gpField;
+                    @AgenticField(description = "GP field") private String gpField;
                     public String getGpField() { return gpField; }
                 }
                 """);
@@ -104,9 +104,9 @@ class InheritanceTest {
         JavaFileObject parent = JavaFileObjects.forSourceString("test.Parent",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
+                import com.egoge.ai.atlas.annotations.AgenticField;
                 public class Parent extends GrandParent {
-                    @AgentVisible(description = "Parent field") private String parentField;
+                    @AgenticField(description = "Parent field") private String parentField;
                     public String getParentField() { return parentField; }
                 }
                 """);
@@ -114,11 +114,11 @@ class InheritanceTest {
         JavaFileObject child = JavaFileObjects.forSourceString("test.Child",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Child extends Parent {
-                    @AgentVisible(description = "Child field") private String childField;
+                    @AgenticField(description = "Child field") private String childField;
                     public String getChildField() { return childField; }
                 }
                 """);

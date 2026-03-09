@@ -26,7 +26,7 @@ AI-ATLAS is a security-focused framework. We take these categories seriously:
 
 - **PII leakage**: Any path where unannotated fields appear in generated DTOs, MCP tool responses, or REST controller responses
 - **Code injection**: Annotation attribute values that could inject arbitrary code into generated Java source
-- **Bypass of compile-time guarantees**: Scenarios where the whitelist model (`@AgentVisible`) can be circumvented
+- **Bypass of compile-time guarantees**: Scenarios where the whitelist model (`@AgenticField`) can be circumvented
 - **Runtime safety net failures**: Conditions where `DtoResponseBodyAdvice` or `PiiAuditInterceptor` fail silently
 
 ## Response Timeline

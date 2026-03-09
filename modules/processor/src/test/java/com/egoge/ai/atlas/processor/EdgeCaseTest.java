@@ -25,13 +25,13 @@ class EdgeCaseTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.Outer",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
                 public class Outer {
-                    @AgentVisibleClass
+                    @AgenticEntity
                     public static class Inner {
-                        @AgentVisible(description = "ID") private Long id;
+                        @AgenticField(description = "ID") private Long id;
                         public Long getId() { return id; }
                     }
                 }
@@ -52,9 +52,9 @@ class EdgeCaseTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.MyInterface",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public interface MyInterface {
                     String getName();
                 }
@@ -76,9 +76,9 @@ class EdgeCaseTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.Status",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public enum Status {
                     ACTIVE, INACTIVE;
                 }
@@ -98,12 +98,12 @@ class EdgeCaseTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.AbstractBase",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public abstract class AbstractBase {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -130,12 +130,12 @@ class EdgeCaseTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.OrderEntity",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class OrderEntity {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "Status") private OrderStatus status;
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "Status") private OrderStatus status;
                     public Long getId() { return id; }
                     public OrderStatus getStatus() { return status; }
                 }
@@ -161,11 +161,11 @@ class EdgeCaseTest {
         JavaFileObject entity1 = JavaFileObjects.forSourceString("test.Alpha",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Alpha {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -173,11 +173,11 @@ class EdgeCaseTest {
         JavaFileObject entity2 = JavaFileObjects.forSourceString("test.Beta",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Beta {
-                    @AgentVisible(description = "Name") private String name;
+                    @AgenticField(description = "Name") private String name;
                     public String getName() { return name; }
                 }
                 """);
@@ -206,11 +206,11 @@ class EdgeCaseTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.Toggleable",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Toggleable {
-                    @AgentVisible(description = "Active flag") private boolean active;
+                    @AgenticField(description = "Active flag") private boolean active;
                     public boolean isActive() { return active; }
                 }
                 """);

@@ -63,7 +63,7 @@ class AgentSafeSerializerTest {
     String json = mapper.writeValueAsString(sampleEntity());
     JsonNode node = mapper.readTree(json);
 
-    // @AgentVisible(name = "alias") on displayName field
+    // @AgenticField(name = "alias") on displayName field
     assertThat(node.has("alias")).isTrue();
     assertThat(node.get("alias").asText()).isEqualTo("My Widget");
     assertThat(node.has("displayName")).as("Should use custom name, not field name").isFalse();

@@ -33,12 +33,12 @@ class PiiPatternsFileTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.Account",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class Account {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     private String password;
                     private String salary;
                     public Long getId() { return id; }
@@ -67,12 +67,12 @@ class PiiPatternsFileTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.Compensation",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class Compensation {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     private String salary;
                     private String bonus;
                     public Long getId() { return id; }
@@ -98,12 +98,12 @@ class PiiPatternsFileTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.Fallback",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class Fallback {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     private String password;
                     public Long getId() { return id; }
                     public String getPassword() { return password; }
@@ -134,12 +134,12 @@ class PiiPatternsFileTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.Pay",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class Pay {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     private String salary;
                     private String bonus;
                     public Long getId() { return id; }
@@ -163,12 +163,12 @@ class PiiPatternsFileTest {
         JavaFileObject source = JavaFileObjects.forSourceString("test.DefaultCheck",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
 
-                @AgentVisibleClass
+                @AgenticEntity
                 public class DefaultCheck {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     private String ssn;
                     private String creditCardNumber;
                     public Long getId() { return id; }

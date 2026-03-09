@@ -11,14 +11,14 @@ import java.lang.annotation.Target;
 
 /**
  * Marks a class as a source for DTO generation. The annotation processor
- * will scan this class for {@link AgentVisible} fields and generate a
+ * will scan this class for {@link AgenticField} fields and generate a
  * corresponding Java record DTO containing only the whitelisted fields.
  *
  * <p>Example usage:
  * <pre>{@code
- * @AgentVisibleClass(dtoName = "OrderSummary")
+ * @AgenticEntity(dtoName = "OrderSummary")
  * public class Order {
- *     @AgentVisible(description = "Order ID")
+ *     @AgenticField(description = "Order ID")
  *     private Long id;
  *     // ...
  * }
@@ -30,7 +30,7 @@ import java.lang.annotation.Target;
 @Documented
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface AgentVisibleClass {
+public @interface AgenticEntity {
 
     /**
      * Custom name for the generated DTO. Defaults to {@code {ClassName}Dto}.
@@ -48,7 +48,7 @@ public @interface AgentVisibleClass {
      * Used in the {@code typeInfo} block of enriched JSON output
      * and MCP tool descriptions. Defaults to the simple class name.
      *
-     * <p>Example: {@code @AgentVisibleClass(name = "insight")} produces
+     * <p>Example: {@code @AgenticEntity(name = "insight")} produces
      * {@code "typeInfo": {"name": "insight", ...}} in enriched JSON.
      */
     String name() default "";

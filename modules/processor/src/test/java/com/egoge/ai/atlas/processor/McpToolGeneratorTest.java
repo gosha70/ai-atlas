@@ -25,12 +25,12 @@ class McpToolGeneratorTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.MyEntity",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class MyEntity {
-                    @AgentVisible(description = "ID") private Long id;
-                    @AgentVisible(description = "Name") private String name;
+                    @AgenticField(description = "ID") private Long id;
+                    @AgenticField(description = "Name") private String name;
                     public Long getId() { return id; }
                     public String getName() { return name; }
                 }
@@ -62,11 +62,11 @@ class McpToolGeneratorTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.Item",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -96,11 +96,11 @@ class McpToolGeneratorTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.Item",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -130,11 +130,11 @@ class McpToolGeneratorTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.Item",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -164,11 +164,11 @@ class McpToolGeneratorTest {
         JavaFileObject entity = JavaFileObjects.forSourceString("test.Task",
                 """
                 package test;
-                import com.egoge.ai.atlas.annotations.AgentVisible;
-                import com.egoge.ai.atlas.annotations.AgentVisibleClass;
-                @AgentVisibleClass
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                @AgenticEntity
                 public class Task {
-                    @AgentVisible(description = "ID") private Long id;
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -199,8 +199,8 @@ class McpToolGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Item {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -227,8 +227,8 @@ class McpToolGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Item {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -254,8 +254,8 @@ class McpToolGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Item {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -286,8 +286,8 @@ class McpToolGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Item {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -314,8 +314,8 @@ class McpToolGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Item {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Item {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -344,8 +344,8 @@ class McpToolGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Base {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Base {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -353,7 +353,7 @@ class McpToolGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Internal extends Base {}
+                @AgenticEntity public class Internal extends Base {}
                 """);
         JavaFileObject service = JavaFileObjects.forSourceString("test.UpcastService",
                 """
@@ -379,8 +379,8 @@ class McpToolGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Base {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Base {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -388,7 +388,7 @@ class McpToolGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Internal extends Base {}
+                @AgenticEntity public class Internal extends Base {}
                 """);
         JavaFileObject service = JavaFileObjects.forSourceString("test.DowncastService",
                 """
@@ -414,8 +414,8 @@ class McpToolGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Base {
-                    @AgentVisible(description = "ID") private Long id;
+                @AgenticEntity public class Base {
+                    @AgenticField(description = "ID") private Long id;
                     public Long getId() { return id; }
                 }
                 """);
@@ -423,7 +423,7 @@ class McpToolGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.*;
-                @AgentVisibleClass public class Internal extends Base {}
+                @AgenticEntity public class Internal extends Base {}
                 """);
         JavaFileObject service = JavaFileObjects.forSourceString("test.DowncastArrayService",
                 """

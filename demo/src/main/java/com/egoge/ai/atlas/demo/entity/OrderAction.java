@@ -3,8 +3,8 @@
  */
 package com.egoge.ai.atlas.demo.entity;
 
-import com.egoge.ai.atlas.annotations.AgentVisible;
-import com.egoge.ai.atlas.annotations.AgentVisibleClass;
+import com.egoge.ai.atlas.annotations.AgenticField;
+import com.egoge.ai.atlas.annotations.AgenticEntity;
 
 /**
  * Demo entity representing an action performed on an order.
@@ -13,7 +13,7 @@ import com.egoge.ai.atlas.annotations.AgentVisibleClass;
  * naive JSON serialization. AI-ATLAS handles this via
  * {@code SerializationContext} identity-based cycle detection.
  */
-@AgentVisibleClass(
+@AgenticEntity(
         name = "orderAction",
         description = "An action or status change performed on an order"
 )
@@ -23,19 +23,19 @@ public class OrderAction {
         CREATED, CONFIRMED, SHIPPED, DELIVERED, CANCELLED, NOTE
     }
 
-    @AgentVisible(description = "Unique action identifier")
+    @AgenticField(description = "Unique action identifier")
     private Long id;
 
-    @AgentVisible(description = "Type of action performed")
+    @AgenticField(description = "Type of action performed")
     private ActionType actionType;
 
-    @AgentVisible(description = "Human-readable action description")
+    @AgenticField(description = "Human-readable action description")
     private String description;
 
-    @AgentVisible(description = "When the action occurred (ISO-8601)")
+    @AgenticField(description = "When the action occurred (ISO-8601)")
     private String timestamp;
 
-    @AgentVisible(description = "Parent order this action belongs to")
+    @AgenticField(description = "Parent order this action belongs to")
     private Order order;
 
     // PII — intentionally NOT annotated

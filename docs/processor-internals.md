@@ -9,7 +9,7 @@ The `AgenticProcessor` (JSR 269 `AbstractProcessor`) runs in three sequential ph
 ```
 Phase 1: Entity Processing          Phase 2: Service Processing        Phase 3: OpenAPI Generation
 ┌──────────────────────┐            ┌──────────────────────┐           ┌──────────────────────┐
-│ @AgentVisibleClass   │            │ @AgenticExposed      │           │ Aggregate all models │
+│ @AgenticEntity   │            │ @AgenticExposed      │           │ Aggregate all models │
 │ ├─ Validate type     │            │ ├─ Collect methods   │           │ ├─ Build schemas     │
 │ ├─ FieldScanner.scan │            │ ├─ Resolve returns   │           │ ├─ Build paths       │
 │ ├─ PII warnings      │            │ ├─ Build ServiceModel│           │ └─ Write openapi.json│
@@ -21,11 +21,11 @@ Phase 1: Entity Processing          Phase 2: Service Processing        Phase 3: 
 
 ### Phase 1: Entity Processing
 
-For each class annotated with `@AgentVisibleClass`:
+For each class annotated with `@AgenticEntity`:
 
 1. **Validate** — reject interfaces, enums, non-class elements (emit warnings/errors)
-2. **Scan fields** — `FieldScanner.scan()` walks the superclass chain top-down, collecting `@AgentVisible` fields. Subclass fields override same-named superclass fields. For fields whose type is another `@AgentVisibleClass` entity, the scanner records the cross-reference (including collection element types) for DTO-to-DTO mapping. Raw/wildcard collection fields fall back to `@AgentVisible(type = ...)` hints.
-3. **PII warnings** — `PiiDetector.check()` runs on all fields **not** annotated with `@AgentVisible`, emitting NOTE diagnostics for suspicious names
+2. **Scan fields** — `FieldScanner.scan()` walks the superclass chain top-down, collecting `@AgenticField` fields. Subclass fields override same-named superclass fields. For fields whose type is another `@AgenticEntity` entity, the scanner records the cross-reference (including collection element types) for DTO-to-DTO mapping. Raw/wildcard collection fields fall back to `@AgenticField(type = ...)` hints.
+3. **PII warnings** — `PiiDetector.check()` runs on all fields **not** annotated with `@AgenticField`, emitting NOTE diagnostics for suspicious names
 4. **Build model** — construct an `EntityModel` record with DTO name, package, display name, description, and the ordered list of `FieldModel` records
 5. **Generate DTO** — `DtoGenerator.generate()` produces a Java record via JavaPoet
 6. **Register** — store the `EntityModel` in `entityRegistry` (keyed by qualified class name) for Phase 2 lookups
@@ -61,10 +61,10 @@ record EntityModel(
     ClassName sourceClassName,     // Original entity (e.g., com.example.Order)
     String dtoName,                // Generated DTO name (e.g., "OrderDto")
     String dtoPackageName,         // Generated DTO package
-    String displayName,            // From @AgentVisibleClass.name()
-    String classDescription,       // From @AgentVisibleClass.description()
-    boolean includeTypeInfo,       // From @AgentVisibleClass.includeTypeInfo()
-    List<FieldModel> fields        // Ordered @AgentVisible fields
+    String displayName,            // From @AgenticEntity.name()
+    String classDescription,       // From @AgenticEntity.description()
+    boolean includeTypeInfo,       // From @AgenticEntity.includeTypeInfo()
+    List<FieldModel> fields        // Ordered @AgenticField fields
 )
 ```
 
@@ -73,16 +73,16 @@ record EntityModel(
 ```java
 record FieldModel(
     String name,                   // Java field name
-    String displayName,            // From @AgentVisible.name() or field name
+    String displayName,            // From @AgenticField.name() or field name
     TypeName typeName,             // JavaPoet type
-    String description,            // From @AgentVisible.description()
-    boolean sensitive,             // From @AgentVisible.sensitive()
-    boolean checkCircularReference,// From @AgentVisible.checkCircularReference()
+    String description,            // From @AgenticField.description()
+    boolean sensitive,             // From @AgenticField.sensitive()
+    boolean checkCircularReference,// From @AgenticField.checkCircularReference()
     boolean enumType,              // Auto-detected if field type is enum
-    List<String> enumValues,       // Enum constants or @AgentVisible.allowedValues()
+    List<String> enumValues,       // Enum constants or @AgenticField.allowedValues()
     CollectionKind collectionKind, // NONE, COLLECTION, ITERABLE, or ARRAY
     TypeName elementTypeName,      // Element type for collections/arrays (null if NONE)
-    TypeName hintTypeName          // From @AgentVisible(type = ...), null if void.class
+    TypeName hintTypeName          // From @AgenticField(type = ...), null if void.class
 )
 ```
 
@@ -116,7 +116,7 @@ All generators use [JavaPoet](https://github.com/palantir/javapoet) (Palantir fo
 ### DtoGenerator
 
 Produces a Java record with:
-- Record components for each `@AgentVisible` field
+- Record components for each `@AgenticField` field
 - `@Generated("com.egoge.ai.atlas.processor")` annotation
 - `CLASS_NAME`, `CLASS_DESCRIPTION`, `INCLUDE_TYPE_INFO` static constants
 - `FIELD_METADATA` map (`Map<String, FieldMeta>`) with per-field metadata
