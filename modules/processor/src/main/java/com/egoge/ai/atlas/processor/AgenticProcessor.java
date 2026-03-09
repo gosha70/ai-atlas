@@ -361,8 +361,8 @@ public class AgenticProcessor extends AbstractProcessor {
                 }
                 if (compat == ReturnTypeValidator.Result.INCONCLUSIVE) {
                     processingEnv.getMessager().printMessage(
-                            Diagnostic.Kind.WARNING,
-                            "@AgenticExposed(returnType = " + returnEntityType.simpleName()
+                            Diagnostic.Kind.NOTE,
+                            "[ai-atlas] @AgenticExposed(returnType = " + returnEntityType.simpleName()
                                     + ") on method '" + methodName
                                     + "' — return type is raw/wildcard, cast safety cannot be verified at compile time",
                             method
