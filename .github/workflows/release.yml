@@ -31,7 +31,7 @@ jobs:
       - name: Build and test
         run: ./gradlew clean build -Pversion=${{ steps.version.outputs.VERSION }}
 
-      - name: Publish to Maven Central (Sonatype OSSRH)
+      - name: Publish to Maven Central (Sonatype OSSRH Staging API)
         run: ./gradlew publishMavenJavaPublicationToOssrhRepository -Pversion=${{ steps.version.outputs.VERSION }}
         env:
           OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
@@ -39,7 +39,19 @@ jobs:
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_PASSWORD: ${{ secrets.GPG_SIGNING_PASSWORD }}
 
+      - name: Trigger Central Portal deployment
+        run: |
+          TOKEN=$(echo -n "$OSSRH_USERNAME:$OSSRH_PASSWORD" | base64)
+          curl -s -o /dev/null -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            "https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/com.egoge"
+        env:
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+
       - name: Publish Gradle Plugin to Plugin Portal
+        if: always()
         run: ./gradlew :modules:gradle-plugin:publishPlugins -Pversion=${{ steps.version.outputs.VERSION }}
         env:
           GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
