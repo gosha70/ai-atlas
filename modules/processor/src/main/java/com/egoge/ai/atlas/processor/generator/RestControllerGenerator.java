@@ -45,9 +45,11 @@ public final class RestControllerGenerator {
     /**
      * Generates a REST controller class and writes it to the filer.
      */
-    public static void generate(ServiceModel model, String packageName, Filer filer, Messager messager) {
+    public static void generate(ServiceModel model, String packageName,
+                                String apiBasePath, int apiMajor,
+                                Filer filer, Messager messager) {
         String controllerName = model.serviceClassName().simpleName() + "RestController";
-        TypeSpec controllerSpec = buildControllerSpec(model, controllerName);
+        TypeSpec controllerSpec = buildControllerSpec(model, controllerName, apiBasePath, apiMajor);
         if (controllerSpec == null) {
             messager.printMessage(Diagnostic.Kind.NOTE,
                     "[ai-atlas] Skipped REST controller for " + model.serviceClassName().simpleName()
@@ -69,7 +71,8 @@ public final class RestControllerGenerator {
         }
     }
 
-    static TypeSpec buildControllerSpec(ServiceModel model, String controllerName) {
+    static TypeSpec buildControllerSpec(ServiceModel model, String controllerName,
+                                        String apiBasePath, int apiMajor) {
         // Filter to API-channel methods only
         var apiMethods = model.methods().stream()
                 .filter(m -> m.channels().contains("API"))
@@ -80,8 +83,7 @@ public final class RestControllerGenerator {
 
         ClassName serviceType = model.serviceClassName();
 
-        // Derive base path from service name: OrderService → /api/v1/order-service
-        String basePath = "/api/v1/" + toKebabCase(model.serviceClassName().simpleName());
+        String basePath = apiBasePath + "/v" + apiMajor + "/" + toKebabCase(model.serviceClassName().simpleName());
 
         TypeSpec.Builder classBuilder = TypeSpec.classBuilder(controllerName)
                 .addModifiers(Modifier.PUBLIC)

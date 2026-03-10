@@ -38,6 +38,10 @@ public class AgenticPlugin implements Plugin<Project> {
         extension.getMcpEnabled().convention(true);
         extension.getRestEnabled().convention(true);
         extension.getOpenApiEnabled().convention(true);
+        extension.getApiBasePath().convention("/api");
+        extension.getApiMajorVersion().convention(1);
+        extension.getOpenApiInfoVersion().convention(
+                extension.getApiMajorVersion().map(major -> major + ".0.0"));
 
         // Add dependencies and processor options after evaluation (so extension values are resolved)
         project.afterEvaluate(p -> {
@@ -72,12 +76,17 @@ public class AgenticPlugin implements Plugin<Project> {
     }
 
     private void configureProcessorOptions(Project project, AgenticExtension extension) {
-        if (extension.getPiiPatternsFile().isPresent()) {
-            String filePath = extension.getPiiPatternsFile().get();
-            project.getTasks().withType(JavaCompile.class,
-                    task -> task.getOptions().getCompilerArgs()
-                            .add("-Aai.atlas.pii.patterns.file=" + filePath));
-        }
+        project.getTasks().withType(JavaCompile.class, task -> {
+            var args = task.getOptions().getCompilerArgs();
+
+            if (extension.getPiiPatternsFile().isPresent()) {
+                args.add("-Aai.atlas.pii.patterns.file=" + extension.getPiiPatternsFile().get());
+            }
+
+            args.add("-Aai.atlas.api.basePath=" + extension.getApiBasePath().get());
+            args.add("-Aai.atlas.api.major=" + extension.getApiMajorVersion().get());
+            args.add("-Aai.atlas.openapi.infoVersion=" + extension.getOpenApiInfoVersion().get());
+        });
     }
 
     private void configureIdea(Project project) {

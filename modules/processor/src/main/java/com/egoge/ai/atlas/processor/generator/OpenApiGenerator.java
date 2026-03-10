@@ -60,8 +60,9 @@ public final class OpenApiGenerator {
   public static void generate(
       List<EntityModel> entities,
       List<ServiceModel> services,
-                              Filer filer, Messager messager) {
-    OpenAPI openAPI = buildSpec(entities, services);
+      String apiBasePath, int apiMajor, String infoVersion,
+      Filer filer, Messager messager) {
+    OpenAPI openAPI = buildSpec(entities, services, apiBasePath, apiMajor, infoVersion);
 
     try {
       String json = serializeToJson(openAPI);
@@ -83,12 +84,13 @@ public final class OpenApiGenerator {
   @SuppressWarnings({"rawtypes", "unchecked"}) // swagger-models schemas() accepts raw Map<String, Schema>
   static OpenAPI buildSpec(
       List<EntityModel> entities,
-      List<ServiceModel> services) {
+      List<ServiceModel> services,
+      String apiBasePath, int apiMajor, String infoVersion) {
     OpenAPI openAPI = new OpenAPI();
     openAPI.openapi(OPENAPI_VERSION);
     openAPI.info(new Info()
         .title("AI-ATLAS Generated API")
-        .version("1.0.0")
+        .version(infoVersion)
         .description("Auto-generated API from @AgenticExposed services"));
 
     // Schemas from entity DTOs
@@ -103,7 +105,7 @@ public final class OpenApiGenerator {
     // Paths from service methods
     Paths paths = new Paths();
     for (ServiceModel service : services) {
-      addServicePaths(paths, service);
+      addServicePaths(paths, service, apiBasePath, apiMajor);
     }
     openAPI.paths(paths);
 
@@ -153,9 +155,10 @@ public final class OpenApiGenerator {
     };
   }
 
-  private static void addServicePaths(Paths paths, ServiceModel service) {
+  private static void addServicePaths(Paths paths, ServiceModel service,
+                                      String apiBasePath, int apiMajor) {
     String serviceName = service.serviceClassName().simpleName();
-    String basePath = "/api/v1/" + toKebabCase(serviceName);
+    String basePath = apiBasePath + "/v" + apiMajor + "/" + toKebabCase(serviceName);
 
     for (MethodModel method : service.methods()) {
       if (!method.channels().contains("API")) {

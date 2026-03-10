@@ -22,9 +22,12 @@ import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.TypeName;
 
 import javax.annotation.processing.AbstractProcessor;
+import javax.annotation.processing.Messager;
+import javax.annotation.processing.ProcessingEnvironment;
 import javax.annotation.processing.Processor;
 import javax.annotation.processing.RoundEnvironment;
 import javax.annotation.processing.SupportedAnnotationTypes;
+import javax.annotation.processing.SupportedOptions;
 import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.ElementKind;
@@ -41,40 +44,89 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * JSR 269 annotation processor for the AI-ATLAS framework.
- *
- * <p>Processing order:
- * <ol>
- *   <li>{@code @AgenticEntity} entities → DTO records</li>
- *   <li>{@code @AgenticExposed} services → MCP tools + REST controllers</li>
- * </ol>
- *
- * <p>Registered as AGGREGATING for Gradle incremental builds.
- */
+/** JSR 269 annotation processor for the AI-ATLAS framework. */
 @AutoService(Processor.class)
 @SupportedAnnotationTypes({
         "com.egoge.ai.atlas.annotations.AgenticEntity",
         "com.egoge.ai.atlas.annotations.AgenticExposed"
 })
-@javax.annotation.processing.SupportedOptions({
-        "ai.atlas.pii.patterns",
-        "ai.atlas.pii.patterns.file"
+@SupportedOptions({
+        "ai.atlas.pii.patterns", "ai.atlas.pii.patterns.file",
+        "ai.atlas.api.basePath", "ai.atlas.api.major", "ai.atlas.openapi.infoVersion"
 })
 @SupportedSourceVersion(SourceVersion.RELEASE_21)
 public class AgenticProcessor extends AbstractProcessor {
 
-    /** Maps entity qualified name → EntityModel (for DTO lookup during service processing) */
+    private static final String OPT_API_BASE_PATH = "ai.atlas.api.basePath";
+    private static final String OPT_API_MAJOR = "ai.atlas.api.major";
+    private static final String OPT_OPENAPI_INFO_VERSION = "ai.atlas.openapi.infoVersion";
+
     private final Map<String, EntityModel> entityRegistry = new HashMap<>();
-
-    /** Collects service models for aggregate OpenAPI generation */
     private final List<ServiceModel> serviceRegistry = new ArrayList<>();
-
-    /** Guard to ensure OpenAPI spec is written only once */
     private boolean openApiGenerated = false;
+    private String apiBasePath;
+    private int apiMajor;
+    private String openApiInfoVersion;
+    private boolean versionConfigValid;
+
+    @Override
+    public synchronized void init(ProcessingEnvironment processingEnv) {
+        super.init(processingEnv);
+        resolveVersionConfig();
+    }
+
+    private void resolveVersionConfig() {
+        Messager msg = processingEnv.getMessager();
+        Map<String, String> opts = processingEnv.getOptions();
+        versionConfigValid = true;
+
+        apiBasePath = opts.getOrDefault(OPT_API_BASE_PATH, "/api");
+        if (!apiBasePath.startsWith("/")) {
+            msg.printMessage(Diagnostic.Kind.ERROR,
+                    "[ai-atlas] ai.atlas.api.basePath must start with '/'. Got: " + apiBasePath);
+            versionConfigValid = false;
+            return;
+        }
+        while (apiBasePath.endsWith("/") && apiBasePath.length() > 1) {
+            apiBasePath = apiBasePath.substring(0, apiBasePath.length() - 1);
+        }
+        if ("/".equals(apiBasePath)) {
+            msg.printMessage(Diagnostic.Kind.ERROR,
+                    "[ai-atlas] ai.atlas.api.basePath must not be '/'. Use a path like '/api'.");
+            versionConfigValid = false;
+            return;
+        }
+
+        String majorStr = opts.getOrDefault(OPT_API_MAJOR, "1");
+        try {
+            apiMajor = Integer.parseInt(majorStr);
+            if (apiMajor < 1) {
+                msg.printMessage(Diagnostic.Kind.ERROR,
+                        "[ai-atlas] ai.atlas.api.major must be a positive integer. Got: " + majorStr);
+                versionConfigValid = false;
+                return;
+            }
+        } catch (NumberFormatException e) {
+            msg.printMessage(Diagnostic.Kind.ERROR,
+                    "[ai-atlas] ai.atlas.api.major must be an integer. Got: " + majorStr);
+            versionConfigValid = false;
+            return;
+        }
+
+        String infoVersionRaw = opts.get(OPT_OPENAPI_INFO_VERSION);
+        openApiInfoVersion = infoVersionRaw != null ? infoVersionRaw : (apiMajor + ".0.0");
+        if (openApiInfoVersion.isBlank()) {
+            msg.printMessage(Diagnostic.Kind.ERROR,
+                    "[ai-atlas] ai.atlas.openapi.infoVersion must not be empty");
+            versionConfigValid = false;
+        }
+    }
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
+        if (!versionConfigValid) {
+            return false;
+        }
         if (roundEnv.processingOver()) {
             return false;
         }
@@ -90,6 +142,7 @@ public class AgenticProcessor extends AbstractProcessor {
             OpenApiGenerator.generate(
                     new ArrayList<>(entityRegistry.values()),
                     serviceRegistry,
+                    apiBasePath, apiMajor, openApiInfoVersion,
                     processingEnv.getFiler(),
                     processingEnv.getMessager()
             );
@@ -307,7 +360,7 @@ public class AgenticProcessor extends AbstractProcessor {
         serviceRegistry.add(model);
 
         McpToolGenerator.generate(model, generatedPackage, processingEnv.getFiler(), processingEnv.getMessager());
-        RestControllerGenerator.generate(model, generatedPackage, processingEnv.getFiler(), processingEnv.getMessager());
+        RestControllerGenerator.generate(model, generatedPackage, apiBasePath, apiMajor, processingEnv.getFiler(), processingEnv.getMessager());
     }
 
     private MethodModel buildMethodModel(ExecutableElement method, AgenticExposed typeAnnotation) {
@@ -331,15 +384,10 @@ public class AgenticProcessor extends AbstractProcessor {
                 ? "Invokes " + methodName
                 : annotation.description();
 
-        // Resolve return entity type via MirroredTypeException
         ClassName returnEntityType = resolveReturnEntityType(annotation);
         ClassName returnDtoType = null;
         TypeName returnType = TypeName.get(method.getReturnType());
-
-        // Classify return type shape for correct mapping code generation
         ServiceModel.ReturnKind returnKind = resolveReturnKind(method);
-
-        // Validate returnType compatibility before allowing cast-based DTO mapping
         if (returnEntityType != null) {
             TypeMirror returnEntityMirror = ReturnTypeValidator.resolveReturnEntityTypeMirror(annotation);
             if (returnEntityMirror != null) {
@@ -395,40 +443,27 @@ public class AgenticProcessor extends AbstractProcessor {
         return new MethodModel(methodName, toolName, description, returnType, returnEntityType, returnDtoType, returnKind, params, channels);
     }
 
-    /**
-     * Classifies the method's return type as COLLECTION, ITERABLE, ARRAY, or NONE.
-     * Collection is checked first (has .stream()), then Iterable (needs StreamSupport).
-     */
     private ServiceModel.ReturnKind resolveReturnKind(ExecutableElement method) {
         TypeMirror returnType = method.getReturnType();
         var typeUtils = processingEnv.getTypeUtils();
         var elementUtils = processingEnv.getElementUtils();
-
         if (returnType.getKind() == javax.lang.model.type.TypeKind.ARRAY) {
             return ServiceModel.ReturnKind.ARRAY;
         }
-
         TypeMirror erasedReturn = typeUtils.erasure(returnType);
-
         TypeElement collectionEl = elementUtils.getTypeElement("java.util.Collection");
         if (collectionEl != null
                 && typeUtils.isAssignable(erasedReturn, typeUtils.erasure(collectionEl.asType()))) {
             return ServiceModel.ReturnKind.COLLECTION;
         }
-
         TypeElement iterableEl = elementUtils.getTypeElement("java.lang.Iterable");
         if (iterableEl != null
                 && typeUtils.isAssignable(erasedReturn, typeUtils.erasure(iterableEl.asType()))) {
             return ServiceModel.ReturnKind.ITERABLE;
         }
-
         return ServiceModel.ReturnKind.NONE;
     }
 
-    /**
-     * Reads the returnType() attribute from @AgenticExposed, handling
-     * MirroredTypeException as required by JSR 269.
-     */
     private ClassName resolveReturnEntityType(AgenticExposed annotation) {
         try {
             Class<?> returnType = annotation.returnType();

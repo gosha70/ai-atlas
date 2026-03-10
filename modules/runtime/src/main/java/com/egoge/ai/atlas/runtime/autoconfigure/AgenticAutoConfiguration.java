@@ -68,8 +68,10 @@ public class AgenticAutoConfiguration implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         if (properties.getAudit().isEnabled()) {
+            AgenticProperties.Api api = properties.getApi();
+            String pattern = api.getBasePath() + "/v" + api.getMajor() + "/**";
             registry.addInterceptor(piiAuditInterceptor())
-                    .addPathPatterns("/api/v1/**");
+                    .addPathPatterns(pattern);
         }
     }
 }

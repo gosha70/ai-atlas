@@ -51,4 +51,25 @@ public abstract class AgenticExtension {
      * additive option still works on top.
      */
     public abstract Property<String> getPiiPatternsFile();
+
+    /**
+     * Base path prefix for generated REST endpoints. Defaults to "/api".
+     * Must start with "/" and must not end with "/".
+     * Generated path formula: {basePath}/v{majorVersion}/{service-kebab}/{method-kebab}
+     */
+    public abstract Property<String> getApiBasePath();
+
+    /**
+     * Major API version number for generated REST endpoints and OpenAPI paths.
+     * Defaults to 1. Must be a positive integer.
+     * Appears in URL as /v{majorVersion}/.
+     */
+    public abstract Property<Integer> getApiMajorVersion();
+
+    /**
+     * Version string for the OpenAPI info.version field.
+     * Defaults to "{majorVersion}.0.0". Should follow SemVer.
+     * This is the API document version, not the URL path version.
+     */
+    public abstract Property<String> getOpenApiInfoVersion();
 }

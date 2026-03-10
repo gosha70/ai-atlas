@@ -28,7 +28,6 @@ import java.util.Collection;
 public class DtoResponseBodyAdvice implements ResponseBodyAdvice<Object> {
 
     private static final Logger log = LoggerFactory.getLogger(DtoResponseBodyAdvice.class);
-    private static final String GENERATED_API_PREFIX = "/api/v1/";
 
     @Override
     public boolean supports(MethodParameter returnType, Class<? extends HttpMessageConverter<?>> converterType) {

@@ -14,6 +14,7 @@ public class AgenticProperties {
     private final Mcp mcp = new Mcp();
     private final Audit audit = new Audit();
     private final Json json = new Json();
+    private final Api api = new Api();
 
     public Mcp getMcp() {
         return mcp;
@@ -25,6 +26,10 @@ public class AgenticProperties {
 
     public Json getJson() {
         return json;
+    }
+
+    public Api getApi() {
+        return api;
     }
 
     public static class Mcp {
@@ -94,6 +99,47 @@ public class AgenticProperties {
 
         public void setIncludeValidValues(boolean includeValidValues) {
             this.includeValidValues = includeValidValues;
+        }
+    }
+
+    /**
+     * API version and path configuration.
+     * Must match the values used during annotation processing.
+     */
+    public static class Api {
+        private String basePath = "/api";
+        private int major = 1;
+
+        public String getBasePath() { return basePath; }
+        public void setBasePath(String basePath) {
+            this.basePath = normalizeBasePath(basePath);
+        }
+        public int getMajor() { return major; }
+        public void setMajor(int major) {
+            if (major < 1) {
+                throw new IllegalArgumentException(
+                        "ai.atlas.api.major must be a positive integer. Got: " + major);
+            }
+            this.major = major;
+        }
+
+        static String normalizeBasePath(String path) {
+            if (path == null || path.isBlank()) {
+                throw new IllegalArgumentException(
+                        "ai.atlas.api.base-path must not be blank");
+            }
+            if (!path.startsWith("/")) {
+                throw new IllegalArgumentException(
+                        "ai.atlas.api.base-path must start with '/'. Got: " + path);
+            }
+            while (path.endsWith("/") && path.length() > 1) {
+                path = path.substring(0, path.length() - 1);
+            }
+            if ("/".equals(path)) {
+                throw new IllegalArgumentException(
+                        "ai.atlas.api.base-path must not be '/'. Use a path like '/api'.");
+            }
+            return path;
         }
     }
 }
