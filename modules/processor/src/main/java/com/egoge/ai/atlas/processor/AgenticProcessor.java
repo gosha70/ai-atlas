@@ -14,6 +14,7 @@ import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
+import com.egoge.ai.atlas.processor.util.AttributeResolver;
 import com.egoge.ai.atlas.processor.util.FieldScanner;
 import com.egoge.ai.atlas.processor.util.PiiDetector;
 import com.egoge.ai.atlas.processor.util.ReturnTypeValidator;
@@ -33,7 +34,6 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
-import javax.lang.model.type.MirroredTypeException;
 import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 import java.util.ArrayList;
@@ -359,88 +359,104 @@ public class AgenticProcessor extends AbstractProcessor {
         ServiceModel model = new ServiceModel(serviceClassName, methodModels);
         serviceRegistry.add(model);
 
-        McpToolGenerator.generate(model, generatedPackage, processingEnv.getFiler(), processingEnv.getMessager());
+        McpToolGenerator.generate(model, generatedPackage, apiMajor, processingEnv.getFiler(), processingEnv.getMessager());
         RestControllerGenerator.generate(model, generatedPackage, apiBasePath, apiMajor, processingEnv.getFiler(), processingEnv.getMessager());
     }
 
     private MethodModel buildMethodModel(ExecutableElement method, AgenticExposed typeAnnotation) {
-        // Method-level annotation takes precedence
         AgenticExposed methodAnnotation = method.getAnnotation(AgenticExposed.class);
-        AgenticExposed annotation = methodAnnotation != null ? methodAnnotation : typeAnnotation;
-
-        if (annotation == null) {
+        if (methodAnnotation == null && typeAnnotation == null) {
             return null;
         }
 
         String methodName = method.getSimpleName().toString();
-        // For type-level annotation, use method name as tool name (type toolName is the service prefix)
-        String toolName;
-        if (methodAnnotation != null && !methodAnnotation.toolName().isEmpty()) {
-            toolName = methodAnnotation.toolName();
-        } else {
-            toolName = methodName;
-        }
-        String description = annotation.description().isEmpty()
-                ? "Invokes " + methodName
-                : annotation.description();
+        String toolName = (methodAnnotation != null && !methodAnnotation.toolName().isEmpty())
+                ? methodAnnotation.toolName() : methodName;
+        String description = AttributeResolver.resolveDescription(methodAnnotation, typeAnnotation, methodName);
 
-        ClassName returnEntityType = resolveReturnEntityType(annotation);
+        ClassName returnEntityType = AttributeResolver.resolveReturnEntityType(
+                methodAnnotation, typeAnnotation, processingEnv.getTypeUtils());
         ClassName returnDtoType = null;
         TypeName returnType = TypeName.get(method.getReturnType());
         ServiceModel.ReturnKind returnKind = resolveReturnKind(method);
         if (returnEntityType != null) {
-            TypeMirror returnEntityMirror = ReturnTypeValidator.resolveReturnEntityTypeMirror(annotation);
+            TypeMirror returnEntityMirror = AttributeResolver.resolveReturnEntityTypeMirror(
+                    methodAnnotation, typeAnnotation);
             if (returnEntityMirror != null) {
                 var compat = ReturnTypeValidator.validateReturnTypeCompat(
                         method, returnEntityMirror, returnKind != ServiceModel.ReturnKind.NONE,
                         processingEnv.getTypeUtils());
                 if (compat == ReturnTypeValidator.Result.INCOMPATIBLE) {
-                    processingEnv.getMessager().printMessage(
-                            Diagnostic.Kind.ERROR,
+                    processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                             "@AgenticExposed(returnType = " + returnEntityType.simpleName()
                                     + ") is not compatible with method return type "
-                                    + method.getReturnType()
-                                    + " — generated code would cast elements to "
-                                    + returnEntityType.simpleName()
-                                    + ", causing ClassCastException at runtime",
-                            method
-                    );
+                                    + method.getReturnType(), method);
                     return null;
                 }
                 if (compat == ReturnTypeValidator.Result.INCONCLUSIVE) {
-                    processingEnv.getMessager().printMessage(
-                            Diagnostic.Kind.NOTE,
+                    processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE,
                             "[ai-atlas] @AgenticExposed(returnType = " + returnEntityType.simpleName()
-                                    + ") on method '" + methodName
-                                    + "' — return type is raw/wildcard, cast safety cannot be verified at compile time",
-                            method
-                    );
+                                    + ") on '" + methodName + "' — cast safety cannot be verified", method);
                 }
             }
-
             EntityModel entityModel = entityRegistry.get(returnEntityType.canonicalName());
             if (entityModel != null) {
                 returnDtoType = entityModel.dtoClassName();
             }
         }
 
-        // Build parameter models
         List<ParameterModel> params = method.getParameters().stream()
-                .map(p -> new ParameterModel(
-                        p.getSimpleName().toString(),
-                        TypeName.get(p.asType()),
-                        ""
-                ))
+                .map(p -> new ParameterModel(p.getSimpleName().toString(), TypeName.get(p.asType()), ""))
                 .toList();
 
-        // Read channels — method-level overrides type-level
-        AgenticExposed channelSource = methodAnnotation != null ? methodAnnotation : typeAnnotation;
-        Set<String> channels = new LinkedHashSet<>();
-        for (AgenticExposed.Channel ch : channelSource.channels()) {
-            channels.add(ch.name());
+        Set<String> channels = AttributeResolver.resolveChannels(
+                methodAnnotation, typeAnnotation, method, processingEnv.getMessager());
+        if (channels == null) {
+            return null;
         }
 
-        return new MethodModel(methodName, toolName, description, returnType, returnEntityType, returnDtoType, returnKind, params, channels);
+        // Version metadata — sentinel-based inheritance
+        int apiSince = AttributeResolver.resolveIntAttr(
+                methodAnnotation, typeAnnotation, AgenticExposed::apiSince, 1);
+        int apiUntil = AttributeResolver.resolveIntAttr(
+                methodAnnotation, typeAnnotation, AgenticExposed::apiUntil, Integer.MAX_VALUE);
+        int apiDeprecatedSince = AttributeResolver.resolveIntAttr(
+                methodAnnotation, typeAnnotation, AgenticExposed::apiDeprecatedSince, 0);
+        String apiReplacement = AttributeResolver.resolveStringAttr(
+                methodAnnotation, typeAnnotation, AgenticExposed::apiReplacement, "");
+
+        // Validate version ranges
+        if (apiSince < 1) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                    "[ai-atlas] apiSince must be >= 1 on method '" + methodName + "'. Got: " + apiSince, method);
+            return null;
+        }
+        if (apiDeprecatedSince < 0) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                    "[ai-atlas] apiDeprecatedSince must be >= 0 on '" + methodName + "'. Got: " + apiDeprecatedSince, method);
+            return null;
+        }
+        if (apiSince > apiUntil) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                    "[ai-atlas] apiSince (" + apiSince + ") must be <= apiUntil (" + apiUntil
+                            + ") on method '" + methodName + "'", method);
+            return null;
+        }
+        if (apiDeprecatedSince > 0 && apiDeprecatedSince < apiSince) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                    "[ai-atlas] apiDeprecatedSince (" + apiDeprecatedSince + ") must be >= apiSince ("
+                            + apiSince + ") on '" + methodName + "'", method);
+            return null;
+        }
+        if (apiDeprecatedSince > apiUntil) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                    "[ai-atlas] apiDeprecatedSince (" + apiDeprecatedSince + ") must be <= apiUntil ("
+                            + apiUntil + ") on method '" + methodName + "'", method);
+            return null;
+        }
+
+        return new MethodModel(methodName, toolName, description, returnType, returnEntityType,
+                returnDtoType, returnKind, params, channels, apiSince, apiUntil, apiDeprecatedSince, apiReplacement);
     }
 
     private ServiceModel.ReturnKind resolveReturnKind(ExecutableElement method) {
@@ -464,22 +480,6 @@ public class AgenticProcessor extends AbstractProcessor {
         return ServiceModel.ReturnKind.NONE;
     }
 
-    private ClassName resolveReturnEntityType(AgenticExposed annotation) {
-        try {
-            Class<?> returnType = annotation.returnType();
-            if (returnType == void.class) {
-                return null;
-            }
-            return ClassName.get(returnType);
-        } catch (MirroredTypeException e) {
-            TypeMirror typeMirror = e.getTypeMirror();
-            TypeElement typeElement = (TypeElement) processingEnv.getTypeUtils().asElement(typeMirror);
-            if (typeElement != null) {
-                return ClassName.get(typeElement);
-            }
-            return null;
-        }
-    }
 
     private void emitPiiWarnings(TypeElement typeElement) {
         String customPatterns = processingEnv.getOptions().get("ai.atlas.pii.patterns");

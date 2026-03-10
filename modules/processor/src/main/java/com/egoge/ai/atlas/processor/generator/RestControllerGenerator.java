@@ -7,6 +7,7 @@ import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ReturnKind;
+import com.egoge.ai.atlas.processor.util.VersionSelector;
 import com.palantir.javapoet.AnnotationSpec;
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.FieldSpec;
@@ -75,7 +76,7 @@ public final class RestControllerGenerator {
                                         String apiBasePath, int apiMajor) {
         // Filter to API-channel methods only
         var apiMethods = model.methods().stream()
-                .filter(m -> m.channels().contains("API"))
+                .filter(m -> m.channels().contains("API") && VersionSelector.isActive(m, apiMajor))
                 .toList();
         if (apiMethods.isEmpty()) {
             return null;
@@ -108,13 +109,13 @@ public final class RestControllerGenerator {
 
         // Endpoint methods
         for (MethodModel method : apiMethods) {
-            classBuilder.addMethod(buildEndpointMethod(method));
+            classBuilder.addMethod(buildEndpointMethod(method, apiMajor));
         }
 
         return classBuilder.build();
     }
 
-    private static MethodSpec buildEndpointMethod(MethodModel method) {
+    private static MethodSpec buildEndpointMethod(MethodModel method, int apiMajor) {
         String path = "/" + toKebabCase(method.methodName());
         boolean hasParams = !method.parameters().isEmpty();
 
@@ -133,6 +134,10 @@ public final class RestControllerGenerator {
         MethodSpec.Builder methodBuilder = MethodSpec.methodBuilder(method.methodName())
                 .addModifiers(Modifier.PUBLIC)
                 .addAnnotation(mappingAnnotation);
+
+        if (VersionSelector.isDeprecated(method, apiMajor)) {
+            methodBuilder.addAnnotation(Deprecated.class);
+        }
 
         // Return type
         boolean isCollection = method.returnKind() != ReturnKind.NONE;

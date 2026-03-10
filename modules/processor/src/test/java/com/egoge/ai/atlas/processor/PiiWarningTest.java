@@ -129,7 +129,7 @@ class PiiWarningTest {
         assertThat(compilation).succeeded();
         assertThat(compilation).hadNoteContaining("Generated DTO");
         assertThat(compilation).hadNoteContaining("Generated OpenAPI spec");
-        // Should not contain PII warnings — only generation notes
-        assertThat(compilation).hadNoteCount(2);
+        // Should not contain PII warnings — only generation notes (DTO + OpenAPI versioned + OpenAPI alias)
+        assertThat(compilation).hadNoteCount(3);
     }
 }

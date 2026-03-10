@@ -45,7 +45,11 @@ public record ServiceModel(
       ClassName returnDtoType,
       ReturnKind returnKind,
       List<ParameterModel> parameters,
-      Set<String> channels
+      Set<String> channels,
+      int apiSince,
+      int apiUntil,
+      int apiDeprecatedSince,
+      String apiReplacement
   ) {
   }
 

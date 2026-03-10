@@ -56,7 +56,7 @@ class PiiPatternsFileTest {
         // Custom file only has "salary" — password (a default) should NOT match
         assertThat(compilation).hadNoteContaining("Field 'salary' matches PII pattern");
         // Verify no PII warning for password (it's a default, but custom file replaces defaults)
-        assertThat(compilation).hadNoteCount(3); // salary PII + Generated DTO + Generated OpenAPI
+        assertThat(compilation).hadNoteCount(4); // salary PII + Generated DTO + OpenAPI versioned + OpenAPI alias
     }
 
     @Test

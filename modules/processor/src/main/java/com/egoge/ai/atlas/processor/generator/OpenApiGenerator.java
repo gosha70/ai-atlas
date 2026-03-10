@@ -9,6 +9,7 @@ import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ReturnKind;
+import com.egoge.ai.atlas.processor.util.VersionSelector;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -49,7 +50,12 @@ import java.util.Map;
 public final class OpenApiGenerator {
 
   private static final String OPENAPI_VERSION = "3.0.3";
-  private static final String RESOURCE_PATH = "META-INF/openapi/openapi.json";
+  private static final String RESOURCE_DIR = "META-INF/openapi/";
+  private static final String LEGACY_RESOURCE_NAME = "openapi.json";
+
+  private static String versionedResourcePath(int apiMajor) {
+    return RESOURCE_DIR + "openapi-v" + apiMajor + ".json";
+  }
 
   private OpenApiGenerator() {
   }
@@ -66,12 +72,24 @@ public final class OpenApiGenerator {
 
     try {
       String json = serializeToJson(openAPI);
-      var resource = filer.createResource(StandardLocation.CLASS_OUTPUT, "", RESOURCE_PATH);
-      try (Writer writer = resource.openWriter()) {
+
+      // Write versioned spec
+      String versionedPath = versionedResourcePath(apiMajor);
+      var versionedResource = filer.createResource(StandardLocation.CLASS_OUTPUT, "", versionedPath);
+      try (Writer writer = versionedResource.openWriter()) {
         writer.write(json);
       }
       messager.printMessage(Diagnostic.Kind.NOTE,
-          "[ai-atlas] Generated OpenAPI spec: " + RESOURCE_PATH);
+          "[ai-atlas] Generated OpenAPI spec: " + versionedPath);
+
+      // Write legacy alias
+      String legacyPath = RESOURCE_DIR + LEGACY_RESOURCE_NAME;
+      var legacyResource = filer.createResource(StandardLocation.CLASS_OUTPUT, "", legacyPath);
+      try (Writer writer = legacyResource.openWriter()) {
+        writer.write(json);
+      }
+      messager.printMessage(Diagnostic.Kind.NOTE,
+          "[ai-atlas] Generated OpenAPI spec alias: " + legacyPath);
     } catch (IOException e) {
       messager.printMessage(Diagnostic.Kind.ERROR,
           "[ai-atlas] Failed to write OpenAPI spec: " + e.getMessage());
@@ -161,12 +179,12 @@ public final class OpenApiGenerator {
     String basePath = apiBasePath + "/v" + apiMajor + "/" + toKebabCase(serviceName);
 
     for (MethodModel method : service.methods()) {
-      if (!method.channels().contains("API")) {
+      if (!method.channels().contains("API") || !VersionSelector.isActive(method, apiMajor)) {
         continue;
       }
       String path = basePath + "/" + toKebabCase(method.methodName());
       PathItem pathItem = new PathItem();
-      Operation operation = buildOperation(method);
+      Operation operation = buildOperation(method, apiMajor);
 
       if (method.parameters().isEmpty()) {
         pathItem.get(operation);
@@ -179,10 +197,13 @@ public final class OpenApiGenerator {
   }
 
   @SuppressWarnings({"rawtypes", "unchecked"}) // swagger-models properties() accepts raw Map<String, Schema>
-  private static Operation buildOperation(MethodModel method) {
+  private static Operation buildOperation(MethodModel method, int apiMajor) {
     Operation operation = new Operation();
     operation.operationId(method.methodName());
     operation.summary(method.description());
+    if (VersionSelector.isDeprecated(method, apiMajor)) {
+      operation.deprecated(true);
+    }
 
     // Request body for methods with parameters
     if (!method.parameters().isEmpty()) {

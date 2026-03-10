@@ -7,6 +7,7 @@ import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ReturnKind;
+import com.egoge.ai.atlas.processor.util.VersionSelector;
 import com.palantir.javapoet.AnnotationSpec;
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.FieldSpec;
@@ -42,9 +43,10 @@ public final class McpToolGenerator {
     /**
      * Generates an MCP tool wrapper class and writes it to the filer.
      */
-    public static void generate(ServiceModel model, String packageName, Filer filer, Messager messager) {
+    public static void generate(ServiceModel model, String packageName, int apiMajor,
+                                Filer filer, Messager messager) {
         String toolClassName = model.serviceClassName().simpleName() + "McpTool";
-        TypeSpec toolSpec = buildToolSpec(model, toolClassName);
+        TypeSpec toolSpec = buildToolSpec(model, toolClassName, apiMajor);
         if (toolSpec == null) {
             messager.printMessage(Diagnostic.Kind.NOTE,
                     "[ai-atlas] Skipped MCP tool for " + model.serviceClassName().simpleName()
@@ -66,10 +68,10 @@ public final class McpToolGenerator {
         }
     }
 
-    static TypeSpec buildToolSpec(ServiceModel model, String toolClassName) {
-        // Filter to AI-channel methods only
+    static TypeSpec buildToolSpec(ServiceModel model, String toolClassName, int apiMajor) {
+        // Filter to AI-channel methods that are active for the configured major
         var aiMethods = model.methods().stream()
-                .filter(m -> m.channels().contains("AI"))
+                .filter(m -> m.channels().contains("AI") && VersionSelector.isActive(m, apiMajor))
                 .toList();
         if (aiMethods.isEmpty()) {
             return null;
@@ -97,18 +99,28 @@ public final class McpToolGenerator {
 
         // @Tool methods
         for (MethodModel method : aiMethods) {
-            classBuilder.addMethod(buildToolMethod(method));
+            classBuilder.addMethod(buildToolMethod(method, apiMajor));
         }
 
         return classBuilder.build();
     }
 
-    private static MethodSpec buildToolMethod(MethodModel method) {
+    private static MethodSpec buildToolMethod(MethodModel method, int apiMajor) {
+        // Enrich description with version/deprecation metadata
+        String desc = method.description();
+        if (VersionSelector.isDeprecated(method, apiMajor)) {
+            String replacement = method.apiReplacement().isEmpty()
+                    ? "" : ", use " + method.apiReplacement();
+            desc = "[DEPRECATED since v" + method.apiDeprecatedSince() + replacement + "] " + desc;
+        } else if (method.apiSince() > 1) {
+            desc = "[Since v" + method.apiSince() + "] " + desc;
+        }
+
         MethodSpec.Builder methodBuilder = MethodSpec.methodBuilder(method.toolName())
                 .addModifiers(Modifier.PUBLIC)
                 .addAnnotation(AnnotationSpec.builder(TOOL)
                         .addMember("name", "$S", method.toolName())
-                        .addMember("description", "$S", method.description())
+                        .addMember("description", "$S", desc)
                         .build());
 
         // Return type
@@ -127,9 +139,9 @@ public final class McpToolGenerator {
         // Parameters with @ToolParam
         for (ParameterModel param : method.parameters()) {
             ParameterSpec.Builder paramBuilder = ParameterSpec.builder(param.typeName(), param.name());
-            String desc = param.description().isEmpty() ? param.name() : param.description();
+            String paramDesc = param.description().isEmpty() ? param.name() : param.description();
             paramBuilder.addAnnotation(AnnotationSpec.builder(TOOL_PARAM)
-                    .addMember("description", "$S", desc)
+                    .addMember("description", "$S", paramDesc)
                     .build());
             methodBuilder.addParameter(paramBuilder.build());
         }
