@@ -31,7 +31,15 @@ public record FieldModel(
     /* Element type for collections/arrays (null if NONE) */
     TypeName elementTypeName,
     /* User-declared element type from @AgenticField(type = ...), null if void.class */
-    TypeName hintTypeName
+    TypeName hintTypeName,
+    /* Minimum major API version this field is active (inclusive) */
+    int sinceVersion,
+    /* Major API version this field is removed (exclusive, half-open interval) */
+    int removedInVersion,
+    /* Major API version this field became deprecated; 0 = not deprecated */
+    int deprecatedSinceVersion,
+    /* Migration guidance for deprecated fields */
+    String deprecatedMessage
 ) {
 
     /**

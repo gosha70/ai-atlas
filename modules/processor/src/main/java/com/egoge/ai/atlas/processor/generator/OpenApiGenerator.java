@@ -115,7 +115,7 @@ public final class OpenApiGenerator {
     Components components = new Components();
     Map<String, Schema<?>> schemas = new LinkedHashMap<>();
     for (EntityModel entity : entities) {
-      schemas.put(entity.dtoName(), buildEntitySchema(entity));
+      schemas.put(entity.dtoName(), buildEntitySchema(entity, apiMajor));
     }
     components.schemas((Map) schemas);
     openAPI.components(components);
@@ -131,7 +131,7 @@ public final class OpenApiGenerator {
   }
 
   @SuppressWarnings({"rawtypes", "unchecked"}) // swagger-models properties() accepts raw Map<String, Schema>
-  private static Schema<?> buildEntitySchema(EntityModel entity) {
+  private static Schema<?> buildEntitySchema(EntityModel entity, int apiMajor) {
     Schema<?> schema = new Schema<>().type("object");
     String description = entity.classDescription().isEmpty()
         ? entity.dtoName() + " — PII-safe projection of " + entity.sourceClassName().simpleName()
@@ -139,14 +139,14 @@ public final class OpenApiGenerator {
     schema.description(description);
     Map<String, Schema<?>> properties = new LinkedHashMap<>();
     for (FieldModel field : entity.fields()) {
-      properties.put(field.name(), buildFieldSchema(field));
+      properties.put(field.name(), buildFieldSchema(field, apiMajor));
     }
     schema.properties((Map) properties);
     return schema;
   }
 
   @SuppressWarnings({"rawtypes", "unchecked"}) // swagger-models setEnum() requires raw Schema cast
-  private static Schema<?> buildFieldSchema(FieldModel field) {
+  private static Schema<?> buildFieldSchema(FieldModel field, int apiMajor) {
     Schema<?> schema;
     if (field.enumType()) {
       schema = new Schema<>().type("string");
@@ -158,6 +158,18 @@ public final class OpenApiGenerator {
     }
     if (!field.description().isEmpty()) {
       schema.description(field.description());
+    }
+    if (VersionSelector.isFieldDeprecated(field, apiMajor)) {
+      schema.deprecated(true);
+      String desc = schema.getDescription();
+      if (desc == null) {
+        desc = "";
+      }
+      String prefix = field.deprecatedMessage().isEmpty()
+          ? "[DEPRECATED since v" + field.deprecatedSinceVersion() + "]"
+          : "[DEPRECATED since v" + field.deprecatedSinceVersion()
+              + ": " + field.deprecatedMessage() + "]";
+      schema.description(prefix + (desc.isEmpty() ? "" : " " + desc));
     }
     return schema;
   }

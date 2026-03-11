@@ -6,15 +6,18 @@ package com.egoge.ai.atlas.processor;
 import com.egoge.ai.atlas.annotations.AgenticField;
 import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.egoge.ai.atlas.annotations.AgenticExposed;
+import com.egoge.ai.atlas.processor.generator.ApiVersionPropertiesGenerator;
 import com.egoge.ai.atlas.processor.generator.DtoGenerator;
 import com.egoge.ai.atlas.processor.generator.McpToolGenerator;
 import com.egoge.ai.atlas.processor.generator.OpenApiGenerator;
 import com.egoge.ai.atlas.processor.generator.RestControllerGenerator;
 import com.egoge.ai.atlas.processor.model.EntityModel;
+import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
 import com.egoge.ai.atlas.processor.util.AttributeResolver;
+import com.egoge.ai.atlas.processor.util.EntityRefResolver;
 import com.egoge.ai.atlas.processor.util.FieldScanner;
 import com.egoge.ai.atlas.processor.util.PiiDetector;
 import com.egoge.ai.atlas.processor.util.ReturnTypeValidator;
@@ -38,6 +41,7 @@ import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -62,8 +66,10 @@ public class AgenticProcessor extends AbstractProcessor {
     private static final String OPT_OPENAPI_INFO_VERSION = "ai.atlas.openapi.infoVersion";
 
     private final Map<String, EntityModel> entityRegistry = new HashMap<>();
+    private final Set<String> dtoSkippedKeys = new HashSet<>();
     private final List<ServiceModel> serviceRegistry = new ArrayList<>();
     private boolean openApiGenerated = false;
+    private boolean apiVersionPropertiesGenerated = false;
     private String apiBasePath;
     private int apiMajor;
     private String openApiInfoVersion;
@@ -137,7 +143,7 @@ public class AgenticProcessor extends AbstractProcessor {
         // Phase 2: Process @AgenticExposed services → generate MCP tools + REST controllers
         processServices(roundEnv);
 
-        // Phase 3: Generate aggregate OpenAPI spec (once per compilation)
+        // Phase 3: Generate aggregate artifacts once per compilation
         if (!openApiGenerated && (!entityRegistry.isEmpty() || !serviceRegistry.isEmpty())) {
             OpenApiGenerator.generate(
                     new ArrayList<>(entityRegistry.values()),
@@ -148,6 +154,12 @@ public class AgenticProcessor extends AbstractProcessor {
             );
             openApiGenerated = true;
         }
+        if (!apiVersionPropertiesGenerated) {
+            ApiVersionPropertiesGenerator.generate(
+                    apiBasePath, apiMajor,
+                    processingEnv.getFiler(), processingEnv.getMessager());
+            apiVersionPropertiesGenerated = true;
+        }
 
         return true;
     }
@@ -157,90 +169,107 @@ public class AgenticProcessor extends AbstractProcessor {
         List<String> roundEntityKeys = new ArrayList<>();
         for (var element : roundEnv.getElementsAnnotatedWith(AgenticEntity.class)) {
             if (element.getKind() == ElementKind.INTERFACE) {
-                processingEnv.getMessager().printMessage(
-                        Diagnostic.Kind.WARNING,
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
                         "@AgenticEntity on interface " + element.getSimpleName()
-                                + " is not supported — interfaces have no fields. Skipping.",
-                        element
-                );
+                                + " is not supported — interfaces have no fields. Skipping.", element);
                 continue;
             }
             if (element.getKind() == ElementKind.ENUM) {
-                processingEnv.getMessager().printMessage(
-                        Diagnostic.Kind.WARNING,
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
                         "@AgenticEntity on enum " + element.getSimpleName()
-                                + " is not supported — use on concrete classes. Skipping.",
-                        element
-                );
+                                + " is not supported — use on concrete classes. Skipping.", element);
                 continue;
             }
             if (element.getKind() != ElementKind.CLASS) {
-                processingEnv.getMessager().printMessage(
-                        Diagnostic.Kind.ERROR,
-                        "@AgenticEntity can only be applied to classes",
-                        element
-                );
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                        "@AgenticEntity can only be applied to classes", element);
                 continue;
             }
 
             TypeElement typeElement = (TypeElement) element;
-
-            // Warn on abstract classes but still process them (they may have fields)
             if (typeElement.getModifiers().contains(javax.lang.model.element.Modifier.ABSTRACT)) {
-                processingEnv.getMessager().printMessage(
-                        Diagnostic.Kind.WARNING,
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
                         "@AgenticEntity on abstract class " + typeElement.getSimpleName()
                                 + " — DTO will be generated but fromEntity() may not be callable directly",
-                        typeElement
-                );
+                        typeElement);
             }
 
             String key = typeElement.getQualifiedName().toString();
             processEntity(typeElement);
-            if (entityRegistry.containsKey(key)) {
+            // Only add to roundEntityKeys if entity has active fields (non-empty)
+            EntityModel registered = entityRegistry.get(key);
+            if (registered != null && !registered.fields().isEmpty()) {
                 roundEntityKeys.add(key);
             }
         }
 
-        // Pass 2: Generate DTOs (all entities registered — can resolve cross-references)
+        // Pass 2: Validate nested refs and generate DTOs
         for (String key : roundEntityKeys) {
             EntityModel model = entityRegistry.get(key);
-            DtoGenerator.generate(model, entityRegistry, processingEnv.getFiler(), processingEnv.getMessager());
+            boolean hasEmptyRef = false;
+            for (FieldModel field : model.fields()) {
+                EntityRefResolver.EntityRef ref = EntityRefResolver.resolve(field, entityRegistry);
+                if (ref != null) {
+                    EntityModel refEntity = entityRegistry.get(ref.entityClass().canonicalName());
+                    if (refEntity != null && refEntity.fields().isEmpty()) {
+                        processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                                "[ai-atlas] Field '" + field.name() + "' in "
+                                        + model.sourceClassName().simpleName()
+                                        + " references entity " + ref.entityClass().simpleName()
+                                        + " which has no active fields for apiMajor=" + apiMajor);
+                        hasEmptyRef = true;
+                    }
+                }
+            }
+            if (hasEmptyRef) {
+                dtoSkippedKeys.add(key);
+            } else {
+                DtoGenerator.generate(model, entityRegistry, apiMajor,
+                        processingEnv.getFiler(), processingEnv.getMessager());
+            }
         }
     }
 
     private void processEntity(TypeElement typeElement) {
         var annotation = typeElement.getAnnotation(AgenticEntity.class);
-        var fields = FieldScanner.scan(typeElement, processingEnv);
+        var fields = FieldScanner.scan(typeElement, processingEnv, apiMajor);
 
         emitPiiWarnings(typeElement);
 
+        String simpleName = typeElement.getSimpleName().toString();
+        String dtoName = annotation.dtoName().isEmpty() ? simpleName + "Dto" : annotation.dtoName();
+        String sourcePackage = processingEnv.getElementUtils()
+                .getPackageOf(typeElement).getQualifiedName().toString();
+        String dtoPackage = annotation.packageName().isEmpty()
+                ? sourcePackage + ".generated" : annotation.packageName();
+        String displayName = annotation.name().isEmpty() ? simpleName : annotation.name();
+        ClassName sourceClassName = ClassName.get(typeElement);
+        EntityModel model = new EntityModel(sourceClassName, dtoName, dtoPackage,
+                displayName, annotation.description(), annotation.includeTypeInfo(), fields);
+
         if (fields.isEmpty()) {
-            processingEnv.getMessager().printMessage(
-                    Diagnostic.Kind.WARNING,
-                    "@AgenticEntity on " + typeElement.getSimpleName()
-                            + " has no @AgenticField fields — no DTO will be generated",
-                    typeElement
-            );
+            // Register with empty fields so references can be detected in pass 2,
+            // but do NOT add to roundEntityKeys — no DTO will be generated.
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
+                    "@AgenticEntity " + simpleName
+                            + " has no active @AgenticField fields for apiMajor=" + apiMajor,
+                    typeElement);
+            entityRegistry.put(typeElement.getQualifiedName().toString(), model);
             return;
         }
 
-        // Validate: displayName (metadata key) must be unique across all fields.
-        // Generated FIELD_METADATA uses Map.ofEntries() which throws on duplicate keys.
+        // Validate: displayName (metadata key) must be unique across all active fields.
         Map<String, String> displayNameToField = new HashMap<>();
         boolean hasDuplicateAlias = false;
         for (var field : fields) {
             String previous = displayNameToField.put(field.displayName(), field.name());
             if (previous != null) {
-                processingEnv.getMessager().printMessage(
-                        Diagnostic.Kind.ERROR,
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                         "@AgenticField name \"" + field.displayName()
                                 + "\" on field '" + field.name()
                                 + "' conflicts with field '" + previous
-                                + "' — metadata keys must be unique within "
-                                + typeElement.getSimpleName(),
-                        typeElement
-                );
+                                + "' — metadata keys must be unique within " + simpleName,
+                        typeElement);
                 hasDuplicateAlias = true;
             }
         }
@@ -248,38 +277,10 @@ public class AgenticProcessor extends AbstractProcessor {
             return;
         }
 
-        String simpleName = typeElement.getSimpleName().toString();
-        String dtoName = annotation.dtoName().isEmpty()
-                ? simpleName + "Dto"
-                : annotation.dtoName();
-
-        String sourcePackage = processingEnv.getElementUtils()
-                .getPackageOf(typeElement).getQualifiedName().toString();
-        String dtoPackage = annotation.packageName().isEmpty()
-                ? sourcePackage + ".generated"
-                : annotation.packageName();
-
-        // Class-level metadata for enriched JSON and LLM context
-        String displayName = annotation.name().isEmpty()
-                ? simpleName
-                : annotation.name();
-        String classDescription = annotation.description();
-        boolean includeTypeInfo = annotation.includeTypeInfo();
-
-        ClassName sourceClassName = ClassName.get(typeElement);
-        EntityModel model = new EntityModel(
-                sourceClassName, dtoName, dtoPackage,
-                displayName, classDescription, includeTypeInfo,
-                fields
-        );
-
-        // Register for service processing lookup (DTO generation deferred to processEntities pass 2)
         entityRegistry.put(typeElement.getQualifiedName().toString(), model);
     }
 
     private void processServices(RoundEnvironment roundEnv) {
-        // Collect methods per enclosing type to avoid duplicate generation
-        // when both type-level and method-level @AgenticExposed are present.
         Set<String> typeLevelTypes = new LinkedHashSet<>();
         Map<String, TypeElement> typesByQName = new LinkedHashMap<>();
         Map<String, List<ExecutableElement>> methodsByType = new LinkedHashMap<>();
@@ -299,23 +300,18 @@ public class AgenticProcessor extends AbstractProcessor {
             }
         }
 
-        // Process each service type exactly once
         for (var entry : typesByQName.entrySet()) {
             String qName = entry.getKey();
             TypeElement typeElement = entry.getValue();
-
             if (typeLevelTypes.contains(qName)) {
-                // Type-level: expose all public methods
                 processServiceType(typeElement);
             } else {
-                // Method-level only: expose only annotated methods
                 processServiceWithMethods(typeElement, methodsByType.get(qName));
             }
         }
     }
 
     private void processServiceType(TypeElement typeElement) {
-        // Type-level @AgenticExposed: all public methods are exposed
         List<ExecutableElement> methods = typeElement.getEnclosedElements().stream()
                 .filter(e -> e.getKind() == ElementKind.METHOD)
                 .filter(e -> e.getModifiers().contains(javax.lang.model.element.Modifier.PUBLIC))
@@ -323,15 +319,11 @@ public class AgenticProcessor extends AbstractProcessor {
                 .toList();
 
         if (methods.isEmpty()) {
-            processingEnv.getMessager().printMessage(
-                    Diagnostic.Kind.WARNING,
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
                     "@AgenticExposed on " + typeElement.getSimpleName()
-                            + " has no public methods to expose",
-                    typeElement
-            );
+                            + " has no public methods to expose", typeElement);
             return;
         }
-
         processServiceWithMethods(typeElement, methods);
     }
 
@@ -340,8 +332,6 @@ public class AgenticProcessor extends AbstractProcessor {
         String servicePackage = processingEnv.getElementUtils()
                 .getPackageOf(serviceType).getQualifiedName().toString();
         String generatedPackage = servicePackage + ".generated";
-
-        // Get type-level annotation (may be null for method-level only)
         AgenticExposed typeAnnotation = serviceType.getAnnotation(AgenticExposed.class);
 
         List<MethodModel> methodModels = new ArrayList<>();
@@ -351,16 +341,16 @@ public class AgenticProcessor extends AbstractProcessor {
                 methodModels.add(methodModel);
             }
         }
-
         if (methodModels.isEmpty()) {
             return;
         }
 
         ServiceModel model = new ServiceModel(serviceClassName, methodModels);
         serviceRegistry.add(model);
-
-        McpToolGenerator.generate(model, generatedPackage, apiMajor, processingEnv.getFiler(), processingEnv.getMessager());
-        RestControllerGenerator.generate(model, generatedPackage, apiBasePath, apiMajor, processingEnv.getFiler(), processingEnv.getMessager());
+        McpToolGenerator.generate(model, generatedPackage, apiMajor,
+                processingEnv.getFiler(), processingEnv.getMessager());
+        RestControllerGenerator.generate(model, generatedPackage, apiBasePath, apiMajor,
+                processingEnv.getFiler(), processingEnv.getMessager());
     }
 
     private MethodModel buildMethodModel(ExecutableElement method, AgenticExposed typeAnnotation) {
@@ -400,6 +390,22 @@ public class AgenticProcessor extends AbstractProcessor {
                 }
             }
             EntityModel entityModel = entityRegistry.get(returnEntityType.canonicalName());
+            if (entityModel != null && entityModel.fields().isEmpty()) {
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                        "[ai-atlas] Entity " + returnEntityType.simpleName()
+                                + " has no active fields for apiMajor=" + apiMajor
+                                + " — cannot generate DTO for service method '" + methodName + "'",
+                        method);
+                return null;
+            }
+            if (entityModel != null && dtoSkippedKeys.contains(returnEntityType.canonicalName())) {
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                        "[ai-atlas] Entity " + returnEntityType.simpleName()
+                                + " has nested references to empty entities for apiMajor=" + apiMajor
+                                + " — cannot generate DTO for service method '" + methodName + "'",
+                        method);
+                return null;
+            }
             if (entityModel != null) {
                 returnDtoType = entityModel.dtoClassName();
             }
@@ -408,14 +414,12 @@ public class AgenticProcessor extends AbstractProcessor {
         List<ParameterModel> params = method.getParameters().stream()
                 .map(p -> new ParameterModel(p.getSimpleName().toString(), TypeName.get(p.asType()), ""))
                 .toList();
-
         Set<String> channels = AttributeResolver.resolveChannels(
                 methodAnnotation, typeAnnotation, method, processingEnv.getMessager());
         if (channels == null) {
             return null;
         }
 
-        // Version metadata — sentinel-based inheritance
         int apiSince = AttributeResolver.resolveIntAttr(
                 methodAnnotation, typeAnnotation, AgenticExposed::apiSince, 1);
         int apiUntil = AttributeResolver.resolveIntAttr(
@@ -425,7 +429,6 @@ public class AgenticProcessor extends AbstractProcessor {
         String apiReplacement = AttributeResolver.resolveStringAttr(
                 methodAnnotation, typeAnnotation, AgenticExposed::apiReplacement, "");
 
-        // Validate version ranges
         if (apiSince < 1) {
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                     "[ai-atlas] apiSince must be >= 1 on method '" + methodName + "'. Got: " + apiSince, method);
@@ -480,20 +483,14 @@ public class AgenticProcessor extends AbstractProcessor {
         return ServiceModel.ReturnKind.NONE;
     }
 
-
     private void emitPiiWarnings(TypeElement typeElement) {
         String customPatterns = processingEnv.getOptions().get("ai.atlas.pii.patterns");
         String patternsFile = processingEnv.getOptions().get("ai.atlas.pii.patterns.file");
         for (var enclosed : typeElement.getEnclosedElements()) {
             if (enclosed.getKind() == ElementKind.FIELD
                     && enclosed.getAnnotation(AgenticField.class) == null) {
-                PiiDetector.check(
-                        enclosed.getSimpleName().toString(),
-                        enclosed,
-                        processingEnv.getMessager(),
-                        customPatterns,
-                        patternsFile
-                );
+                PiiDetector.check(enclosed.getSimpleName().toString(), enclosed,
+                        processingEnv.getMessager(), customPatterns, patternsFile);
             }
         }
     }

@@ -6,6 +6,9 @@ package com.egoge.ai.atlas.processor.generator;
 import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.egoge.ai.atlas.processor.model.FieldModel.CollectionKind;
+import com.egoge.ai.atlas.processor.util.EntityRefResolver;
+import com.egoge.ai.atlas.processor.util.EntityRefResolver.EntityRef;
+import com.egoge.ai.atlas.processor.util.VersionSelector;
 import com.palantir.javapoet.AnnotationSpec;
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.CodeBlock;
@@ -33,8 +36,9 @@ import java.util.stream.StreamSupport;
 /**
  * Generates Java record DTOs from {@link EntityModel} instances.
  * Each generated record contains only the whitelisted {@code @AgenticField}
- * fields, a static {@code fromEntity()} factory method for null-safe mapping,
- * and static metadata constants for enriched JSON serialization.
+ * fields active for the configured {@code apiMajor}, a static {@code fromEntity()}
+ * factory method for null-safe mapping, and static metadata constants for enriched
+ * JSON serialization.
  *
  * <p>When a field's type (or collection/array element type) is another registered
  * {@code @AgenticEntity} entity, the generated DTO uses the corresponding
@@ -57,12 +61,13 @@ public final class DtoGenerator {
    *
    * @param model          the entity model to generate from
    * @param entityRegistry all registered entity models (for resolving cross-references)
+   * @param apiMajor       the configured API major version (for computed deprecation state)
    * @param filer          the annotation processing filer
    * @param messager       the compiler messager for diagnostics
    */
   public static void generate(EntityModel model, Map<String, EntityModel> entityRegistry,
-                              Filer filer, Messager messager) {
-    TypeSpec recordSpec = buildRecordSpec(model, entityRegistry);
+                              int apiMajor, Filer filer, Messager messager) {
+    TypeSpec recordSpec = buildRecordSpec(model, entityRegistry, apiMajor);
     JavaFile javaFile = JavaFile.builder(model.dtoPackageName(), recordSpec)
         .indent("    ")
         .build();
@@ -81,9 +86,10 @@ public final class DtoGenerator {
   /**
    * Builds the TypeSpec for the DTO record (visible for testing).
    */
-  public static TypeSpec buildRecordSpec(EntityModel model, Map<String, EntityModel> entityRegistry) {
+  public static TypeSpec buildRecordSpec(EntityModel model, Map<String, EntityModel> entityRegistry,
+                                         int apiMajor) {
     boolean hasEntityRefs = model.fields().stream()
-        .anyMatch(f -> resolveEntityRef(f, entityRegistry) != null);
+        .anyMatch(f -> EntityRefResolver.resolve(f, entityRegistry) != null);
 
     // Build record constructor — its parameters define the record components
     MethodSpec.Builder ctorBuilder = MethodSpec.constructorBuilder();
@@ -127,7 +133,7 @@ public final class DtoGenerator {
     ParameterizedTypeName metadataMapType = ParameterizedTypeName.get(MAP, STRING, fieldMetaType);
     recordBuilder.addField(FieldSpec.builder(metadataMapType, "FIELD_METADATA",
             Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
-        .initializer(buildFieldMetadataInitializer(model, fieldMetaType))
+        .initializer(buildFieldMetadataInitializer(model, fieldMetaType, apiMajor))
         .build());
 
     // Add ThreadLocal for cycle detection (only when entity refs exist)
@@ -150,6 +156,8 @@ public final class DtoGenerator {
 
   /**
    * Builds the nested FieldMeta record type.
+   * Components: description, validValues, sensitive, checkCircularReference,
+   * deprecated (computed current-state), deprecatedMessage.
    */
   private static TypeSpec buildFieldMetaRecord() {
     ParameterizedTypeName listOfString = ParameterizedTypeName.get(LIST, STRING);
@@ -159,6 +167,8 @@ public final class DtoGenerator {
         .addParameter(ParameterSpec.builder(listOfString, "validValues").build())
         .addParameter(ParameterSpec.builder(boolean.class, "sensitive").build())
         .addParameter(ParameterSpec.builder(boolean.class, "checkCircularReference").build())
+        .addParameter(ParameterSpec.builder(boolean.class, "deprecated").build())
+        .addParameter(ParameterSpec.builder(STRING, "deprecatedMessage").build())
         .build();
 
     return TypeSpec.recordBuilder("FieldMeta")
@@ -169,8 +179,10 @@ public final class DtoGenerator {
 
   /**
    * Builds the initializer block for the FIELD_METADATA map.
+   * Deprecation state is computed at generation time using {@link VersionSelector#isFieldDeprecated}.
    */
-  private static CodeBlock buildFieldMetadataInitializer(EntityModel model, ClassName fieldMetaType) {
+  private static CodeBlock buildFieldMetadataInitializer(EntityModel model, ClassName fieldMetaType,
+                                                          int apiMajor) {
     CodeBlock.Builder builder = CodeBlock.builder();
     builder.add("$T.ofEntries(\n", MAP);
 
@@ -184,9 +196,9 @@ public final class DtoGenerator {
         CodeBlock.Builder valuesBuilder = CodeBlock.builder();
         valuesBuilder.add("$T.of(", LIST);
         for (int j = 0; j < field.enumValues().size(); j++) {
-            if (j > 0) {
-                valuesBuilder.add(", ");
-            }
+          if (j > 0) {
+            valuesBuilder.add(", ");
+          }
           valuesBuilder.add("$S", field.enumValues().get(j));
         }
         valuesBuilder.add(")");
@@ -195,15 +207,21 @@ public final class DtoGenerator {
         validValuesExpr = CodeBlock.of("$T.of()", LIST);
       }
 
-        if (i > 0) {
-            builder.add(",\n");
-        }
-      builder.add("$T.entry($S, new $T($S, $L, $L, $L))",
+      // Compute deprecation state for the configured apiMajor (not raw annotation values)
+      boolean isDeprecatedNow = VersionSelector.isFieldDeprecated(field, apiMajor);
+      String effectiveMessage = isDeprecatedNow ? field.deprecatedMessage() : "";
+
+      if (i > 0) {
+        builder.add(",\n");
+      }
+      builder.add("$T.entry($S, new $T($S, $L, $L, $L, $L, $S))",
           MAP, displayName, fieldMetaType,
           field.description(),
           validValuesExpr,
           field.sensitive(),
-          field.checkCircularReference());
+          field.checkCircularReference(),
+          isDeprecatedNow,
+          effectiveMessage);
     }
 
     builder.add("\n)");
@@ -246,7 +264,7 @@ public final class DtoGenerator {
         constructorArgs.add(",\n");
       }
 
-      EntityRefInfo ref = resolveEntityRef(field, entityRegistry);
+      EntityRef ref = EntityRefResolver.resolve(field, entityRegistry);
       if (ref != null) {
         constructorArgs.add(buildMappingExpression(ref, getter));
       } else {
@@ -272,19 +290,19 @@ public final class DtoGenerator {
   /**
    * Builds the mapping expression for an entity reference field in fromEntity().
    */
-  private static CodeBlock buildMappingExpression(EntityRefInfo ref, String getter) {
-    return switch (ref.collectionKind) {
+  private static CodeBlock buildMappingExpression(EntityRef ref, String getter) {
+    return switch (ref.collectionKind()) {
       case COLLECTION -> CodeBlock.of(
           "entity.$L() == null ? null : entity.$L().stream().map(e -> $T.fromEntity(($T) e)).toList()",
-          getter, getter, ref.dtoClass, ref.entityClass);
+          getter, getter, ref.dtoClass(), ref.entityClass());
       case ITERABLE -> CodeBlock.of(
           "entity.$L() == null ? null : $T.stream(entity.$L().spliterator(), false)"
               + ".map(e -> $T.fromEntity(($T) e)).toList()",
-          getter, StreamSupport.class, getter, ref.dtoClass, ref.entityClass);
+          getter, StreamSupport.class, getter, ref.dtoClass(), ref.entityClass());
       case ARRAY -> CodeBlock.of(
           "entity.$L() == null ? null : $T.stream(entity.$L()).map(e -> $T.fromEntity(($T) e)).toList()",
-          getter, Arrays.class, getter, ref.dtoClass, ref.entityClass);
-      case NONE -> CodeBlock.of("$T.fromEntity(entity.$L())", ref.dtoClass, getter);
+          getter, Arrays.class, getter, ref.dtoClass(), ref.entityClass());
+      case NONE -> CodeBlock.of("$T.fromEntity(entity.$L())", ref.dtoClass(), getter);
     };
   }
 
@@ -295,62 +313,10 @@ public final class DtoGenerator {
   private static String resolveGetter(FieldModel field) {
     String name = field.name();
     String capitalized = Character.toUpperCase(name.charAt(0)) + name.substring(1);
-
     if (field.typeName().equals(com.palantir.javapoet.TypeName.BOOLEAN)) {
       return "is" + capitalized;
     }
     return "get" + capitalized;
-  }
-
-  // --- Entity reference resolution helpers ---
-
-  /**
-   * Info about a field that references another @AgenticEntity entity.
-   */
-  private record EntityRefInfo(ClassName dtoClass, ClassName entityClass, CollectionKind collectionKind) {}
-
-  /**
-   * Checks if a field references another registered @AgenticEntity entity
-   * (directly, as a collection/iterable element, or as an array component).
-   * Uses {@link FieldModel#collectionKind()} which was resolved via
-   * {@code TypeUtils.isAssignable()} in the FieldScanner (hierarchy-aware).
-   *
-   * @return entity ref info, or null if the field does not reference a registered entity
-   */
-  private static EntityRefInfo resolveEntityRef(FieldModel field, Map<String, EntityModel> entityRegistry) {
-    CollectionKind kind = field.collectionKind();
-
-    if (kind == CollectionKind.NONE) {
-      // Direct entity reference: e.g., Order order
-      TypeName typeName = field.typeName();
-      if (typeName instanceof ClassName className) {
-        EntityModel ref = entityRegistry.get(className.canonicalName());
-        if (ref != null) {
-          return new EntityRefInfo(ref.dtoClassName(), className, CollectionKind.NONE);
-        }
-      }
-      return null;
-    }
-
-    // Collection/Iterable/Array — check element type against registry
-    TypeName elementType = field.elementTypeName();
-    if (elementType instanceof ClassName elementClassName) {
-      EntityModel ref = entityRegistry.get(elementClassName.canonicalName());
-      if (ref != null) {
-        return new EntityRefInfo(ref.dtoClassName(), elementClassName, kind);
-      }
-    }
-
-    // Fallback: use @AgenticField(type = ...) hint for raw/unresolvable collections
-    TypeName hintType = field.hintTypeName();
-    if (hintType instanceof ClassName hintClassName) {
-      EntityModel ref = entityRegistry.get(hintClassName.canonicalName());
-      if (ref != null) {
-        return new EntityRefInfo(ref.dtoClassName(), hintClassName, kind);
-      }
-    }
-
-    return null;
   }
 
   /**
@@ -359,13 +325,13 @@ public final class DtoGenerator {
    * Collections and arrays of entities are always mapped to {@code List<DtoType>}.
    */
   private static TypeName resolvedFieldType(FieldModel field, Map<String, EntityModel> entityRegistry) {
-    EntityRefInfo ref = resolveEntityRef(field, entityRegistry);
+    EntityRef ref = EntityRefResolver.resolve(field, entityRegistry);
     if (ref == null) {
       return field.typeName();
     }
-    if (ref.collectionKind != CollectionKind.NONE) {
-      return ParameterizedTypeName.get(LIST, ref.dtoClass);
+    if (ref.collectionKind() != CollectionKind.NONE) {
+      return ParameterizedTypeName.get(LIST, ref.dtoClass());
     }
-    return ref.dtoClass;
+    return ref.dtoClass();
   }
 }

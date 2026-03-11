@@ -38,7 +38,7 @@ class EmptyEntityTest {
 
         assertThat(compilation).succeeded();
         assertThat(compilation).hadWarningContaining(
-                "has no @AgenticField fields — no DTO will be generated");
+                "has no active @AgenticField fields for apiMajor=");
     }
 
     @Test

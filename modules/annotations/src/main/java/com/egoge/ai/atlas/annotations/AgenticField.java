@@ -104,4 +104,53 @@ public @interface AgenticField {
      * A compile warning is emitted if set on a non-collection field.
      */
     Class<?> type() default void.class;
+
+    /**
+     * Minimum major API version where this field is included in the generated DTO.
+     * The field is included when {@code sinceVersion <= configuredMajor}.
+     * Default: 1 (present from the first version).
+     */
+    int sinceVersion() default 1;
+
+    /**
+     * Major API version at which this field is removed from the generated DTO.
+     * The field is excluded when {@code configuredMajor >= removedInVersion}.
+     * Uses exclusive (half-open) semantics: the field is active in versions
+     * [{@code sinceVersion}, {@code removedInVersion}).
+     *
+     * <p>This differs from {@link AgenticExposed#apiUntil()} which uses
+     * inclusive semantics. The distinct naming signals the difference:
+     * {@code removedInVersion} means "removed IN that version" (not present),
+     * while {@code apiUntil} means "available THROUGH that version" (still present).
+     *
+     * <p>Example: a field with {@code sinceVersion = 1, removedInVersion = 3}
+     * is active in v1 and v2 but NOT v3.
+     *
+     * <p>Default: {@code Integer.MAX_VALUE} (never removed).
+     */
+    int removedInVersion() default Integer.MAX_VALUE;
+
+    /**
+     * Major API version at which this field became deprecated.
+     * When {@code deprecatedSinceVersion > 0 && deprecatedSinceVersion <= configuredMajor},
+     * the field is still included in the DTO but marked as deprecated in
+     * generated metadata ({@code FieldMeta}) and OpenAPI schema descriptions.
+     *
+     * <p>This enables the full versioned lifecycle: present in v1,
+     * deprecated in v2, removed in v3:
+     * <pre>{@code
+     * @AgenticField(sinceVersion = 1, deprecatedSinceVersion = 2,
+     *               removedInVersion = 3, deprecatedMessage = "Use newField")
+     * }</pre>
+     *
+     * <p>Default: 0 (not deprecated).
+     */
+    int deprecatedSinceVersion() default 0;
+
+    /**
+     * Migration guidance for deprecated fields. Only meaningful when
+     * {@code deprecatedSinceVersion > 0}. Included in {@code FieldMeta}
+     * and OpenAPI schema descriptions to guide consumers toward the replacement.
+     */
+    String deprecatedMessage() default "";
 }

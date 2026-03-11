@@ -46,12 +46,15 @@ public final class FieldScanner {
    * Scans the given type element and its entire superclass chain
    * for {@code @AgenticField} fields. Fields from supertypes appear
    * before subtype fields. Duplicate field names are skipped (subtype wins).
+   * Fields inactive for the given {@code apiMajor} are excluded.
    *
    * @param typeElement   the entity class to scan
    * @param processingEnv the annotation processing environment (for type hierarchy checks)
-   * @return list of FieldModel for each annotated field
+   * @param apiMajor      the configured API major version used for field filtering
+   * @return list of FieldModel for each annotated field active at apiMajor
    */
-  public static List<FieldModel> scan(TypeElement typeElement, ProcessingEnvironment processingEnv) {
+  public static List<FieldModel> scan(TypeElement typeElement, ProcessingEnvironment processingEnv,
+                                      int apiMajor) {
     if (typeElement == null) {
       return Collections.emptyList();
     }
@@ -175,7 +178,60 @@ public final class FieldScanner {
             }
           }
 
-          allFields.add(new FieldModel(
+          // Read version attributes
+          int sinceVer = annotation.sinceVersion();
+          int removedInVer = annotation.removedInVersion();
+          int deprecatedSinceVer = annotation.deprecatedSinceVersion();
+          String deprecatedMsg = annotation.deprecatedMessage();
+
+          // Validate version ranges (rules 1–7 from spec)
+          if (sinceVer < 1) {
+            messager.printMessage(Diagnostic.Kind.ERROR,
+                "[ai-atlas] @AgenticField.sinceVersion must be >= 1 on field '"
+                    + fieldName + "'. Got: " + sinceVer, field);
+            continue;
+          }
+          if (removedInVer < 1) {
+            messager.printMessage(Diagnostic.Kind.ERROR,
+                "[ai-atlas] @AgenticField.removedInVersion must be >= 1 on field '"
+                    + fieldName + "'. Got: " + removedInVer, field);
+            continue;
+          }
+          if (sinceVer >= removedInVer) {
+            messager.printMessage(Diagnostic.Kind.ERROR,
+                "[ai-atlas] @AgenticField.sinceVersion (" + sinceVer
+                    + ") must be < removedInVersion (" + removedInVer
+                    + ") on field '" + fieldName + "'", field);
+            continue;
+          }
+          if (deprecatedSinceVer < 0) {
+            messager.printMessage(Diagnostic.Kind.ERROR,
+                "[ai-atlas] @AgenticField.deprecatedSinceVersion must be >= 0 on field '"
+                    + fieldName + "'. Got: " + deprecatedSinceVer, field);
+            continue;
+          }
+          if (deprecatedSinceVer > 0 && deprecatedSinceVer < sinceVer) {
+            messager.printMessage(Diagnostic.Kind.ERROR,
+                "[ai-atlas] @AgenticField.deprecatedSinceVersion (" + deprecatedSinceVer
+                    + ") must be >= sinceVersion (" + sinceVer
+                    + ") on field '" + fieldName
+                    + "' — a field cannot be deprecated before it is introduced", field);
+            continue;
+          }
+          if (deprecatedSinceVer > 0 && deprecatedSinceVer >= removedInVer) {
+            messager.printMessage(Diagnostic.Kind.ERROR,
+                "[ai-atlas] @AgenticField.deprecatedSinceVersion (" + deprecatedSinceVer
+                    + ") must be < removedInVersion (" + removedInVer
+                    + ") on field '" + fieldName + "'", field);
+            continue;
+          }
+          if (deprecatedSinceVer == 0 && !deprecatedMsg.isEmpty()) {
+            messager.printMessage(Diagnostic.Kind.WARNING,
+                "[ai-atlas] @AgenticField.deprecatedMessage on field '"
+                    + fieldName + "' has no effect without deprecatedSinceVersion > 0", field);
+          }
+
+          FieldModel fieldModel = new FieldModel(
               fieldName,
               displayName,
               TypeName.get(fieldType),
@@ -186,8 +242,24 @@ public final class FieldScanner {
               allowedValues,
               collectionKind,
               elementTypeName,
-              hintTypeName
-          ));
+              hintTypeName,
+              sinceVer,
+              removedInVer,
+              deprecatedSinceVer,
+              deprecatedMsg
+          );
+
+          // Filter by version — only include fields active for the configured apiMajor
+          if (!VersionSelector.isFieldActive(fieldModel, apiMajor)) {
+            messager.printMessage(Diagnostic.Kind.NOTE,
+                "[ai-atlas] Field '" + fieldName + "' excluded from "
+                    + typeElement.getSimpleName() + " DTO — not active for apiMajor="
+                    + apiMajor + " (sinceVersion=" + sinceVer
+                    + ", removedInVersion=" + removedInVer + ")", field);
+            continue;
+          }
+
+          allFields.add(fieldModel);
         }
       }
     }
