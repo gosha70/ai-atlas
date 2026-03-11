@@ -573,6 +573,116 @@ plugins {
 
 This replaces the three manual `implementation`/`annotationProcessor` lines. Note: after changing `annotations`, `processor`, or `runtime` source code, re-run `publishToMavenLocal` before building the consumer module. For active development within the monorepo, direct `project(":modules:...")` references (Option B) avoid this extra step.
 
+## API Versioning
+
+AI-ATLAS supports versioned API generation. By default, it generates artifacts for API version 1 with base path `/api`.
+
+### Build Configuration
+
+Configure version settings via the Gradle plugin extension:
+
+```kotlin
+agentic {
+    apiMajorVersion.set(2)       // default: 1
+    apiBasePath.set("/services")  // default: /api
+    openApiInfoVersion.set("2.0.0")
+}
+```
+
+Or via processor options:
+
+```kotlin
+tasks.withType<JavaCompile> {
+    options.compilerArgs.addAll(listOf(
+        "-Aai.atlas.api.major=2",
+        "-Aai.atlas.api.basePath=/services",
+        "-Aai.atlas.openapi.infoVersion=2.0.0"
+    ))
+}
+```
+
+### Generated Versioned Artifacts
+
+| Artifact | Path | Description |
+|----------|------|-------------|
+| REST controllers | `/api/v{N}/{service-name}/...` | Versioned base path |
+| OpenAPI spec | `META-INF/openapi/openapi-v{N}.json` | Per-major spec |
+| OpenAPI alias | `META-INF/openapi/openapi.json` | Identical copy for backward compatibility |
+| Version properties | `META-INF/ai-atlas/api-version.properties` | Compile-time `api.major` and `api.basePath` for runtime mismatch detection |
+| Deprecation manifest | `META-INF/ai-atlas/deprecation-manifest.json` | Endpoint deprecation metadata for runtime header injection |
+
+### Method Versioning (`@AgenticExposed`)
+
+Methods can declare their lifecycle via `apiSince`, `apiUntil`, `apiDeprecatedSince`, and `apiReplacement`. These use sentinel-based inheritance: method overrides class, class overrides framework default.
+
+```java
+@AgenticExposed(description = "Order operations", returnType = Order.class)
+@Service
+public class OrderService {
+    // Available from v1 onward (default)
+    public Order findById(Long id) { ... }
+
+    // Available only in v1 — excluded from v2+ builds
+    @AgenticExposed(description = "Legacy search", apiUntil = 1)
+    public List<Order> legacySearch(String q) { ... }
+
+    // Introduced in v2
+    @AgenticExposed(description = "Search orders", apiSince = 2)
+    public List<Order> search(String q) { ... }
+
+    // Deprecated in v2, replacement guidance provided
+    @AgenticExposed(description = "Find active", apiDeprecatedSince = 2,
+                    apiReplacement = "search")
+    public List<Order> findActive() { ... }
+}
+```
+
+`apiUntil` is **inclusive**: the method IS present at that version. Building with `apiMajorVersion=1` includes `legacySearch`; building with `apiMajorVersion=2` excludes it.
+
+### Field Versioning (`@AgenticField`)
+
+Fields declare their lifecycle independently. The generated DTO contains only fields active for the configured major version.
+
+```java
+@AgenticEntity
+public class Order {
+    @AgenticField(description = "ID")
+    private Long id;
+
+    // Present in v1 and v2, removed in v3
+    @AgenticField(description = "Old name", removedInVersion = 3)
+    private String oldName;
+
+    // Introduced in v3
+    @AgenticField(description = "New name", sinceVersion = 3)
+    private String newName;
+
+    // Present from v1, deprecated in v2 with guidance
+    @AgenticField(description = "Legacy ref",
+                  deprecatedSinceVersion = 2,
+                  deprecatedMessage = "Use newName instead")
+    private String legacyRef;
+}
+```
+
+`removedInVersion` is **exclusive** (half-open interval `[sinceVersion, removedInVersion)`): the field is absent starting from that version. This differs intentionally from `apiUntil` (inclusive) — the naming signals the semantic difference.
+
+### Runtime Configuration
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `ai.atlas.api.base-path` | `/api` | API base path (must match build config) |
+| `ai.atlas.api.major` | `1` | API major version (must match build config) |
+| `ai.atlas.api.deprecation-headers-enabled` | `true` | Emit `Deprecation: true` and `Link` headers on deprecated endpoints |
+| `ai.atlas.api.deprecation-doc-url` | `""` | URL for `Link: <url>; rel="deprecation"` header |
+| `ai.atlas.api.version-negotiation.enabled` | `false` | Validate `Accept-Version` request header; reject mismatches with 400 |
+
+**Version mismatch detection:** At startup, the runtime reads `META-INF/ai-atlas/api-version.properties` and compares against the runtime configuration. A mismatch emits a WARNING log — not a hard failure, since intentional overrides (e.g., staged rollouts) are legitimate.
+
+**Deprecation headers:** When a request hits a deprecated endpoint, the response includes `Deprecation: true` (RFC 9745). If `deprecation-doc-url` is configured, a `Link` header with `rel="deprecation"` is also added.
+
+**Version negotiation:** When enabled, requests with an `Accept-Version` header that doesn't match the configured major receive `400 Bad Request` with a structured JSON error body.
+
 ## Annotation Reference
 
 ### `@AgenticField`
@@ -587,6 +697,10 @@ Applied to fields. Marks a field for inclusion in the generated DTO.
 | `checkCircularReference` | `boolean` | `true` | When true, the JSON serializer tracks object identity to prevent infinite recursion in bidirectional JPA relationships. Set to false for leaf fields (primitives, strings, enums). |
 | `allowedValues` | `String[]` | `{}` | Explicit allowed values for this field. Overrides auto-detected enum constants when non-empty. Populated into `FIELD_METADATA.validValues` and OpenAPI `enum` constraints. |
 | `type` | `Class<?>` | `void.class` | Element type hint for legacy collection fields with raw or wildcard types (e.g., `Collection` without a type parameter). Used as a fallback when static type inference cannot resolve the element type. |
+| `sinceVersion` | `int` | `1` | Minimum major API version where this field is included in the generated DTO. |
+| `removedInVersion` | `int` | `Integer.MAX_VALUE` | Major version at which this field is removed (exclusive — the field is absent starting from this version). |
+| `deprecatedSinceVersion` | `int` | `0` | Major version at which this field became deprecated. `0` means not deprecated. |
+| `deprecatedMessage` | `String` | `""` | Migration guidance shown in DTO metadata and OpenAPI schema when the field is deprecated. |
 
 ### `@AgenticEntity`
 
@@ -609,9 +723,13 @@ Applied to types or individual methods. Triggers MCP tool and REST controller ge
 | `toolName` | `String` | method name | Name for the generated MCP tool |
 | `description` | `String` | `"Invokes {methodName}"` | Description for MCP tool and OpenAPI operation |
 | `returnType` | `Class<?>` | `void.class` | Entity class to map to DTO in responses |
-| `channels` | `Channel[]` | `{AI, API}` | Which channels to generate for: `AI` (MCP tools), `API` (REST controllers + OpenAPI), or both |
+| `channels` | `Channel[]` | `{INHERIT}` | Which channels to generate for: `AI` (MCP tools), `API` (REST controllers + OpenAPI), or both. Defaults to `{INHERIT}`, which inherits from the class-level annotation or the framework default (`{AI, API}`). Method-level channels must be a subset of class-level channels (can narrow, cannot widen). |
+| `apiSince` | `int` | `-1` (inherit) | Minimum major API version where this method is available. Framework default: `1`. |
+| `apiUntil` | `int` | `-1` (inherit) | Maximum major API version where this method is available (inclusive). Framework default: `Integer.MAX_VALUE`. |
+| `apiDeprecatedSince` | `int` | `-1` (inherit) | Major version at which this method became deprecated. Framework default: `0` (not deprecated). |
+| `apiReplacement` | `String` | `"\0"` (inherit) | Migration guidance for deprecated methods. Framework default: `""`. |
 
-When applied to a type, all public methods are exposed. When applied to a method, only that method is exposed. Method-level annotations override type-level settings, allowing selective exposure of individual operations to specific channels.
+When applied to a type, all public methods are exposed. When applied to a method, only that method is exposed. Method-level annotations override type-level settings for each attribute independently — a method-level `@AgenticExposed(apiSince = 2)` inherits the class-level `description`, `returnType`, and `channels` while overriding only the version.
 
 ## Enriched JSON Serialization
 
