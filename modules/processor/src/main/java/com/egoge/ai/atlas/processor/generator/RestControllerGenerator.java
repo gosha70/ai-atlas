@@ -202,7 +202,7 @@ public final class RestControllerGenerator {
         return sb.toString();
     }
 
-    static String toKebabCase(String camelCase) {
+    public static String toKebabCase(String camelCase) {
         return camelCase
                 .replaceAll("([a-z])([A-Z])", "$1-$2")
                 .toLowerCase();

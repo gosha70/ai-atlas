@@ -7,6 +7,7 @@ import com.egoge.ai.atlas.annotations.AgenticField;
 import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.egoge.ai.atlas.annotations.AgenticExposed;
 import com.egoge.ai.atlas.processor.generator.ApiVersionPropertiesGenerator;
+import com.egoge.ai.atlas.processor.generator.DeprecationManifestGenerator;
 import com.egoge.ai.atlas.processor.generator.DtoGenerator;
 import com.egoge.ai.atlas.processor.generator.McpToolGenerator;
 import com.egoge.ai.atlas.processor.generator.OpenApiGenerator;
@@ -70,6 +71,7 @@ public class AgenticProcessor extends AbstractProcessor {
     private final List<ServiceModel> serviceRegistry = new ArrayList<>();
     private boolean openApiGenerated = false;
     private boolean apiVersionPropertiesGenerated = false;
+    private boolean deprecationManifestGenerated = false;
     private String apiBasePath;
     private int apiMajor;
     private String openApiInfoVersion;
@@ -145,20 +147,20 @@ public class AgenticProcessor extends AbstractProcessor {
 
         // Phase 3: Generate aggregate artifacts once per compilation
         if (!openApiGenerated && (!entityRegistry.isEmpty() || !serviceRegistry.isEmpty())) {
-            OpenApiGenerator.generate(
-                    new ArrayList<>(entityRegistry.values()),
-                    serviceRegistry,
-                    apiBasePath, apiMajor, openApiInfoVersion,
-                    processingEnv.getFiler(),
-                    processingEnv.getMessager()
-            );
+            OpenApiGenerator.generate(new ArrayList<>(entityRegistry.values()),
+                    serviceRegistry, apiBasePath, apiMajor, openApiInfoVersion,
+                    processingEnv.getFiler(), processingEnv.getMessager());
             openApiGenerated = true;
         }
         if (!apiVersionPropertiesGenerated) {
-            ApiVersionPropertiesGenerator.generate(
-                    apiBasePath, apiMajor,
+            ApiVersionPropertiesGenerator.generate(apiBasePath, apiMajor,
                     processingEnv.getFiler(), processingEnv.getMessager());
             apiVersionPropertiesGenerated = true;
+        }
+        if (!deprecationManifestGenerated) {
+            DeprecationManifestGenerator.generate(serviceRegistry, apiBasePath, apiMajor,
+                    processingEnv.getFiler(), processingEnv.getMessager());
+            deprecationManifestGenerated = true;
         }
 
         return true;

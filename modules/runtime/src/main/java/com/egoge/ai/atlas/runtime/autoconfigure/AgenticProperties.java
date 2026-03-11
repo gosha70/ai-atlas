@@ -109,6 +109,9 @@ public class AgenticProperties {
     public static class Api {
         private String basePath = "/api";
         private int major = 1;
+        private boolean deprecationHeadersEnabled = true;
+        private String deprecationDocUrl = "";
+        private VersionNegotiation versionNegotiation = new VersionNegotiation();
 
         public String getBasePath() { return basePath; }
         public void setBasePath(String basePath) {
@@ -122,6 +125,14 @@ public class AgenticProperties {
             }
             this.major = major;
         }
+        public boolean isDeprecationHeadersEnabled() { return deprecationHeadersEnabled; }
+        public void setDeprecationHeadersEnabled(boolean enabled) {
+            this.deprecationHeadersEnabled = enabled;
+        }
+        public String getDeprecationDocUrl() { return deprecationDocUrl; }
+        public void setDeprecationDocUrl(String url) { this.deprecationDocUrl = url; }
+        public VersionNegotiation getVersionNegotiation() { return versionNegotiation; }
+        public void setVersionNegotiation(VersionNegotiation vn) { this.versionNegotiation = vn; }
 
         static String normalizeBasePath(String path) {
             if (path == null || path.isBlank()) {
@@ -140,6 +151,16 @@ public class AgenticProperties {
                         "ai.atlas.api.base-path must not be '/'. Use a path like '/api'.");
             }
             return path;
+        }
+
+        /**
+         * Configuration for opt-in {@code Accept-Version} header validation.
+         */
+        public static class VersionNegotiation {
+            private boolean enabled = false;
+
+            public boolean isEnabled() { return enabled; }
+            public void setEnabled(boolean enabled) { this.enabled = enabled; }
         }
     }
 }

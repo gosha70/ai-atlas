@@ -5,15 +5,19 @@ package com.egoge.ai.atlas.runtime.autoconfigure;
 
 import com.egoge.ai.atlas.runtime.json.AgentSafeModule;
 import com.egoge.ai.atlas.runtime.mcp.AgenticMcpConfiguration;
+import com.egoge.ai.atlas.runtime.security.DeprecationHeaderFilter;
 import com.egoge.ai.atlas.runtime.security.DtoResponseBodyAdvice;
 import com.egoge.ai.atlas.runtime.security.PiiAuditInterceptor;
+import com.egoge.ai.atlas.runtime.security.VersionNegotiationFilter;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.Ordered;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -36,6 +40,7 @@ public class AgenticAutoConfiguration implements WebMvcConfigurer {
 
     public AgenticAutoConfiguration(AgenticProperties properties) {
         this.properties = properties;
+        VersionMismatchDetector.check(properties.getApi());
     }
 
     @Bean
@@ -63,6 +68,30 @@ public class AgenticAutoConfiguration implements WebMvcConfigurer {
                 json.isIncludeDescriptions(),
                 json.isIncludeValidValues()
         );
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ai.atlas.api", name = "deprecation-headers-enabled",
+            havingValue = "true", matchIfMissing = true)
+    public FilterRegistrationBean<DeprecationHeaderFilter> deprecationHeaderFilter() {
+        var filter = new DeprecationHeaderFilter(properties.getApi().getDeprecationDocUrl());
+        var registration = new FilterRegistrationBean<>(filter);
+        registration.addUrlPatterns(
+                properties.getApi().getBasePath() + "/v" + properties.getApi().getMajor() + "/*");
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
+        return registration;
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ai.atlas.api.version-negotiation",
+            name = "enabled", havingValue = "true")
+    public FilterRegistrationBean<VersionNegotiationFilter> versionNegotiationFilter() {
+        var filter = new VersionNegotiationFilter(properties.getApi().getMajor());
+        var registration = new FilterRegistrationBean<>(filter);
+        registration.addUrlPatterns(
+                properties.getApi().getBasePath() + "/v" + properties.getApi().getMajor() + "/*");
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 5);
+        return registration;
     }
 
     @Override

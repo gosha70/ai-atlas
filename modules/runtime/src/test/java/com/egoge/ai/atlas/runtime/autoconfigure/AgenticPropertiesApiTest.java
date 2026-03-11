@@ -95,4 +95,22 @@ class AgenticPropertiesApiTest {
         String pattern = api.getBasePath() + "/v" + api.getMajor() + "/**";
         assertThat(pattern).isEqualTo("/services/v2/**");
     }
+
+    @Test
+    void versionNegotiation_defaultDisabled() {
+        var api = new AgenticProperties.Api();
+        assertThat(api.getVersionNegotiation().isEnabled()).isFalse();
+    }
+
+    @Test
+    void deprecationHeadersEnabled_defaultTrue() {
+        var api = new AgenticProperties.Api();
+        assertThat(api.isDeprecationHeadersEnabled()).isTrue();
+    }
+
+    @Test
+    void deprecationDocUrl_defaultEmpty() {
+        var api = new AgenticProperties.Api();
+        assertThat(api.getDeprecationDocUrl()).isEqualTo("");
+    }
 }
