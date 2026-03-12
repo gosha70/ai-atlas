@@ -7,20 +7,24 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Integration tests for the AI-ATLAS demo application.
- * Verifies generated REST endpoints, PII exclusion, and MCP registration.
+ * Verifies generated REST endpoints, PII exclusion, versioning,
+ * deprecation headers, and version negotiation.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -29,11 +33,14 @@ class DemoIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
-    // --- REST endpoint: find-by-id ---
+    @Autowired
+    private ApplicationContext applicationContext;
+
+    // --- REST endpoint: find-by-id (deprecated since v1) ---
 
     @Test
     void findById_returnsOrder() throws Exception {
-        mockMvc.perform(post("/api/v1/order-service/find-by-id").param("id", "1"))
+        mockMvc.perform(post("/api/v2/order-service/find-by-id").param("id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id", is(1)))
                 .andExpect(jsonPath("$.status", is("PENDING")))
@@ -43,7 +50,7 @@ class DemoIntegrationTest {
 
     @Test
     void findById_includesActions() throws Exception {
-        mockMvc.perform(post("/api/v1/order-service/find-by-id").param("id", "1"))
+        mockMvc.perform(post("/api/v2/order-service/find-by-id").param("id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.actions", hasSize(2)))
                 .andExpect(jsonPath("$.actions[0].actionType", is("CREATED")))
@@ -54,7 +61,7 @@ class DemoIntegrationTest {
 
     @Test
     void findById_excludesPiiFields() throws Exception {
-        mockMvc.perform(post("/api/v1/order-service/find-by-id").param("id", "1"))
+        mockMvc.perform(post("/api/v2/order-service/find-by-id").param("id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.creditCardNumber").doesNotExist())
                 .andExpect(jsonPath("$.customerSsn").doesNotExist())
@@ -63,11 +70,23 @@ class DemoIntegrationTest {
                 .andExpect(jsonPath("$.shippingAddress").doesNotExist());
     }
 
+    // --- REST endpoint: find-by-id-v2 (since v2) ---
+
+    @Test
+    void findByIdV2_returnsOrder() throws Exception {
+        mockMvc.perform(post("/api/v2/order-service/find-by-id-v2").param("id", "42"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(42)))
+                .andExpect(jsonPath("$.status", is("PENDING")))
+                .andExpect(jsonPath("$.totalMajorUnits", is(99)))
+                .andExpect(jsonPath("$.totalMinorUnits", is(99)));
+    }
+
     // --- REST endpoint: find-by-status ---
 
     @Test
     void findByStatus_returnsList() throws Exception {
-        mockMvc.perform(post("/api/v1/order-service/find-by-status").param("status", "PENDING"))
+        mockMvc.perform(post("/api/v2/order-service/find-by-status").param("status", "PENDING"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", not(empty())))
                 .andExpect(jsonPath("$[0].status", is("PENDING")))
@@ -76,7 +95,7 @@ class DemoIntegrationTest {
 
     @Test
     void findByStatus_excludesPiiFields() throws Exception {
-        mockMvc.perform(post("/api/v1/order-service/find-by-status").param("status", "PENDING"))
+        mockMvc.perform(post("/api/v2/order-service/find-by-status").param("status", "PENDING"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].creditCardNumber").doesNotExist())
                 .andExpect(jsonPath("$[0].customerSsn").doesNotExist());
@@ -84,23 +103,55 @@ class DemoIntegrationTest {
 
     @Test
     void findByStatus_invalidStatusReturnsEmptyList() throws Exception {
-        mockMvc.perform(post("/api/v1/order-service/find-by-status").param("status", "INVALID"))
+        mockMvc.perform(post("/api/v2/order-service/find-by-status").param("status", "INVALID"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", empty()));
+    }
+
+    // --- Future method: find-by-priority (apiSince=3, not generated for v2) ---
+
+    @Test
+    void findByPriority_notExposedInV2() throws Exception {
+        mockMvc.perform(post("/api/v2/order-service/find-by-priority").param("priority", "HIGH"))
+                .andExpect(status().isNotFound());
     }
 
     // --- HTTP method enforcement ---
 
     @Test
     void findById_rejectsGet() throws Exception {
-        mockMvc.perform(get("/api/v1/order-service/find-by-id").param("id", "1"))
+        mockMvc.perform(get("/api/v2/order-service/find-by-id").param("id", "1"))
                 .andExpect(status().isMethodNotAllowed());
     }
 
     @Test
     void findByStatus_rejectsGet() throws Exception {
-        mockMvc.perform(get("/api/v1/order-service/find-by-status").param("status", "PENDING"))
+        mockMvc.perform(get("/api/v2/order-service/find-by-status").param("status", "PENDING"))
                 .andExpect(status().isMethodNotAllowed());
+    }
+
+    // --- Field versioning: v2 fields present, removed fields absent ---
+
+    @Test
+    void orderDto_includesV2Fields() throws Exception {
+        mockMvc.perform(post("/api/v2/order-service/find-by-id-v2").param("id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalMajorUnits", is(99)))
+                .andExpect(jsonPath("$.totalMinorUnits", is(99)));
+    }
+
+    @Test
+    void orderDto_excludesRemovedFields() throws Exception {
+        mockMvc.perform(post("/api/v2/order-service/find-by-id-v2").param("id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.legacyNotes").doesNotExist());
+    }
+
+    @Test
+    void addressDto_includesCountryInV2() throws Exception {
+        mockMvc.perform(get("/api/v2/customer-service/get-customers"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].addresses[0].country", is("US")));
     }
 
     // --- Generated DTO metadata ---
@@ -109,46 +160,69 @@ class DemoIntegrationTest {
     void generatedDto_hasCorrectMetadata() {
         var metadata = com.egoge.ai.atlas.demo.entity.generated.OrderDto.FIELD_METADATA;
 
-        org.assertj.core.api.Assertions.assertThat(metadata).containsKeys(
-                "id", "status", "totalCents", "itemCount", "actions");
+        assertThat(metadata).containsKeys(
+                "id", "status", "totalCents", "itemCount", "actions",
+                "totalMajorUnits", "totalMinorUnits");
+
+        // legacyNotes removed in v2 — should not be in metadata
+        assertThat(metadata).doesNotContainKey("legacyNotes");
 
         // Status field has enum values
-        org.assertj.core.api.Assertions.assertThat(metadata.get("status").validValues())
+        assertThat(metadata.get("status").validValues())
                 .containsExactly("PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED");
 
+        // totalCents is deprecated in v2
+        assertThat(metadata.get("totalCents").deprecated()).isTrue();
+        assertThat(metadata.get("totalCents").deprecatedMessage())
+                .isEqualTo("Use totalMajorUnits and totalMinorUnits instead");
+
+        // v2 fields are not deprecated
+        assertThat(metadata.get("totalMajorUnits").deprecated()).isFalse();
+
         // Class-level metadata
-        org.assertj.core.api.Assertions.assertThat(
-                com.egoge.ai.atlas.demo.entity.generated.OrderDto.CLASS_NAME).isEqualTo("order");
-        org.assertj.core.api.Assertions.assertThat(
-                com.egoge.ai.atlas.demo.entity.generated.OrderDto.INCLUDE_TYPE_INFO).isTrue();
+        assertThat(com.egoge.ai.atlas.demo.entity.generated.OrderDto.CLASS_NAME)
+                .isEqualTo("order");
+        assertThat(com.egoge.ai.atlas.demo.entity.generated.OrderDto.INCLUDE_TYPE_INFO)
+                .isTrue();
     }
 
     // --- OpenAPI spec ---
 
     @Test
-    void openApiSpec_existsOnClasspath() {
-        var spec = getClass().getResourceAsStream("/META-INF/openapi/openapi.json");
-        org.assertj.core.api.Assertions.assertThat(spec).isNotNull();
+    void openApiSpec_versionedFileExistsOnClasspath() {
+        var spec = getClass().getResourceAsStream("/META-INF/openapi/openapi-v2.json");
+        assertThat(spec).as("openapi-v2.json (primary versioned artifact)").isNotNull();
     }
 
     @Test
-    void openApiSpec_containsOrderEndpoints() throws Exception {
-        var spec = new String(
+    void openApiSpec_aliasExistsAndMatchesVersioned() throws Exception {
+        var versioned = new String(
+                getClass().getResourceAsStream("/META-INF/openapi/openapi-v2.json").readAllBytes());
+        var alias = new String(
                 getClass().getResourceAsStream("/META-INF/openapi/openapi.json").readAllBytes());
+        assertThat(alias).as("openapi.json alias matches openapi-v2.json").isEqualTo(versioned);
+    }
 
-        org.assertj.core.api.Assertions.assertThat(spec)
-                .contains("/api/v1/order-service/find-by-id")
-                .contains("/api/v1/order-service/find-by-status")
+    @Test
+    void openApiSpec_containsV2Endpoints() throws Exception {
+        var spec = new String(
+                getClass().getResourceAsStream("/META-INF/openapi/openapi-v2.json").readAllBytes());
+
+        assertThat(spec)
+                .contains("/api/v2/order-service/find-by-id")
+                .contains("/api/v2/order-service/find-by-id-v2")
+                .contains("/api/v2/order-service/find-by-status")
                 .contains("OrderDto")
-                .contains("OrderActionDto");
+                .contains("OrderActionDto")
+                .doesNotContain("find-by-priority");
     }
 
     @Test
     void openApiSpec_orderDtoExcludesPiiProperties() throws Exception {
         var spec = new String(
-                getClass().getResourceAsStream("/META-INF/openapi/openapi.json").readAllBytes());
+                getClass().getResourceAsStream("/META-INF/openapi/openapi-v2.json").readAllBytes());
 
-        org.assertj.core.api.Assertions.assertThat(spec)
+        assertThat(spec)
                 .doesNotContain("creditCardNumber")
                 .doesNotContain("customerSsn")
                 .doesNotContain("customerName")
@@ -159,36 +233,20 @@ class DemoIntegrationTest {
     // --- MCP tool registration ---
 
     @Test
-    void mcpToolBean_isRegistered() {
-        // The MCP tool class is generated and should be a Spring bean
-        org.assertj.core.api.Assertions.assertThat(
-                org.springframework.test.context.TestContextManager.class).isNotNull();
-        // If the app starts without errors, MCP tools were registered successfully.
-        // The Spring Boot log confirms: "Registered 1 MCP tool bean(s)"
-        // and "Registered tools: 2"
-        // A more direct check:
-    }
-
-    @Autowired
-    private org.springframework.context.ApplicationContext applicationContext;
-
-    @Test
     void mcpToolBean_existsInApplicationContext() {
-        org.assertj.core.api.Assertions.assertThat(
-                applicationContext.containsBean("orderServiceMcpTool")).isTrue();
+        assertThat(applicationContext.containsBean("orderServiceMcpTool")).isTrue();
     }
 
     @Test
     void generatedRestController_existsInApplicationContext() {
-        org.assertj.core.api.Assertions.assertThat(
-                applicationContext.containsBean("orderServiceRestController")).isTrue();
+        assertThat(applicationContext.containsBean("orderServiceRestController")).isTrue();
     }
 
     // --- CustomerService: method-level @AgenticExposed ---
 
     @Test
     void getCustomers_returnsCustomerList() throws Exception {
-        mockMvc.perform(get("/api/v1/customer-service/get-customers"))
+        mockMvc.perform(get("/api/v2/customer-service/get-customers"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].id", is(1)))
@@ -198,8 +256,17 @@ class DemoIntegrationTest {
     }
 
     @Test
+    void getCustomersV2_returnsCustomerList() throws Exception {
+        mockMvc.perform(get("/api/v2/customer-service/get-customers-v2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].id", is(1)))
+                .andExpect(jsonPath("$[0].name", is("Alice")));
+    }
+
+    @Test
     void getCustomers_addressesMappedToDtoType() throws Exception {
-        mockMvc.perform(get("/api/v1/customer-service/get-customers"))
+        mockMvc.perform(get("/api/v2/customer-service/get-customers"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].addresses", hasSize(2)))
                 .andExpect(jsonPath("$[0].addresses[0].street", is("123 Main St")))
@@ -210,7 +277,7 @@ class DemoIntegrationTest {
 
     @Test
     void getCustomers_excludesPiiFields() throws Exception {
-        mockMvc.perform(get("/api/v1/customer-service/get-customers"))
+        mockMvc.perform(get("/api/v2/customer-service/get-customers"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].email").doesNotExist())
                 .andExpect(jsonPath("$[0].creditCardNumber").doesNotExist())
@@ -219,9 +286,9 @@ class DemoIntegrationTest {
 
     @Test
     void getCustomersWithCreditInfo_notExposed() throws Exception {
-        mockMvc.perform(get("/api/v1/customer-service/get-customers-with-credit-info"))
+        mockMvc.perform(get("/api/v2/customer-service/get-customers-with-credit-info"))
                 .andExpect(status().isNotFound());
-        mockMvc.perform(post("/api/v1/customer-service/get-customers-with-credit-info"))
+        mockMvc.perform(post("/api/v2/customer-service/get-customers-with-credit-info"))
                 .andExpect(status().isNotFound());
     }
 
@@ -229,22 +296,104 @@ class DemoIntegrationTest {
 
     @Test
     void customerServiceBeans_existInApplicationContext() {
-        // CustomerService.getCustomers() uses channels={API} so no MCP tool is generated
-        org.assertj.core.api.Assertions.assertThat(
-                applicationContext.containsBean("customerServiceMcpTool")).isFalse();
-        org.assertj.core.api.Assertions.assertThat(
-                applicationContext.containsBean("customerServiceRestController")).isTrue();
+        // CustomerService uses channels={API} so no MCP tool is generated
+        assertThat(applicationContext.containsBean("customerServiceMcpTool")).isFalse();
+        assertThat(applicationContext.containsBean("customerServiceRestController")).isTrue();
     }
 
     @Test
     void customerDto_hasCorrectMetadata() {
         var metadata = com.egoge.ai.atlas.demo.entity.generated.CustomerDto.FIELD_METADATA;
 
-        org.assertj.core.api.Assertions.assertThat(metadata).containsKeys("id", "name", "addresses");
-        org.assertj.core.api.Assertions.assertThat(metadata).doesNotContainKeys(
-                "email", "creditCardNumber", "ssn");
+        assertThat(metadata).containsKeys("id", "name", "addresses");
+        assertThat(metadata).doesNotContainKeys("email", "creditCardNumber", "ssn");
 
-        org.assertj.core.api.Assertions.assertThat(
-                com.egoge.ai.atlas.demo.entity.generated.CustomerDto.CLASS_NAME).isEqualTo("customer");
+        assertThat(com.egoge.ai.atlas.demo.entity.generated.CustomerDto.CLASS_NAME)
+                .isEqualTo("customer");
+    }
+
+    // --- Deprecation headers (Phase 4) ---
+
+    @Test
+    void deprecatedEndpoint_returnsDeprecationHeaders() throws Exception {
+        mockMvc.perform(post("/api/v2/order-service/find-by-id").param("id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Deprecation", "true"))
+                .andExpect(header().exists("Link"));
+    }
+
+    @Test
+    void nonDeprecatedEndpoint_noDeprecationHeaders() throws Exception {
+        mockMvc.perform(post("/api/v2/order-service/find-by-status").param("status", "PENDING"))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist("Deprecation"));
+    }
+
+    @Test
+    void deprecatedCustomerEndpoint_returnsDeprecationHeaders() throws Exception {
+        mockMvc.perform(get("/api/v2/customer-service/get-customers"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Deprecation", "true"));
+    }
+
+    @Test
+    void newCustomerEndpoint_noDeprecationHeaders() throws Exception {
+        mockMvc.perform(get("/api/v2/customer-service/get-customers-v2"))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist("Deprecation"));
+    }
+
+    // --- Version negotiation (Phase 4) ---
+
+    @Test
+    void acceptVersion_matchingVersion_succeeds() throws Exception {
+        mockMvc.perform(post("/api/v2/order-service/find-by-status")
+                        .header("Accept-Version", "2")
+                        .param("status", "PENDING"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void acceptVersion_mismatch_returns400() throws Exception {
+        mockMvc.perform(post("/api/v2/order-service/find-by-status")
+                        .header("Accept-Version", "1")
+                        .param("status", "PENDING"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void acceptVersion_invalid_returns400() throws Exception {
+        mockMvc.perform(post("/api/v2/order-service/find-by-status")
+                        .header("Accept-Version", "abc")
+                        .param("status", "PENDING"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void acceptVersion_absent_succeeds() throws Exception {
+        // No Accept-Version header → pass through
+        mockMvc.perform(post("/api/v2/order-service/find-by-status")
+                        .param("status", "PENDING"))
+                .andExpect(status().isOk());
+    }
+
+    // --- Deprecation manifest ---
+
+    @Test
+    void deprecationManifest_existsOnClasspath() {
+        var manifest = getClass().getResourceAsStream(
+                "/META-INF/ai-atlas/deprecation-manifest.json");
+        assertThat(manifest).isNotNull();
+    }
+
+    // --- API version properties ---
+
+    @Test
+    void apiVersionProperties_existsOnClasspath() throws Exception {
+        var props = getClass().getResourceAsStream(
+                "/META-INF/ai-atlas/api-version.properties");
+        assertThat(props).isNotNull();
+        String content = new String(props.readAllBytes());
+        assertThat(content).contains("api.major=2");
     }
 }

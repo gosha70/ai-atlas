@@ -42,14 +42,28 @@ public class Order {
     @AgenticField(description = "Current order status")
     private OrderStatus status;
 
-    @AgenticField(name = "totalCents", description = "Total order amount in cents")
+    @AgenticField(name = "totalCents", description = "Total order amount in cents",
+            deprecatedSinceVersion = 2,
+            deprecatedMessage = "Use totalMajorUnits and totalMinorUnits instead")
     private long totalAmountCents;
+
+    @AgenticField(description = "Total amount — whole currency units (e.g. dollars)",
+            sinceVersion = 2)
+    private int totalMajorUnits;
+
+    @AgenticField(description = "Total amount — fractional currency units (e.g. cents)",
+            sinceVersion = 2)
+    private int totalMinorUnits;
 
     @AgenticField(description = "Number of items in the order")
     private int itemCount;
 
     @AgenticField(description = "Actions performed on this order")
     private List<OrderAction> actions = new ArrayList<>();
+
+    @AgenticField(description = "Legacy free-text notes (removed in v2)",
+            sinceVersion = 1, removedInVersion = 2)
+    private String legacyNotes;
 
     // PII fields — intentionally NOT annotated
     private String customerName;
@@ -96,6 +110,30 @@ public class Order {
 
     public void setActions(List<OrderAction> actions) {
         this.actions = actions;
+    }
+
+    public int getTotalMajorUnits() {
+        return totalMajorUnits;
+    }
+
+    public void setTotalMajorUnits(int totalMajorUnits) {
+        this.totalMajorUnits = totalMajorUnits;
+    }
+
+    public int getTotalMinorUnits() {
+        return totalMinorUnits;
+    }
+
+    public void setTotalMinorUnits(int totalMinorUnits) {
+        this.totalMinorUnits = totalMinorUnits;
+    }
+
+    public String getLegacyNotes() {
+        return legacyNotes;
+    }
+
+    public void setLegacyNotes(String legacyNotes) {
+        this.legacyNotes = legacyNotes;
     }
 
     public String getCustomerName() {

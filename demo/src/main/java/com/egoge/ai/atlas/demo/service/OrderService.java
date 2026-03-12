@@ -21,15 +21,48 @@ import java.util.List;
 )
 public class OrderService {
 
+    @AgenticExposed(description = "Find order by ID (legacy)",
+            returnType = Order.class,
+            apiDeprecatedSince = 1, apiReplacement = "findByIdV2")
     public Order findById(Long id) {
-        // Stub — will be backed by real data in Cycle 2
+        return buildStubOrder(id);
+    }
+
+    @AgenticExposed(description = "Find order by ID",
+            returnType = Order.class, apiSince = 2)
+    public Order findByIdV2(Long id) {
+        return buildStubOrder(id);
+    }
+
+    public List<Order> findByStatus(String status) {
+        Order.OrderStatus requested;
+        try {
+            requested = Order.OrderStatus.valueOf(status);
+        } catch (IllegalArgumentException e) {
+            return List.of();
+        }
+
+        Order order = buildStubOrder(1L);
+        order.setStatus(requested);
+        return List.of(order);
+    }
+
+    @AgenticExposed(description = "Find orders by priority (planned for v3)",
+            returnType = Order.class, apiSince = 3)
+    public List<Order> findByPriority(String priority) {
+        return List.of();
+    }
+
+    private Order buildStubOrder(Long id) {
         Order order = new Order();
         order.setId(id);
         order.setStatus(Order.OrderStatus.PENDING);
         order.setTotalAmountCents(9999L);
+        order.setTotalMajorUnits(99);
+        order.setTotalMinorUnits(99);
         order.setItemCount(3);
+        order.setLegacyNotes("Legacy reference note");
 
-        // Bidirectional: each action points back to this order
         OrderAction created = new OrderAction();
         created.setId(100L);
         created.setActionType(OrderAction.ActionType.CREATED);
@@ -46,19 +79,5 @@ public class OrderService {
 
         order.setActions(List.of(created, confirmed));
         return order;
-    }
-
-    public List<Order> findByStatus(String status) {
-        // Stub — return sample data when status matches
-        Order.OrderStatus requested;
-        try {
-            requested = Order.OrderStatus.valueOf(status);
-        } catch (IllegalArgumentException e) {
-            return List.of();
-        }
-
-        Order order = findById(1L);
-        order.setStatus(requested);
-        return List.of(order);
     }
 }

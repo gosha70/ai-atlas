@@ -22,11 +22,22 @@ public class CustomerService {
      * Returns all customers — exposed to AI agents.
      */
     @AgenticExposed(
-            description = "Retrieve all customers with their addresses",
+            description = "Retrieve all customers (deprecated — use getCustomersV2)",
             returnType = Customer.class,
-            channels = { AgenticExposed.Channel.API }
+            channels = { AgenticExposed.Channel.API },
+            apiDeprecatedSince = 2, apiReplacement = "getCustomersV2"
     )
     public List<?> getCustomers() {
+        return List.of(stubCustomer(1L, "Alice"), stubCustomer(2L, "Bob"));
+    }
+
+    @AgenticExposed(
+            description = "Retrieve all customers with their addresses",
+            returnType = Customer.class,
+            channels = { AgenticExposed.Channel.API },
+            apiSince = 2
+    )
+    public List<?> getCustomersV2() {
         return List.of(stubCustomer(1L, "Alice"), stubCustomer(2L, "Bob"));
     }
 
@@ -57,6 +68,7 @@ public class CustomerService {
         home.setCity("Springfield");
         home.setState("IL");
         home.setZipCode("62701");
+        home.setCountry("US");
 
         Address work = new Address();
         work.setId(id * 10 + 1);
@@ -64,6 +76,7 @@ public class CustomerService {
         work.setCity("Chicago");
         work.setState("IL");
         work.setZipCode("60601");
+        work.setCountry("US");
 
         customer.setAddresses(List.of(home, work));
         return customer;

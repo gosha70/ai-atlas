@@ -11,11 +11,17 @@ spring:
         version: 0.1.0
 
 ai:
-  adam:
+  atlas:
     mcp:
       enabled: true
     audit:
       enabled: true
+    api:
+      major: 2
+      deprecation-headers-enabled: true
+      deprecation-doc-url: https://docs.example.com/api/deprecations
+      version-negotiation:
+        enabled: true
 
 logging:
   level:

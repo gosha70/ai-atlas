@@ -31,6 +31,9 @@ public class Address {
     @AgenticField(description = "Postal / ZIP code")
     private String zipCode;
 
+    @AgenticField(description = "ISO 3166-1 country code", sinceVersion = 2)
+    private String country;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
@@ -45,4 +48,7 @@ public class Address {
 
     public String getZipCode() { return zipCode; }
     public void setZipCode(String zipCode) { this.zipCode = zipCode; }
+
+    public String getCountry() { return country; }
+    public void setCountry(String country) { this.country = country; }
 }
