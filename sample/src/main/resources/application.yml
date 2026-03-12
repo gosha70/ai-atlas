@@ -1,0 +1,19 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ai-atlas-sample
+
+ai:
+  atlas:
+    api:
+      major: 2
+      deprecation-headers-enabled: true
+      deprecation-doc-url: https://docs.example.com/api/deprecations
+      version-negotiation:
+        enabled: true
+    mcp:
+      enabled: false
+    audit:
+      enabled: true

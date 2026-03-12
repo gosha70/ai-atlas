@@ -28,6 +28,7 @@ import java.util.List;
 )
 public class Order {
 
+
     /**
      * Order status enum — values are auto-detected by the annotation processor
      * and included in generated DTO metadata and OpenAPI schemas.
