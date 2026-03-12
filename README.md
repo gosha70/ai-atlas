@@ -523,7 +523,7 @@ The frontend displays order data with only the 4 PII-safe fields. It includes a 
 
 ```kotlin
 plugins {
-    id("com.egoge.ai-atlas") version "0.1.0"
+    id("com.egoge.ai-atlas") version "1.1.1"
 }
 ```
 
@@ -533,9 +533,9 @@ The plugin automatically adds `annotations` to `implementation`, `processor` to 
 
 ```kotlin
 dependencies {
-    implementation("com.egoge:ai-atlas-annotations:0.1.0")
-    implementation("com.egoge:ai-atlas-runtime:0.1.0")
-    annotationProcessor("com.egoge:ai-atlas-processor:0.1.0")
+    implementation("com.egoge:ai-atlas-annotations:1.1.1")
+    implementation("com.egoge:ai-atlas-runtime:1.1.1")
+    annotationProcessor("com.egoge:ai-atlas-processor10.1.1")
 }
 ```
 
@@ -567,7 +567,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("com.egoge.ai-atlas") version "0.1.0-SNAPSHOT"
+  id("com.egoge.ai-atlas") version "1.1.1"
 }
 ```
 
