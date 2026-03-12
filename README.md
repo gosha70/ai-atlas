@@ -455,7 +455,7 @@ AI-ATLAS provides a layered security strategy for PII protection:
 
 ## Demo Application
 
-The `demo/` module is a working Spring Boot app that demonstrates the full pipeline. It contains an `Order` entity with 9 fields (4 safe, 5 PII) and an `OrderService` with two methods.
+The `demo/` module is a working Spring Boot app that demonstrates the full pipeline. It contains four entities (`Order`, `OrderAction`, `Customer`, `Address`) with field versioning, and multiple services showcasing method versioning, deprecation headers, and version negotiation — all configured for API v2.
 
 ### Running the demo
 
@@ -469,7 +469,7 @@ The `demo/` module is a working Spring Boot app that demonstrates the full pipel
 
 The app starts on port 8080 with:
 
-- **REST API** at `http://localhost:8080/api/v1/order-service/`
+- **REST API** at `http://localhost:8080/api/v2/order-service/` (and other services)
 - **MCP server** over SSE at `http://localhost:8080/sse` (for AI agent connections)
 
 ### Running with Docker
@@ -482,7 +482,7 @@ docker compose up --build -d
 docker compose ps
 
 # Test the API
-curl -X POST "http://localhost:8080/api/v1/order-service/find-by-id?id=1"
+curl -X POST "http://localhost:8080/api/v2/order-service/find-by-id?id=1"
 
 # Stop
 docker compose down
@@ -491,19 +491,26 @@ docker compose down
 ### Try the REST API
 
 ```bash
-# Find order by ID — returns only safe fields (id, status, totalCents, itemCount)
-curl -X POST "http://localhost:8080/api/v1/order-service/find-by-id?id=1"
-# → {"id":1,"status":"PENDING","totalCents":9999,"itemCount":3}
+# Find order by ID — returns only safe fields, with v2 field evolution
+curl -X POST "http://localhost:8080/api/v2/order-service/find-by-id?id=1"
 
-# No customerSsn, no creditCardNumber, no customerEmail — they don't exist in the DTO
+# Deprecated endpoint — check Deprecation header in response
+curl -v -X POST "http://localhost:8080/api/v2/order-service/find-by-id?id=1"
+# → Deprecation: true + Link header
+
+# New v2 replacement endpoint
+curl -X POST "http://localhost:8080/api/v2/order-service/find-by-id-v2?id=1"
+
+# Version negotiation — matching version passes
+curl -H "Accept-Version: 2" -X POST "http://localhost:8080/api/v2/order-service/find-by-id-v2?id=1"
+
+# Version negotiation — mismatched version returns 400
+curl -H "Accept-Version: 1" -X POST "http://localhost:8080/api/v2/order-service/find-by-id-v2?id=1"
 ```
 
 ### Try the MCP tools
 
-Connect an MCP client (e.g., [MCP Inspector](https://github.com/modelcontextprotocol/inspector)) to `http://localhost:8080/sse`. Two tools are registered:
-
-- `findById(id)` — returns a single order DTO
-- `findByStatus(status)` — returns a list of order DTOs
+Connect an MCP client (e.g., [MCP Inspector](https://github.com/modelcontextprotocol/inspector)) to `http://localhost:8080/sse`. Tools are auto-registered from all `@AgenticExposed` services.
 
 ### Demo frontend
 
@@ -515,7 +522,11 @@ npm install
 npm run dev    # starts on http://localhost:3000
 ```
 
-The frontend displays order data with only the 4 PII-safe fields. It includes a verification panel confirming that `creditCardNumber` and `customerSsn` are structurally excluded.
+The frontend displays order data with only PII-safe fields. It includes a verification panel confirming that sensitive fields are structurally excluded.
+
+### Standalone sample project
+
+The `sample/` directory contains a minimal standalone project that demonstrates the published Gradle plugin with zero manual wiring. Unlike the `demo/` module (which uses raw compiler args as a monorepo workaround), the sample applies `com.egoge.ai-atlas` via the `agentic { }` DSL — the same workflow an external consumer would use. See [`sample/README.md`](sample/README.md) for details.
 
 ## Quickstart
 
@@ -525,9 +536,14 @@ The frontend displays order data with only the 4 PII-safe fields. It includes a 
 plugins {
     id("com.egoge.ai-atlas") version "1.1.1"
 }
+
+agentic {
+    apiMajorVersion.set(2)       // default: 1
+    mcpEnabled.set(true)         // default: true
+}
 ```
 
-The plugin automatically adds `annotations` to `implementation`, `processor` to `annotationProcessor`, and `runtime` to `implementation` — no manual dependency declarations needed.
+The plugin automatically adds `annotations` to `implementation`, `processor` to `annotationProcessor`, and `runtime` to `implementation` — no manual dependency declarations needed. The `agentic { }` extension configures API versioning and MCP generation.
 
 ### Option B: Manual dependencies
 
@@ -535,7 +551,7 @@ The plugin automatically adds `annotations` to `implementation`, `processor` to 
 dependencies {
     implementation("com.egoge:ai-atlas-annotations:1.1.1")
     implementation("com.egoge:ai-atlas-runtime:1.1.1")
-    annotationProcessor("com.egoge:ai-atlas-processor10.1.1")
+    annotationProcessor("com.egoge:ai-atlas-processor:1.1.1")
 }
 ```
 
