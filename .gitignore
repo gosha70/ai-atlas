@@ -32,3 +32,5 @@ next-env.d.ts
 *.pem
 *.key
 credentials.json
+AGENTS.md
+CLAUDE.md
