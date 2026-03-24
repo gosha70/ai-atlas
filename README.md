@@ -1,7 +1,7 @@
 [![CI](https://github.com/gosha70/ai-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/gosha70/ai-atlas/actions/workflows/ci.yml)
 [![Maven Central](https://img.shields.io/maven-central/v/com.egoge/ai-atlas-annotations?label=Maven%20Central)](https://central.sonatype.com/artifact/com.egoge/ai-atlas-annotations)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Java](https://img.shields.io/badge/Java-21+-orange.svg)](https://openjdk.org/projects/jdk/21/)
+[![Java](https://img.shields.io/badge/Java-17+-orange.svg)](https://openjdk.org/projects/jdk/17/)
 
 <h2>
   <img
@@ -534,7 +534,7 @@ The `sample/` directory contains a minimal standalone project that demonstrates 
 
 ```kotlin
 plugins {
-    id("com.egoge.ai-atlas") version "1.1.1"
+    id("com.egoge.ai-atlas") version "1.2.0"
 }
 
 agentic {
@@ -549,9 +549,9 @@ The plugin automatically adds `annotations` to `implementation`, `processor` to 
 
 ```kotlin
 dependencies {
-    implementation("com.egoge:ai-atlas-annotations:1.1.1")
-    implementation("com.egoge:ai-atlas-runtime:1.1.1")
-    annotationProcessor("com.egoge:ai-atlas-processor:1.1.1")
+    implementation("com.egoge:ai-atlas-annotations:1.2.0")
+    implementation("com.egoge:ai-atlas-runtime:1.2.0")
+    annotationProcessor("com.egoge:ai-atlas-processor:1.2.0")
 }
 ```
 
@@ -583,7 +583,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-  id("com.egoge.ai-atlas") version "1.1.1"
+  id("com.egoge.ai-atlas") version "1.2.0"
 }
 ```
 
@@ -813,7 +813,7 @@ The serializer handles Hibernate proxies (lazy-loaded associations), uninitializ
 
 ## Requirements & Build
 
-- Java 17+ to run Gradle, Java 21 for compilation (auto-provisioned via Gradle toolchain)
+- Java 17+ (auto-provisioned via Gradle toolchain)
 - Gradle 8.12 (wrapper included)
 - Spring Boot 3.4+ (for runtime module)
 

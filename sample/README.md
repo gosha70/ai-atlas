@@ -6,35 +6,36 @@ DSL — no manual `annotationProcessor` dependencies or `-A` compiler args neede
 
 ## Prerequisites
 
-- **Java 21+** — the Gradle daemon must run on Java 21 (the plugin is compiled for Java 21)
-- AI-ATLAS artifacts in `mavenLocal` (for development) or Maven Central (for released versions)
+- **Java 17+** — the Gradle daemon must run on Java 17 or newer
+- AI-ATLAS artifacts on Maven Central (released versions) or `mavenLocal` (local development)
 
 ## Quick Start
 
-### 1. Publish framework locally (from monorepo root)
+### Using the published release (recommended)
 
-```bash
-cd /path/to/ai-atlas
-./gradlew publishToMavenLocal
-```
-
-### 2. Build the sample
+The sample's `build.gradle.kts` references the published `1.2.0` plugin. Just build:
 
 ```bash
 cd sample
-JAVA_HOME=/path/to/java-21 ./gradlew build
+./gradlew build
 ```
 
-Or use the validation script (auto-detects Java 21):
+### Local development (from monorepo)
+
+To test against local changes, publish with the matching version:
 
 ```bash
-./scripts/validate-sample.sh
+cd /path/to/ai-atlas
+./gradlew publishToMavenLocal -Pversion=1.2.0
+
+cd sample
+./gradlew build
 ```
 
-### 3. Run
+### Run
 
 ```bash
-JAVA_HOME=/path/to/java-21 ./gradlew bootRun
+./gradlew bootRun
 ```
 
 ### 4. Test endpoints
@@ -62,22 +63,18 @@ The key sections in `build.gradle.kts`:
 
 ```kotlin
 plugins {
-    id("com.egoge.ai-atlas") version "0.1.0-SNAPSHOT"
+    id("com.egoge.ai-atlas") version "1.2.0"
 }
 
-// Required — the plugin derives Maven coordinates for framework modules
-// (com.egoge:ai-atlas-annotations:{version}, etc.) from project.version.
-// Without this, standalone builds resolve "unspecified".
-version = "0.1.0-SNAPSHOT"
-
 agentic {
+    version.set("1.2.0")
     apiMajorVersion.set(2)
     mcpEnabled.set(false)
 }
 ```
 
 The plugin + `agentic { }` block automatically:
-- Adds `annotations`, `processor`, and `runtime` dependencies using `project.version`
+- Adds `annotations`, `processor`, and `runtime` dependencies using the configured version
 - Wires `-Aai.atlas.api.major=2` and related compiler options
 - Generates DTOs, REST controllers, OpenAPI specs, and version metadata
 

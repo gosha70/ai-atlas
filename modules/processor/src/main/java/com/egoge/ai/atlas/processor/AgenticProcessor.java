@@ -33,7 +33,6 @@ import javax.annotation.processing.Processor;
 import javax.annotation.processing.RoundEnvironment;
 import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedOptions;
-import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
@@ -59,13 +58,11 @@ import java.util.Set;
         "ai.atlas.pii.patterns", "ai.atlas.pii.patterns.file",
         "ai.atlas.api.basePath", "ai.atlas.api.major", "ai.atlas.openapi.infoVersion"
 })
-@SupportedSourceVersion(SourceVersion.RELEASE_21)
 public class AgenticProcessor extends AbstractProcessor {
 
     private static final String OPT_API_BASE_PATH = "ai.atlas.api.basePath";
     private static final String OPT_API_MAJOR = "ai.atlas.api.major";
     private static final String OPT_OPENAPI_INFO_VERSION = "ai.atlas.openapi.infoVersion";
-
     private final Map<String, EntityModel> entityRegistry = new HashMap<>();
     private final Set<String> dtoSkippedKeys = new HashSet<>();
     private final List<ServiceModel> serviceRegistry = new ArrayList<>();
@@ -77,6 +74,10 @@ public class AgenticProcessor extends AbstractProcessor {
     private String openApiInfoVersion;
     private boolean versionConfigValid;
 
+    @Override
+    public SourceVersion getSupportedSourceVersion() {
+        return SourceVersion.latestSupported();
+    }
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
         super.init(processingEnv);

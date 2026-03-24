@@ -98,7 +98,7 @@ public final class ReturnTypeValidator {
         if (returnType instanceof DeclaredType declaredType) {
             var typeArgs = declaredType.getTypeArguments();
             if (!typeArgs.isEmpty()) {
-                TypeMirror arg = typeArgs.getFirst();
+                TypeMirror arg = typeArgs.get(0);
                 if (arg instanceof WildcardType wildcard) {
                     return wildcard.getExtendsBound();
                 }

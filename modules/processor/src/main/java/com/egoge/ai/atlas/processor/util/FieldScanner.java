@@ -310,7 +310,7 @@ public final class FieldScanner {
                                                 Types typeUtils, Elements elementUtils) {
     // Try direct type arguments first (covers List<Item>, List<? extends Item>, etc.)
     if (fieldType instanceof DeclaredType declaredType && !declaredType.getTypeArguments().isEmpty()) {
-      return unwrapWildcard(declaredType.getTypeArguments().getFirst());
+      return unwrapWildcard(declaredType.getTypeArguments().get(0));
     }
 
     // Non-generic concrete subtype (e.g., class ItemBag extends ArrayList<Item>):
@@ -334,7 +334,7 @@ public final class FieldScanner {
       }
       if (!dt.getTypeArguments().isEmpty()
           && typeUtils.isAssignable(typeUtils.erasure(supertype), erasedIterable)) {
-        return unwrapWildcard(dt.getTypeArguments().getFirst());
+        return unwrapWildcard(dt.getTypeArguments().get(0));
       }
       queue.addAll(typeUtils.directSupertypes(supertype));
     }

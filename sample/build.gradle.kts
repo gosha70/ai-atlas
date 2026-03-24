@@ -1,22 +1,17 @@
 plugins {
-    id("com.egoge.ai-atlas") version "0.1.0-SNAPSHOT"
+    id("com.egoge.ai-atlas") version "1.2.0"
     id("org.springframework.boot") version "3.4.3"
 }
 
-// The plugin reads agentic.version to construct Maven coordinates for
-// the framework modules it adds (annotations, processor, runtime).
-// The default is project.version, which in a standalone build is
-// "unspecified" — so we must set it explicitly here.
-version = "0.1.0-SNAPSHOT"
-
 agentic {
+    version.set("1.2.0")
     apiMajorVersion.set(2)
     mcpEnabled.set(false)
 }
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(21))
+        languageVersion.set(JavaLanguageVersion.of(17))
     }
 }
 
