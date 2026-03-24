@@ -1,6 +1,6 @@
 plugins {
     id("com.egoge.ai-atlas") version "1.2.0"
-    id("org.springframework.boot") version "3.4.3"
+    id("org.springframework.boot") version "3.4.13"
 }
 
 agentic {
@@ -16,7 +16,7 @@ java {
 }
 
 dependencies {
-    implementation(platform("org.springframework.boot:spring-boot-dependencies:3.4.3"))
+    implementation(platform("org.springframework.boot:spring-boot-dependencies:3.4.13"))
     implementation("org.springframework.boot:spring-boot-starter-web")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
