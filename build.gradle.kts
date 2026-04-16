@@ -32,6 +32,11 @@ subprojects {
     tasks.withType<Test> {
         useJUnitPlatform()
         finalizedBy(tasks.named("jacocoTestReport"))
+        jvmArgs("--add-opens", "java.base/java.lang=ALL-UNNAMED")
+    }
+
+    dependencies {
+        "testRuntimeOnly"("org.junit.platform:junit-platform-launcher")
     }
 
     configure<CheckstyleExtension> {
