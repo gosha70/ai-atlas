@@ -9,7 +9,7 @@
     "generate-api": "openapi-generator-cli generate -i ../demo/build/classes/java/main/META-INF/openapi/openapi.json -g typescript-fetch -o src/api/generated --additional-properties=supportsES6=true,typescriptThreePlus=true"
   },
   "dependencies": {
-    "next": "15.5.15",
+    "next": "15.5.18",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
