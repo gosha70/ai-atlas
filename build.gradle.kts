@@ -8,6 +8,16 @@ subprojects {
     apply(plugin = "checkstyle")
     apply(plugin = "jacoco")
 
+    // Override tomcat version ahead of Spring Boot BOM (CVE fixes not yet in 3.5.14)
+    configurations.all {
+        resolutionStrategy.eachDependency {
+            if (requested.group == "org.apache.tomcat.embed") {
+                useVersion("10.1.55")
+                because("CVE fixes require 10.1.55; Spring Boot 3.5.14 ships 10.1.54")
+            }
+        }
+    }
+
     configure<JavaPluginExtension> {
         toolchain {
             languageVersion.set(JavaLanguageVersion.of(17))

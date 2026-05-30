@@ -9,7 +9,7 @@ auto-service = "1.1.1"
 
 # Spring
 spring-boot = "3.5.14"
-spring-ai = "1.0.5"
+spring-ai = "1.1.7"
 spring-dependency-management = "1.1.7"
 
 # OpenAPI
