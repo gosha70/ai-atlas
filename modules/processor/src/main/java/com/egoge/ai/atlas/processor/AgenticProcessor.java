@@ -60,9 +60,9 @@ import java.util.Set;
 })
 public class AgenticProcessor extends AbstractProcessor {
 
-    private static final String OPT_API_BASE_PATH = "ai.atlas.api.basePath";
-    private static final String OPT_API_MAJOR = "ai.atlas.api.major";
-    private static final String OPT_OPENAPI_INFO_VERSION = "ai.atlas.openapi.infoVersion";
+    public static final String OPT_API_BASE_PATH = "ai.atlas.api.basePath";
+    public static final String OPT_API_MAJOR = "ai.atlas.api.major";
+    public static final String OPT_OPENAPI_INFO_VERSION = "ai.atlas.openapi.infoVersion";
     private final Map<String, EntityModel> entityRegistry = new HashMap<>();
     private final Set<String> dtoSkippedKeys = new HashSet<>();
     private final List<ServiceModel> serviceRegistry = new ArrayList<>();

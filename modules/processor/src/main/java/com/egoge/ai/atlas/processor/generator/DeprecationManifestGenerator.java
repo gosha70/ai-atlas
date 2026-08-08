@@ -24,7 +24,8 @@ import java.util.List;
  */
 public final class DeprecationManifestGenerator {
 
-    private static final String RESOURCE_PATH = "META-INF/ai-atlas/deprecation-manifest.json";
+    /** Class-output-relative path of the generated deprecation manifest. */
+    public static final String RESOURCE_PATH = "META-INF/ai-atlas/deprecation-manifest.json";
 
     private DeprecationManifestGenerator() {}
 
