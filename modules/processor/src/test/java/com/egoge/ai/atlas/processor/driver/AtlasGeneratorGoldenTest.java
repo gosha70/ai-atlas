@@ -170,6 +170,16 @@ class AtlasGeneratorGoldenTest {
     }
 
     @Test
+    void regeneratingIntoTheSameOutputDirectoryOverwritesResources(@TempDir Path sourceDir) throws IOException {
+        generateFromSourceStrings(sourceDir);
+        GenerationResult second = generateFromSourceStrings(sourceDir);
+
+        assertThat(second.filesOfKind(GeneratedFile.Kind.OPENAPI)).hasSize(2);
+        assertThat(second.filesOfKind(GeneratedFile.Kind.API_VERSION_PROPERTIES)).hasSize(1);
+        assertThat(second.openApi()).isNotNull();
+    }
+
+    @Test
     void rejectsSourcePathThatDoesNotExist() {
         Path missing = outputDir.resolve("nowhere");
 

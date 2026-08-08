@@ -20,6 +20,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -201,7 +202,7 @@ public final class AtlasGenerator {
             for (Path resource : resources) {
                 Path target = resourceOut.resolve(classOut.relativize(resource).toString());
                 Files.createDirectories(target.getParent());
-                Files.copy(resource, target);
+                Files.copy(resource, target, StandardCopyOption.REPLACE_EXISTING);
             }
         }
     }
