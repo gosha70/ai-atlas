@@ -34,3 +34,6 @@ next-env.d.ts
 credentials.json
 AGENTS.md
 CLAUDE.md
+
+# code-copilot-team auto-build ledger (machine-local runtime state)
+.cct/
