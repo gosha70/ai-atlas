@@ -17,7 +17,8 @@ import java.io.Writer;
  */
 public final class ApiVersionPropertiesGenerator {
 
-    private static final String RESOURCE_PATH = "META-INF/ai-atlas/api-version.properties";
+    /** Class-output-relative path of the generated version descriptor. */
+    public static final String RESOURCE_PATH = "META-INF/ai-atlas/api-version.properties";
 
     private ApiVersionPropertiesGenerator() {}
 

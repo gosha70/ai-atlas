@@ -50,8 +50,10 @@ import java.util.Map;
 public final class OpenApiGenerator {
 
   private static final String OPENAPI_VERSION = "3.0.3";
-  private static final String RESOURCE_DIR = "META-INF/openapi/";
-  private static final String LEGACY_RESOURCE_NAME = "openapi.json";
+  /** Class-output-relative directory the OpenAPI specs are written to. */
+  public static final String RESOURCE_DIR = "META-INF/openapi/";
+  /** Unversioned alias emitted alongside the versioned spec. */
+  public static final String LEGACY_RESOURCE_NAME = "openapi.json";
 
   private static String versionedResourcePath(int apiMajor) {
     return RESOURCE_DIR + "openapi-v" + apiMajor + ".json";

@@ -19,6 +19,8 @@
 // identical to what AgenticPlugin.configureProcessorOptions() produces.
 // ─────────────────────────────────────────────────────────────────────────
 
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.spring.boot)
 }
@@ -32,12 +34,34 @@ val apiMajorVersion = 2
 val apiBasePath = "/api"
 val openApiInfoVersion = "$apiMajorVersion.0.0"
 
+val processorOptions = linkedMapOf(
+    "ai.atlas.api.major" to apiMajorVersion.toString(),
+    "ai.atlas.api.basePath" to apiBasePath,
+    "ai.atlas.openapi.infoVersion" to openApiInfoVersion
+)
+
 tasks.withType<JavaCompile>().configureEach {
-    options.compilerArgs.addAll(listOf(
-        "-Aai.atlas.api.major=$apiMajorVersion",
-        "-Aai.atlas.api.basePath=$apiBasePath",
-        "-Aai.atlas.openapi.infoVersion=$openApiInfoVersion"
-    ))
+    options.compilerArgs.addAll(processorOptions.map { (key, value) -> "-A$key=$value" })
+}
+
+// Exports the exact inputs `:demo:compileJava` hands to the annotation processor — compile
+// classpath and -A options — so the processor's AtlasGenerator golden test can reproduce this
+// module's generated output byte-for-byte through the driver API.
+val exportGenerationInputs by tasks.registering {
+    val compileClasspath = configurations.named("compileClasspath")
+    val inputsFile = layout.buildDirectory.file("atlas/demo-generation.properties")
+    val options = processorOptions
+    inputs.files(compileClasspath)
+    inputs.property("processorOptions", options)
+    outputs.file(inputsFile)
+    doLast {
+        val properties = Properties()
+        properties.setProperty("classpath", compileClasspath.get().asPath)
+        options.forEach { (key, value) -> properties.setProperty("option.$key", value) }
+        inputsFile.get().asFile.outputStream().use {
+            properties.store(it, "ai-atlas demo generation inputs")
+        }
+    }
 }
 
 dependencies {
