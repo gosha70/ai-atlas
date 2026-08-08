@@ -33,7 +33,7 @@
     "round_timeout_sec": 1800
   },
   "caps": {
-    "wall_clock_sec": 14400,
+    "wall_clock_sec": 28800,
     "cost_usd": 50
   },
   "unattended": {
