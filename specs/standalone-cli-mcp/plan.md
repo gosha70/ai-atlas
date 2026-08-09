@@ -44,8 +44,9 @@ subcommand + `--json` + exit-code tests; a STDIO MCP round-trip test (list tools
 JDK `javax.tools` + existing processor code); the `cli`/`mcp-stdio`/`driver` modules declare **no Spring
 dependency of their own**, but the generation **compile classpath** the caller passes in (`--classpath`) must
 carry Spring AI + Spring Web types so the emitted `@Tool`/`@Service`/`@RestController` wrappers compile — same
-as the processor `compile-testing` tests; generated-code shapes and the `@Generated("ai.atlas.processor")`
-marker are unchanged. `cli` and `mcp-stdio` are packaged as Shadow fat jars (`atlas.jar`, `atlas-mcp.jar`).
+as the processor `compile-testing` tests; generated-code shapes and the
+`@Generated("com.egoge.ai.atlas.processor")` marker are unchanged (see the spec.md FR-009 erratum).
+`cli` and `mcp-stdio` are packaged as Shadow fat jars (`atlas.jar`, `atlas-mcp.jar`).
 
 ## Constitution Check
 
@@ -132,7 +133,7 @@ settings.gradle.kts                                                             
 **Acceptance criteria**:
 - [ ] `AtlasGenerator.generate(sources, classpath, outDir)` returns a populated `GenerationResult`; the driver *module* declares no Spring dependency, while the passed-in `classpath` supplies Spring AI/Web types so the generated wrappers compile (as the processor `compile-testing` tests do)
 - [ ] Golden test asserts output equals `./gradlew :demo:compileJava` generated sources byte-for-byte (FR-002), compiling against a classpath that includes Spring AI + Spring Web
-- [ ] Emitted files carry `@Generated("ai.atlas.processor")` (FR-009)
+- [x] Emitted files carry the unchanged `@Generated("com.egoge.ai.atlas.processor")` marker (FR-009; see the FR-009 erratum in spec.md)
 
 ### Task 2: `atlas` CLI generate/openapi + JSON (US2, FR-003/004/005/011)
 **Files**: `modules/cli/**`, `gradle/libs.versions.toml`, `settings.gradle.kts`

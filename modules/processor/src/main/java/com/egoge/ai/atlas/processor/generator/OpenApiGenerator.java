@@ -55,7 +55,13 @@ public final class OpenApiGenerator {
   /** Unversioned alias emitted alongside the versioned spec. */
   public static final String LEGACY_RESOURCE_NAME = "openapi.json";
 
-  private static String versionedResourcePath(int apiMajor) {
+  /**
+   * Returns the class-output-relative path of the spec emitted for {@code apiMajor}.
+   *
+   * @param apiMajor configured API major version
+   * @return e.g. {@code META-INF/openapi/openapi-v2.json}
+   */
+  public static String versionedResourcePath(int apiMajor) {
     return RESOURCE_DIR + "openapi-v" + apiMajor + ".json";
   }
 

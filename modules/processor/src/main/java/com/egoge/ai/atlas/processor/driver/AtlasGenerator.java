@@ -23,10 +23,13 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -44,8 +47,12 @@ import java.util.stream.Stream;
  *
  * <p>Output is laid out under the given output directory as {@value #SOURCES_DIR} (generated Java
  * sources, in package directories) and {@value #RESOURCES_DIR} (generated resources, under
- * {@code META-INF}). The directory is created if missing but never cleaned — callers wanting an
- * exact manifest should point at a fresh directory.
+ * {@code META-INF}). Those two roots are <em>owned</em> by the driver: each run generates into a
+ * private staging directory and then replaces them wholesale, so the returned manifest lists
+ * exactly what this run emitted — never an artifact left behind by an earlier or partially failed
+ * run. Anything else the caller keeps under the output directory is left untouched, and files under
+ * it are excluded from source discovery so an output directory nested inside a source root is safe
+ * to reuse.
  */
 public final class AtlasGenerator {
 
@@ -54,13 +61,21 @@ public final class AtlasGenerator {
     /** Name of the generated-resources root inside the output directory. */
     public static final String RESOURCES_DIR = "resources";
 
+    private static final String CLASSES_DIR = "classes";
+    private static final String STAGING_PREFIX = ".atlas-staging";
     private static final String JAVA_SUFFIX = ".java";
     private static final String CLASS_SUFFIX = ".class";
     private static final String OPTION_PREFIX = "-A";
     private static final String ENCODING_OPTION = "-encoding";
-    private static final String REST_CONTROLLER_MARKER = "@RestController";
-    private static final String MCP_TOOL_MARKER = "@Tool(";
-    private static final String RECORD_MARKER = "record ";
+    /**
+     * Classification anchors. Generated type-level annotations and the type declaration itself are
+     * emitted by JavaPoet at column 0, whereas caller-supplied text only ever reaches the output
+     * inside an (indented, newline-escaped) string literal — so anchoring to whole lines cannot be
+     * spoofed by an annotation description that happens to contain one of these markers.
+     */
+    private static final String REST_CONTROLLER_ANNOTATION = "@RestController";
+    private static final String MCP_TOOL_ANNOTATION = "@Service";
+    private static final String DTO_DECLARATION_PREFIX = "public record ";
     private static final String LEGACY_OPENAPI_PATH =
             OpenApiGenerator.RESOURCE_DIR + OpenApiGenerator.LEGACY_RESOURCE_NAME;
 
@@ -84,7 +99,10 @@ public final class AtlasGenerator {
      *                         {@code .java} files
      * @param classpath        the target application's compile classpath; must supply the Spring AI
      *                         and Spring Web types referenced by the generated wrappers
-     * @param outputDir        directory to write generated sources and resources into
+     * @param outputDir        directory to write generated sources and resources into; its
+     *                         {@value #SOURCES_DIR} and {@value #RESOURCES_DIR} roots are replaced
+     *                         by this run, and it is normalized to an absolute path, so every
+     *                         returned {@link GeneratedFile#path()} is absolute
      * @param processorOptions {@code -A} processor options, e.g.
      *                         {@link AgenticProcessor#OPT_API_MAJOR}
      * @return the generated files, the OpenAPI document and every diagnostic reported
@@ -99,9 +117,11 @@ public final class AtlasGenerator {
         Objects.requireNonNull(outputDir, "outputDir");
         Objects.requireNonNull(processorOptions, "processorOptions");
 
-        List<Path> sourceFiles = collectSourceFiles(sources);
+        Path output = outputDir.toAbsolutePath().normalize();
+        List<Path> sourceFiles = collectSourceFiles(sources, output);
         if (sourceFiles.isEmpty()) {
-            throw new IllegalArgumentException("No .java sources found under: " + sources);
+            throw new IllegalArgumentException("No .java sources found under: " + sources
+                    + " (paths inside the output directory " + output + " are excluded)");
         }
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
@@ -109,32 +129,47 @@ public final class AtlasGenerator {
                     "No system Java compiler available — ai-atlas generation requires a JDK, not a JRE");
         }
 
-        Path sourceOut = outputDir.resolve(SOURCES_DIR);
-        Path resourceOut = outputDir.resolve(RESOURCES_DIR);
+        Path sourceOut = output.resolve(SOURCES_DIR);
+        Path resourceOut = output.resolve(RESOURCES_DIR);
         DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
-        Path classOut = null;
+        Path staging = null;
         boolean success;
+        List<GeneratedFile> files = new ArrayList<>();
         try {
-            Files.createDirectories(sourceOut);
-            Files.createDirectories(resourceOut);
-            classOut = Files.createTempDirectory("ai-atlas-classes");
+            Files.createDirectories(output);
+            // Staged inside the output directory so publishing is a same-filesystem move.
+            staging = Files.createTempDirectory(output, STAGING_PREFIX);
+            Path stagedSources = Files.createDirectories(staging.resolve(SOURCES_DIR));
+            Path stagedResources = Files.createDirectories(staging.resolve(RESOURCES_DIR));
+            Path stagedClasses = Files.createDirectories(staging.resolve(CLASSES_DIR));
+
             success = compile(compiler, collector, sourceFiles, classpath,
-                    sourceOut, classOut, processorOptions);
-            harvestResources(classOut, resourceOut);
+                    stagedSources, stagedClasses, processorOptions);
+            harvestResources(stagedClasses, stagedResources);
+
+            publish(stagedSources, sourceOut);
+            publish(stagedResources, resourceOut);
+
+            files.addAll(collectGenerated(sourceOut, true));
+            files.addAll(collectGenerated(resourceOut, false));
         } catch (IOException e) {
-            throw new UncheckedIOException("ai-atlas generation failed to write to " + outputDir, e);
+            throw new UncheckedIOException("ai-atlas generation failed to write to " + output, e);
         } finally {
-            deleteRecursively(classOut);
+            deleteRecursively(staging);
         }
 
-        List<GeneratedFile> files = new ArrayList<>();
-        files.addAll(collectGenerated(sourceOut, true));
-        files.addAll(collectGenerated(resourceOut, false));
         files.sort(Comparator.comparing((GeneratedFile f) -> f.kind().ordinal())
                 .thenComparing(GeneratedFile::relativePath));
 
-        return new GenerationResult(success, outputDir, files, findOpenApi(files),
+        return new GenerationResult(success, output, files, findOpenApi(files, processorOptions),
                 collector.getDiagnostics().stream().map(AtlasGenerator::toDiagnostic).toList());
+    }
+
+    /** Replaces an owned output root with this run's staged tree. */
+    private static void publish(Path staged, Path target) throws IOException {
+        deleteRecursively(target);
+        Files.createDirectories(target.getParent());
+        Files.move(staged, target);
     }
 
     private static boolean compile(JavaCompiler compiler, DiagnosticCollector<JavaFileObject> collector,
@@ -170,27 +205,35 @@ public final class AtlasGenerator {
         return options;
     }
 
-    private static List<Path> collectSourceFiles(List<Path> sources) {
-        List<Path> files = new ArrayList<>();
+    /**
+     * Collects the compilation units, skipping anything inside {@code outputDir}. Without that
+     * exclusion a second run over a source root that contains the output directory would feed the
+     * previous run's generated sources back to javac, which then clashes with the processor
+     * re-creating those same types.
+     */
+    private static List<Path> collectSourceFiles(List<Path> sources, Path outputDir) {
+        Set<Path> files = new LinkedHashSet<>();
         for (Path source : sources) {
             Objects.requireNonNull(source, "source path");
             if (!Files.exists(source)) {
                 throw new IllegalArgumentException("Source path does not exist: " + source);
             }
-            if (Files.isDirectory(source)) {
-                try (Stream<Path> walk = Files.walk(source)) {
+            Path root = source.toAbsolutePath().normalize();
+            if (Files.isDirectory(root)) {
+                try (Stream<Path> walk = Files.walk(root)) {
                     walk.filter(Files::isRegularFile)
                             .filter(p -> p.getFileName().toString().endsWith(JAVA_SUFFIX))
+                            .map(p -> p.toAbsolutePath().normalize())
+                            .filter(p -> !p.startsWith(outputDir))
                             .forEach(files::add);
                 } catch (IOException e) {
                     throw new UncheckedIOException("Failed to scan source directory: " + source, e);
                 }
-            } else {
-                files.add(source);
+            } else if (!root.startsWith(outputDir)) {
+                files.add(root);
             }
         }
-        files.sort(Comparator.naturalOrder());
-        return files;
+        return files.stream().sorted().toList();
     }
 
     /** Copies processor-written resources out of the throwaway class output into {@code resourceOut}. */
@@ -231,13 +274,16 @@ public final class AtlasGenerator {
     }
 
     private static GeneratedFile.Kind classifySource(String content) {
-        if (content.contains(REST_CONTROLLER_MARKER)) {
+        List<String> topLevel = content.lines()
+                .filter(line -> !line.isEmpty() && !Character.isWhitespace(line.charAt(0)))
+                .toList();
+        if (topLevel.contains(REST_CONTROLLER_ANNOTATION)) {
             return GeneratedFile.Kind.REST_CONTROLLER;
         }
-        if (content.contains(MCP_TOOL_MARKER)) {
+        if (topLevel.contains(MCP_TOOL_ANNOTATION)) {
             return GeneratedFile.Kind.MCP_TOOL;
         }
-        if (content.contains(RECORD_MARKER)) {
+        if (topLevel.stream().anyMatch(line -> line.startsWith(DTO_DECLARATION_PREFIX))) {
             return GeneratedFile.Kind.DTO;
         }
         return GeneratedFile.Kind.OTHER;
@@ -256,17 +302,37 @@ public final class AtlasGenerator {
         return GeneratedFile.Kind.OTHER;
     }
 
-    /** Prefers the versioned spec over the unversioned alias, which carries identical content. */
-    private static String findOpenApi(List<GeneratedFile> files) {
+    /**
+     * Selects the spec for the major this run asked for, falling back to this run's versioned spec
+     * and then to the unversioned alias (identical content). Selecting by requested major — rather
+     * than "the first non-legacy spec" — keeps the answer right when a caller points several runs
+     * with different majors at one output tree.
+     */
+    private static String findOpenApi(List<GeneratedFile> files, Map<String, String> processorOptions) {
         List<GeneratedFile> specs = files.stream()
                 .filter(f -> f.kind() == GeneratedFile.Kind.OPENAPI)
                 .toList();
-        return specs.stream()
-                .filter(f -> !f.relativePath().equals(LEGACY_OPENAPI_PATH))
-                .findFirst()
+        return requestedSpecPath(processorOptions)
+                .flatMap(path -> specs.stream().filter(f -> f.relativePath().equals(path)).findFirst())
+                .or(() -> specs.stream()
+                        .filter(f -> !f.relativePath().equals(LEGACY_OPENAPI_PATH)).findFirst())
                 .or(() -> specs.stream().findFirst())
                 .map(GeneratedFile::content)
                 .orElse(null);
+    }
+
+    /** The versioned spec path implied by {@code ai.atlas.api.major}, when the caller set it. */
+    private static Optional<String> requestedSpecPath(Map<String, String> processorOptions) {
+        String raw = processorOptions.get(AgenticProcessor.OPT_API_MAJOR);
+        if (raw == null) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(OpenApiGenerator.versionedResourcePath(Integer.parseInt(raw.trim())));
+        } catch (NumberFormatException e) {
+            // The processor reports an unparsable major as a compile error; nothing to select by.
+            return Optional.empty();
+        }
     }
 
     private static Diagnostic toDiagnostic(javax.tools.Diagnostic<? extends JavaFileObject> diagnostic) {

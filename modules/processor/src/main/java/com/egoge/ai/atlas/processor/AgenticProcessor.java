@@ -302,8 +302,8 @@ public class AgenticProcessor extends AbstractProcessor {
                 methodsByType.computeIfAbsent(qName, k -> new ArrayList<>()).add(method);
             }
         }
-
-        for (var entry : typesByQName.entrySet()) {
+        // Sorted: RoundEnvironment is unordered, and registry order decides OpenAPI path order (FR-002).
+        for (var entry : typesByQName.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
             String qName = entry.getKey();
             TypeElement typeElement = entry.getValue();
             if (typeLevelTypes.contains(qName)) {

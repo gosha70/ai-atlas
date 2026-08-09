@@ -85,8 +85,20 @@ unchanged.
   before writing to disk.
 - **FR-008**: The existing runtime SSE MCP server path MUST remain unchanged and continue to be the default
   for live/deployed tool serving.
-- **FR-009**: All files emitted through the new surfaces MUST retain the `@Generated("ai.atlas.processor")`
-  marker — behaviour identical to the annotation-processing path.
+- **FR-009**: All files emitted through the new surfaces MUST retain the `@Generated(...)` marker the
+  annotation-processing path emits — behaviour identical to it, i.e. no change to the generated shape.
+  > **Erratum (2026-08-09, review round 4).** This requirement was written as
+  > `@Generated("ai.atlas.processor")`. The value the generators have actually emitted since the
+  > `ai.atlas` → `com.egoge.ai.atlas` package rename — long before this feature — is
+  > **`@Generated("com.egoge.ai.atlas.processor")`** (see `DtoGenerator`, `McpToolGenerator`,
+  > `RestControllerGenerator`, and `docs/processor-internals.md`). The literal in the original FR-009
+  > text was a stale carry-over, not a request to change output. FR-009's binding intent is *retain /
+  > identical behaviour*, which the Constraints section reinforces ("No … changes to generated-code
+  > shapes"); changing the emitted string would itself be the breaking change. The canonical value is
+  > therefore `com.egoge.ai.atlas.processor`, and `AtlasGeneratorGoldenTest` asserts it.
+  > **Still open for the maintainer:** `CLAUDE.md` ("Annotation Processing Rules") carries the same
+  > stale `@Generated("ai.atlas.processor")` line. It is a project rules file, so this build session
+  > did not edit it; correcting that line is a one-word maintainer change.
 - **FR-010**: The change MUST add `docs/harness-integration.md` documenting the CLI + STDIO paths and a
   sample Claude Code hook, alongside the existing SSE path.
 

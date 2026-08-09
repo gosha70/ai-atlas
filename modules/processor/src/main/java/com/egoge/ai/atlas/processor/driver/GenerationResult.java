@@ -11,8 +11,8 @@ import java.util.Objects;
  * Structured outcome of an {@link AtlasGenerator} run.
  *
  * @param success     {@code true} when the underlying compilation completed without errors
- * @param outputDir   the directory the run wrote into
- * @param files       every emitted artifact, ordered by kind then relative path
+ * @param outputDir   the absolute, normalized directory the run wrote into
+ * @param files       every artifact emitted by <em>this</em> run, ordered by kind then relative path
  * @param openApi     the versioned OpenAPI document, or {@code null} when none was emitted
  * @param diagnostics every compiler / processor message, in the order javac reported them
  */
