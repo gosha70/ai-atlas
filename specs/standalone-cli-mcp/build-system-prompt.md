@@ -9,8 +9,14 @@ guess whenever the spec is ambiguous or a change would violate the constraints b
 1. `specs/standalone-cli-mcp/spec.md` — requirements FR-001..FR-011, scenarios US1..US5, success criteria.
 2. `specs/standalone-cli-mcp/plan.md` — ADR-1..ADR-4, project structure, per-task acceptance, File Ownership.
 3. `specs/standalone-cli-mcp/tasks.md` — 14 tasks in 5 `## US<n>:` groups, each with a checkpoint.
-4. `CLAUDE.md` (project root) — stack, module architecture rules, code-generation rules, testing pyramid.
-5. `specs/standalone-cli-mcp/origin/2026-08-07-user-directive.md` — the origin. Do not drift from it.
+4. `specs/standalone-cli-mcp/origin/2026-08-07-user-directive.md` — the origin. Do not drift from it.
+5. `CONTRIBUTING.md` — tracked contributor rules (code style, generated-code markers).
+
+**Optional, machine-local:** `CLAUDE.md` / `AGENTS.md` (project root) carry the stack, module architecture,
+code-generation, and testing-pyramid rules — but they are **git-ignored and not tracked**, so a fresh
+checkout or a reviewer worktree will not have them. Read them **if present**; do NOT stop or block when they
+are absent. Everything binding for this feature is in the tracked bundle above (items 1-5) — items 1-3
+restate the module boundaries, generated-code contracts, and testing requirements that matter here.
 
 The spec/plan/tasks are authoritative. If you believe any of them is wrong or under-specified, STOP and
 report — do NOT silently deviate, expand scope, or drop a required feature.

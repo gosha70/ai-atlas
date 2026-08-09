@@ -172,20 +172,28 @@ public final class AtlasGenerator {
 
             success = compile(compiler, collector, sourceFiles, classpath,
                     stagedSources, stagedClasses, processorOptions);
-            harvestResources(stagedClasses, stagedResources);
 
-            // Publishing and collecting are one critical section: a concurrent run must not swap
-            // the trees out from under this one's manifest, nor publish over a half-published tree.
-            ReentrantLock inProcess = OUTPUT_LOCKS.computeIfAbsent(output, dir -> new ReentrantLock());
-            inProcess.lock();
-            try (FileChannel channel = FileChannel.open(output.resolve(LOCK_FILE),
-                         StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-                 FileLock crossProcess = channel.lock()) {
-                publishAll(stagedSources, stagedResources, sourceOut, resourceOut, backup);
-                files.addAll(collectGenerated(sourceOut, true));
-                files.addAll(collectGenerated(resourceOut, false));
-            } finally {
-                inProcess.unlock();
+            // Only a successful run publishes. A failed compile leaves the staged tree partial (or
+            // empty), and publishing it would replace the last good sources/ and resources/ with
+            // that wreckage — turning an ordinary compile error into destructive state loss in a
+            // shared output directory. On failure the previous trees stay untouched and the caller
+            // still gets success=false plus the diagnostics that explain why.
+            if (success) {
+                harvestResources(stagedClasses, stagedResources);
+
+                // Publishing and collecting are one critical section: a concurrent run must not swap
+                // the trees out from under this one's manifest, nor publish over a half-published tree.
+                ReentrantLock inProcess = OUTPUT_LOCKS.computeIfAbsent(output, dir -> new ReentrantLock());
+                inProcess.lock();
+                try (FileChannel channel = FileChannel.open(output.resolve(LOCK_FILE),
+                             StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                     FileLock crossProcess = channel.lock()) {
+                    publishAll(stagedSources, stagedResources, sourceOut, resourceOut, backup);
+                    files.addAll(collectGenerated(sourceOut, true));
+                    files.addAll(collectGenerated(resourceOut, false));
+                } finally {
+                    inProcess.unlock();
+                }
             }
         } catch (IOException e) {
             throw new UncheckedIOException("ai-atlas generation failed to write to " + output, e);
