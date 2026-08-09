@@ -7,21 +7,17 @@ import com.egoge.ai.atlas.processor.driver.GeneratedFile;
 import com.egoge.ai.atlas.processor.driver.GenerationResult;
 import picocli.CommandLine.Command;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
  * {@code atlas inspect} — a dry run that reports the exposed {@code @AgenticExposed} services and
  * the DTOs, MCP tools, REST controllers and OpenAPI spec that <em>would</em> be generated, without
  * writing any file to a caller-visible directory.
+ *
+ * <p>Generation runs in dry-run mode: the driver compiles into a throwaway staging directory and
+ * collects the generated artifacts, but never publishes them — no files reach the output roots and
+ * no lock file is created.
  */
 @Command(name = InspectCommand.NAME,
         description = "List the @AgenticExposed services found in the sources and the DTOs, MCP "
@@ -34,49 +30,76 @@ final class InspectCommand extends AtlasCommand {
     /** The subcommand name, and the {@code command} value in the JSON report. */
     static final String NAME = "inspect";
 
-    private static final String WORK_DIR_PREFIX = "atlas-inspect";
     private static final String NOTHING_TO_EMIT =
             "the sources compiled but produced nothing to inspect — are any types annotated with "
                     + "@AgenticExposed or @AgenticEntity?";
 
+    /** The kinds of generated files that correspond to exposed services. */
+    private static final List<GeneratedFile.Kind> SERVICE_KINDS =
+            List.of(GeneratedFile.Kind.MCP_TOOL, GeneratedFile.Kind.REST_CONTROLLER);
+
     @Override
-    public Integer call() throws IOException {
-        Path workDir = Files.createTempDirectory(WORK_DIR_PREFIX);
-        try {
-            GenerationResult result = generate(workDir);
-            List<String> services = result.filesOfKind(GeneratedFile.Kind.MCP_TOOL).stream()
-                    .map(InspectCommand::serviceName)
-                    .distinct()
-                    .sorted()
-                    .toList();
-            JsonOutput report = JsonOutput.forCommand(NAME)
-                    .inspectFiles(result.files())
-                    .openApi(result.openApi(), null)
-                    .inspectServices(services);
-            String failure = result.success() && result.files().isEmpty() ? NOTHING_TO_EMIT : null;
-            return report(report, result, failure, () -> printSummary(result, services));
-        } finally {
-            deleteRecursively(workDir);
-        }
+    public Integer call() {
+        GenerationResult result = generateDryRun(Path.of(""));  // output dir unused in dry-run mode
+        List<String> services = SERVICE_KINDS.stream()
+                .flatMap(kind -> result.filesOfKind(kind).stream())
+                .map(InspectCommand::qualifiedServiceName)
+                .distinct()
+                .sorted()
+                .toList();
+        JsonOutput report = JsonOutput.forCommand(NAME)
+                .inspectFiles(result.files())
+                .openApi(result.openApi(), null)
+                .inspectServices(services);
+        String failure = result.success() && result.files().isEmpty() ? NOTHING_TO_EMIT : null;
+        return report(report, result, failure, () -> printSummary(result, services));
     }
 
     /**
-     * Extracts the service simple name from a generated MCP tool file name.
+     * Extracts the qualified service name from a generated wrapper file's relative path.
      *
-     * <p>The generators name the tool class {@code <Service>McpTool}, so stripping
-     * {@code McpTool.java} from the relative path's last segment yields the service name.
+     * <p>The generators place wrapper classes in {@code <service-package>.generated}, naming them
+     * {@code <Service>McpTool} or {@code <Service>RestController}. The service's qualified name is
+     * the package with {@code .generated} stripped, plus the service simple name.
+     *
+     * <p>For example, {@code test/generated/CustomerServiceMcpTool.java} yields
+     * {@code test.CustomerService}. For a service in the default package the generated directory is
+     * just {@code generated}, and the result is the simple name alone.
      */
-    static String serviceName(GeneratedFile toolFile) {
-        String fileName = toolFile.relativePath();
-        int lastSlash = fileName.lastIndexOf('/');
-        if (lastSlash >= 0) {
-            fileName = fileName.substring(lastSlash + 1);
-        }
+    static String qualifiedServiceName(GeneratedFile file) {
+        String relative = file.relativePath();
+        int lastSlash = relative.lastIndexOf('/');
+        String dir = lastSlash >= 0 ? relative.substring(0, lastSlash) : "";
+        String fileName = lastSlash >= 0 ? relative.substring(lastSlash + 1) : relative;
+
+        // Strip ".java"
         if (fileName.endsWith(".java")) {
             fileName = fileName.substring(0, fileName.length() - 5);
         }
+        // Strip the wrapper suffix to recover the service simple name
+        String simpleName = stripWrapperSuffix(fileName);
+
+        // The service package is the directory path with "/generated" removed.
+        // "generated" alone means the service is in the default package.
+        String pkg;
+        if (dir.equals("generated")) {
+            pkg = "";
+        } else if (dir.endsWith("/generated")) {
+            pkg = dir.substring(0, dir.length() - "/generated".length()).replace('/', '.');
+        } else {
+            pkg = dir.replace('/', '.');
+        }
+
+        return pkg.isEmpty() ? simpleName : pkg + "." + simpleName;
+    }
+
+    /** Strips {@code McpTool} or {@code RestController} from the end of a generated class name. */
+    private static String stripWrapperSuffix(String fileName) {
         if (fileName.endsWith("McpTool")) {
-            fileName = fileName.substring(0, fileName.length() - 7);
+            return fileName.substring(0, fileName.length() - 7);
+        }
+        if (fileName.endsWith("RestController")) {
+            return fileName.substring(0, fileName.length() - 14);
         }
         return fileName;
     }
@@ -93,54 +116,5 @@ final class InspectCommand extends AtlasCommand {
         for (GeneratedFile file : files) {
             out().println("  " + file.kind() + "  " + file.relativePath());
         }
-    }
-
-    /**
-     * Removes a directory tree, deferring any entry that cannot be deleted to JVM exit.
-     *
-     * <p>Runs in a {@code finally} block — entries are deleted inline in post-order, and per-entry
-     * failures are collected rather than masking the real result. The remainder is registered with
-     * {@link File#deleteOnExit()} shallowest-first so the JVM deletes children before parents.
-     */
-    private static void deleteRecursively(Path root) {
-        if (root == null || !Files.exists(root)) {
-            return;
-        }
-        List<Path> deferred = new ArrayList<>();
-        try {
-            Files.walkFileTree(root, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    if (!tryDelete(file)) {
-                        deferred.add(file);
-                    }
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
-                    if (exc != null) {
-                        deferred.add(dir);
-                        return FileVisitResult.CONTINUE;
-                    }
-                    if (!tryDelete(dir)) {
-                        deferred.add(dir);
-                    }
-                    return FileVisitResult.CONTINUE;
-                }
-
-                private boolean tryDelete(Path path) {
-                    try {
-                        return Files.deleteIfExists(path);
-                    } catch (IOException ignored) {
-                        return false;
-                    }
-                }
-            });
-        } catch (IOException | UncheckedIOException e) {
-            deferred.add(root);
-        }
-        deferred.sort(Comparator.naturalOrder());
-        deferred.forEach(path -> path.toFile().deleteOnExit());
     }
 }

@@ -108,9 +108,9 @@ class InspectCommandTest {
             assertThat(report.get("openApi").get("path").isNull()).isTrue();
             assertThat(report.get("openApi").get("document").asText()).contains("openapi");
 
-            // Exposed services are listed.
+            // Exposed services are listed with qualified names.
             assertThat(report.get("services")).isNotEmpty();
-            assertThat(report.get("services").get(0).asText()).isEqualTo("CustomerService");
+            assertThat(report.get("services").get(0).asText()).isEqualTo("test.CustomerService");
         }
 
         @Test
@@ -138,7 +138,7 @@ class InspectCommandTest {
         }
 
         @Test
-        @DisplayName("lists the service exposed by @AgenticExposed")
+        @DisplayName("lists the service exposed by @AgenticExposed with its qualified name")
         void listsExposedServices() throws IOException {
             int exitCode = run("inspect", "--sources", sources.toString(),
                     "--classpath", testClasspath(), "--json");
@@ -146,7 +146,7 @@ class InspectCommandTest {
             assertThat(exitCode).isZero();
             JsonNode report = parseStdout();
             assertThat(report.get("services").get(0).asText())
-                    .isEqualTo("CustomerService");
+                    .isEqualTo("test.CustomerService");
         }
 
         @Test
@@ -171,6 +171,9 @@ class InspectCommandTest {
             JsonNode report = parseStdout();
             assertThat(report.get("status").asText()).isEqualTo(JsonOutput.STATUS_ERROR);
             assertThat(report.get("files")).isEmpty();
+            // services is always present — its empty-array value on failure is the stable schema
+            // contract that consumers can rely on.
+            assertThat(report.has("services")).isTrue();
             assertThat(report.get("services")).isEmpty();
             assertThat(report.get("diagnostics")).anyMatch(
                     node -> "ERROR".equals(node.get("severity").asText()));
@@ -189,6 +192,7 @@ class InspectCommandTest {
             JsonNode report = parseStdout();
             assertThat(report.get("status").asText()).isEqualTo(JsonOutput.STATUS_ERROR);
             assertThat(report.get("files")).isEmpty();
+            assertThat(report.get("services")).isEmpty();
             assertThat(report.get("errors").get(0).asText()).contains("nothing to inspect");
         }
     }
@@ -252,14 +256,44 @@ class InspectCommandTest {
         }
     }
 
-    @Test
-    @DisplayName("serviceName extracts the simple service name from an MCP tool relative path")
-    void serviceNameExtraction() {
-        GeneratedFile toolFile = new GeneratedFile(GeneratedFile.Kind.MCP_TOOL,
-                "test/generated/CustomerServiceMcpTool.java",
-                Path.of("/tmp/atlas-inspect-123/sources/test/generated/CustomerServiceMcpTool.java"),
-                "// generated");
+    @Nested
+    @DisplayName("qualifiedServiceName")
+    class QualifiedServiceName {
 
-        assertThat(InspectCommand.serviceName(toolFile)).isEqualTo("CustomerService");
+        @Test
+        @DisplayName("extracts the qualified service name from an MCP tool relative path")
+        void fromMcpTool() {
+            GeneratedFile toolFile = new GeneratedFile(GeneratedFile.Kind.MCP_TOOL,
+                    "test/generated/CustomerServiceMcpTool.java",
+                    Path.of("/tmp/atlas-inspect-123/sources/test/generated/CustomerServiceMcpTool.java"),
+                    "// generated");
+
+            assertThat(InspectCommand.qualifiedServiceName(toolFile))
+                    .isEqualTo("test.CustomerService");
+        }
+
+        @Test
+        @DisplayName("extracts the qualified service name from a REST controller relative path")
+        void fromRestController() {
+            GeneratedFile ctrlFile = new GeneratedFile(GeneratedFile.Kind.REST_CONTROLLER,
+                    "test/generated/CustomerServiceRestController.java",
+                    Path.of("/tmp/atlas-inspect-123/sources/test/generated/CustomerServiceRestController.java"),
+                    "// generated");
+
+            assertThat(InspectCommand.qualifiedServiceName(ctrlFile))
+                    .isEqualTo("test.CustomerService");
+        }
+
+        @Test
+        @DisplayName("handles services in the default package")
+        void defaultPackage() {
+            GeneratedFile toolFile = new GeneratedFile(GeneratedFile.Kind.MCP_TOOL,
+                    "generated/SimpleServiceMcpTool.java",
+                    Path.of("/tmp/atlas-inspect-123/sources/generated/SimpleServiceMcpTool.java"),
+                    "// generated");
+
+            assertThat(InspectCommand.qualifiedServiceName(toolFile))
+                    .isEqualTo("SimpleService");
+        }
     }
 }

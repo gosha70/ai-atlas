@@ -24,9 +24,9 @@ import java.util.List;
  * <pre>{@code
  * {
  *   "schemaVersion": 1,                  // int, bumped only on a breaking change
- *   "command": "generate",               // "generate" | "openapi"
+ *   "command": "generate",               // "generate" | "openapi" | "inspect"
  *   "status": "ok",                      // "ok" | "error" — mirrors the process exit code
- *   "outputDir": "/abs/out",             // generate: the directory written; openapi: null
+ *   "outputDir": "/abs/out",             // generate: the directory written; openapi/inspect: null
  *   "files": [                           // manifest of what this run emitted, [] on failure
  *     {
  *       "kind": "DTO",                   // GeneratedFile.Kind name
@@ -43,7 +43,10 @@ import java.util.List;
  *   "diagnostics": [                     // every compiler / processor message, javac's order
  *     { "severity": "WARNING", "message": "...", "source": "/abs/Foo.java" }
  *   ],
- *   "errors": [ "..." ]                  // human-readable failure reasons, [] when status is ok
+ *   "errors": [ "..." ],                 // human-readable failure reasons, [] when status is ok
+ *   "services": [                        // qualified names of the @AgenticExposed service classes
+ *     "com.example.MyService"            //   discovered in the source set; [] on failure, and
+ *   ]                                    //   [] for non-inspect commands — always an array
  * }
  * }</pre>
  *
@@ -96,6 +99,7 @@ public final class JsonOutput {
         root.putNull(KEY_OPEN_API);
         root.putArray(KEY_DIAGNOSTICS);
         this.errors = root.putArray(KEY_ERRORS);
+        root.putArray(KEY_SERVICES);
     }
 
     /**

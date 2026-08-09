@@ -74,6 +74,16 @@ abstract class AtlasCommand implements Callable<Integer> {
     }
 
     /**
+     * Runs generation as a dry run — compiles into a throwaway staging directory, collects the
+     * generated files for inspection, but never publishes them to the output roots. The staging
+     * directory is cleaned up after collection.
+     */
+    final GenerationResult generateDryRun(Path outputDir) {
+        return AtlasGenerator.generate(List.copyOf(sources), classpathEntries(), outputDir,
+                Map.copyOf(processorOptions), true);
+    }
+
+    /**
      * Splits every {@code --classpath} value on the platform path separator, so a single shell
      * {@code "$(cat cp.txt)"} and repeated {@code --classpath a.jar --classpath b.jar} both work.
      * Blank entries are dropped rather than handed to javac as an empty path.

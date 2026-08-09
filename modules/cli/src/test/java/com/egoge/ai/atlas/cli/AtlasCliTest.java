@@ -108,7 +108,7 @@ class AtlasCliTest {
             // Every documented key is present, on every run.
             assertThat(report.fieldNames()).toIterable().containsExactly(
                     "schemaVersion", "command", "status", "outputDir", "files", "counts",
-                    "openApi", "diagnostics", "errors");
+                    "openApi", "diagnostics", "errors", "services");
             assertThat(report.get("schemaVersion").asInt()).isEqualTo(JsonOutput.SCHEMA_VERSION);
             assertThat(report.get("command").asText()).isEqualTo("generate");
             assertThat(report.get("status").asText()).isEqualTo(JsonOutput.STATUS_OK);

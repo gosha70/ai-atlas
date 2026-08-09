@@ -115,8 +115,23 @@ public final class AtlasGenerator {
     }
 
     /**
+     * Equivalent to {@link #generate(List, List, Path, Map, boolean)} with {@code dryRun = false}.
+     */
+    public static GenerationResult generate(List<Path> sources, List<Path> classpath, Path outputDir,
+                                            Map<String, String> processorOptions) {
+        return generate(sources, classpath, outputDir, processorOptions, false);
+    }
+
+    /**
      * Compiles {@code sources} with {@link AgenticProcessor} registered and collects everything it
      * emitted.
+     *
+     * <p>When {@code dryRun} is {@code true} the run compiles into a staging directory and collects
+     * the generated artifacts, but <em>never publishes</em> them — no files are written to the
+     * output directory's {@value #SOURCES_DIR} / {@value #RESOURCES_DIR} roots, and no lock file is
+     * created. The staging directory is still cleaned up when the run finishes. This mode exists for
+     * inspection: the caller gets the same manifest a full run would produce, without the filesystem
+     * side effects.
      *
      * @param sources          source roots (directories are scanned recursively) and/or individual
      *                         {@code .java} files
@@ -125,16 +140,19 @@ public final class AtlasGenerator {
      * @param outputDir        directory to write generated sources and resources into; its
      *                         {@value #SOURCES_DIR} and {@value #RESOURCES_DIR} roots are replaced
      *                         by this run, and it is normalized to an absolute path, so every
-     *                         returned {@link GeneratedFile#path()} is absolute
+     *                         returned {@link GeneratedFile#path()} is absolute. In dry-run mode
+     *                         only the staging subtree is written and then cleaned up.
      * @param processorOptions {@code -A} processor options, e.g.
      *                         {@link AgenticProcessor#OPT_API_MAJOR}
+     * @param dryRun           when {@code true}, skip publication — collect files from staging but
+     *                         never write them to the output roots
      * @return the generated files, the OpenAPI document and every diagnostic reported
      * @throws IllegalArgumentException if a source path does not exist or no sources were found
      * @throws IllegalStateException    if the running JVM is not a JDK (no system compiler)
      * @throws UncheckedIOException     if the output directories cannot be written
      */
     public static GenerationResult generate(List<Path> sources, List<Path> classpath, Path outputDir,
-                                            Map<String, String> processorOptions) {
+                                            Map<String, String> processorOptions, boolean dryRun) {
         Objects.requireNonNull(sources, "sources");
         Objects.requireNonNull(classpath, "classpath");
         Objects.requireNonNull(outputDir, "outputDir");
@@ -178,11 +196,13 @@ public final class AtlasGenerator {
             if (success) {
                 harvestResources(stagedClasses, stagedResources);
             }
-            // A run that emitted nothing publishes nothing, for the same reason a failed one does
-            // not: replacing the last good trees with an empty (or descriptor-only) one turns
-            // "these sources carry no ai-atlas annotations" into destructive state loss in a shared
-            // output directory. The caller gets an empty manifest and decides what that means.
-            if (success && emittedAnnotationOutput(stagedSources, stagedResources)) {
+            if (dryRun) {
+                // Collect from staging — never publish, never lock, never write to the output roots.
+                if (success && emittedAnnotationOutput(stagedSources, stagedResources)) {
+                    files.addAll(collectGenerated(stagedSources, true));
+                    files.addAll(collectGenerated(stagedResources, false));
+                }
+            } else if (success && emittedAnnotationOutput(stagedSources, stagedResources)) {
                 // Publishing and collecting are one critical section: a concurrent run must not swap
                 // the trees out from under this one's manifest, nor publish over a half-published tree.
                 ReentrantLock inProcess = OUTPUT_LOCKS.computeIfAbsent(output, dir -> new ReentrantLock());
