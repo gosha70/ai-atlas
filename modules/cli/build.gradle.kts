@@ -11,6 +11,14 @@ plugins {
     alias(libs.plugins.shadow)
 }
 
+// Every module ships through the one atomic Maven Central release, this one included. The Shadow
+// plugin contributes shadowJar to the `java` component under the `all` classifier, so the shared
+// publication carries the executable alongside the thin jar, and the tag-triggered
+// `publishMavenJavaPublicationToOssrhRepository` picks it up with no release-workflow change.
+// On disk the file keeps the plain `atlas.jar` name the spec's `java -jar atlas.jar` refers to;
+// in the repository it is ai-atlas-cli-<version>-all.jar.
+apply(from = rootProject.file("gradle/publishing.gradle.kts"))
+
 val mainClassName = "com.egoge.ai.atlas.cli.AtlasCli"
 
 dependencies {
@@ -40,7 +48,9 @@ tasks.named<Jar>("jar") {
     }
 }
 
-tasks.named<ShadowJar>("shadowJar") {
+val shadowJar = tasks.named<ShadowJar>("shadowJar")
+
+shadowJar.configure {
     // The spec advertises `java -jar atlas.jar`, so the fat jar carries the plain name rather
     // than the default <base>-<version>-all.jar.
     archiveFileName.set("atlas.jar")
@@ -56,16 +66,22 @@ tasks.named<ShadowJar>("shadowJar") {
 
 // FR-011: the runnable jar is a build deliverable, not an opt-in extra.
 tasks.named("build") {
-    dependsOn(tasks.named("shadowJar"))
+    dependsOn(shadowJar)
 }
 
 val runtimeClasspath = configurations.named("runtimeClasspath")
 
 tasks.withType<Test>().configureEach {
+    // The functional test runs the packaged executable as its own process, so the jar must exist
+    // before the tests do — that is the only way manifest, shading and service-file merging
+    // problems show up in CI rather than in a user's `java -jar`.
+    dependsOn(shadowJar)
+    inputs.file(shadowJar.flatMap { it.archiveFile }).withPropertyName("atlasJar")
     // Lets the test assert FR-005 against what actually ships in atlas.jar, rather than against
     // the test classpath (which intentionally carries Spring so generated code compiles).
     inputs.files(runtimeClasspath).withPropertyName("cliRuntimeClasspath")
     doFirst {
         systemProperty("ai.atlas.cli.runtimeClasspath", runtimeClasspath.get().asPath)
+        systemProperty("ai.atlas.cli.jar", shadowJar.get().archiveFile.get().asFile.absolutePath)
     }
 }

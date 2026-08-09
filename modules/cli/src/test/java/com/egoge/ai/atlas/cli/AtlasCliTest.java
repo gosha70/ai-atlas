@@ -15,12 +15,13 @@ import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -33,41 +34,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Web types the generated wrappers reference.
  */
 class AtlasCliTest {
-
-    private static final String ENTITY_SOURCE = """
-            package test;
-
-            import com.egoge.ai.atlas.annotations.AgenticEntity;
-            import com.egoge.ai.atlas.annotations.AgenticField;
-
-            @AgenticEntity(description = "A customer of the shop")
-            public class Customer {
-                @AgenticField(description = "Unique identifier")
-                private Long id;
-
-                @AgenticField(description = "Display name")
-                private String name;
-
-                private String socialSecurityNumber;
-
-                public Long getId() { return id; }
-                public String getName() { return name; }
-                public String getSocialSecurityNumber() { return socialSecurityNumber; }
-            }
-            """;
-
-    private static final String SERVICE_SOURCE = """
-            package test;
-
-            import com.egoge.ai.atlas.annotations.AgenticExposed;
-            import java.util.List;
-
-            @AgenticExposed(description = "Look customers up", returnType = Customer.class)
-            public class CustomerService {
-                public Customer findById(Long id) { return null; }
-                public List<Customer> findAll() { return List.of(); }
-            }
-            """;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -83,10 +49,12 @@ class AtlasCliTest {
     void setUp() throws IOException {
         sources = Files.createDirectories(workspace.resolve("src"));
         out = workspace.resolve("out");
-        Path packageDir = Files.createDirectories(sources.resolve("test"));
-        Files.writeString(packageDir.resolve("Customer.java"), ENTITY_SOURCE, StandardCharsets.UTF_8);
-        Files.writeString(packageDir.resolve("CustomerService.java"), SERVICE_SOURCE,
-                StandardCharsets.UTF_8);
+        CliTestFixtures.writeSampleSources(sources);
+        resetStreams();
+    }
+
+    /** Starts a fresh pair of streams, so a test can assert on a second run's output alone. */
+    private void resetStreams() {
         stdout = new StringWriter();
         stderr = new StringWriter();
     }
@@ -103,7 +71,7 @@ class AtlasCliTest {
 
     /** The test JVM's classpath, which carries the Spring AI / Spring Web types (FR-005). */
     private static String testClasspath() {
-        return System.getProperty("java.class.path");
+        return CliTestFixtures.testClasspath();
     }
 
     private JsonNode parseStdout() throws IOException {
@@ -191,6 +159,31 @@ class AtlasCliTest {
             // The driver creates the output directory but publishes nothing from a failed run.
             assertThat(out.resolve("sources")).doesNotExist();
             assertThat(out.resolve("resources")).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("fails with exit 1 and keeps the last good output when nothing is generated")
+        void nothingToEmit() throws IOException {
+            assertThat(run("generate", "--sources", sources.toString(),
+                    "--classpath", testClasspath(), "--out", out.toString())).isZero();
+            Map<String, String> published = CliTestFixtures.readTree(out);
+            assertThat(published).isNotEmpty();
+            resetStreams();
+
+            // Valid, compilable sources that carry no ai-atlas annotation: there is nothing to
+            // generate, which must not be reported as a successful run with an empty manifest —
+            // and must not wipe the tree the previous run published into the same --out.
+            Path plain = CliTestFixtures.writePlainSource(workspace.resolve("plain-src"));
+            int exitCode = run("generate", "--sources", plain.toString(),
+                    "--classpath", testClasspath(), "--out", out.toString(), "--json");
+
+            assertThat(exitCode).isEqualTo(1);
+            JsonNode report = parseStdout();
+            assertThat(report.get("status").asText()).isEqualTo(JsonOutput.STATUS_ERROR);
+            assertThat(report.get("files")).isEmpty();
+            assertThat(report.get("errors").get(0).asText()).contains("nothing to generate");
+            assertThat(CliTestFixtures.readTree(out))
+                    .as("the previously published output must survive").isEqualTo(published);
         }
 
         @Test
@@ -303,6 +296,41 @@ class AtlasCliTest {
         void missingRequiredOption() {
             assertThat(run("generate", "--sources", sources.toString())).isEqualTo(2);
             assertThat(stderr.toString()).contains("--out");
+        }
+
+        @Test
+        @DisplayName("every command that advertises --version prints one")
+        void versionOnEveryCommandThatAdvertisesIt() {
+            for (List<String> command : List.of(List.<String>of(), List.of("generate"),
+                    List.of("openapi"))) {
+                resetStreams();
+                List<String> args = new ArrayList<>(command);
+                args.add("--version");
+
+                assertThat(run(args.toArray(String[]::new)))
+                        .as("%s --version", command).isZero();
+                assertThat(stdout.toString().trim())
+                        .as("%s --version must print a version", command)
+                        .startsWith(AtlasCli.NAME + " ");
+            }
+        }
+
+        @Test
+        @DisplayName("a classpath entry that does not exist fails before generation, exit 1")
+        void rejectsMissingClasspathEntry() throws IOException {
+            Path missing = workspace.resolve("not-a-real.jar");
+
+            int exitCode = run("generate", "--sources", sources.toString(),
+                    "--classpath", missing + File.pathSeparator + testClasspath(),
+                    "--out", out.toString(), "--json");
+
+            assertThat(exitCode).isEqualTo(1);
+            JsonNode report = parseStdout();
+            assertThat(report.get("status").asText()).isEqualTo(JsonOutput.STATUS_ERROR);
+            assertThat(report.get("errors").get(0).asText())
+                    .contains("classpath entry does not exist").contains("not-a-real.jar");
+            assertThat(stderr.toString()).contains("atlas:");
+            assertThat(out).as("generation must not have started").doesNotExist();
         }
     }
 

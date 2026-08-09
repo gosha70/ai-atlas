@@ -57,9 +57,10 @@ import java.util.stream.Stream;
  * {@code META-INF}). Those two roots are <em>owned</em> by the driver: each run generates into a
  * private staging directory and then replaces them wholesale, so the returned manifest lists
  * exactly what this run emitted — never an artifact left behind by an earlier or partially failed
- * run. Anything else the caller keeps under the output directory is left untouched, and files under
- * it are excluded from source discovery so an output directory nested inside a source root is safe
- * to reuse.
+ * run, and never replaced by a run that emitted nothing: that run publishes nothing and comes back
+ * with an empty manifest. Anything else the caller keeps under the output directory is left
+ * untouched, and files under it are excluded from source discovery so an output directory nested
+ * inside a source root is safe to reuse.
  *
  * <p>Publication of those two roots is <em>atomic as a pair</em>: the previous trees are moved aside
  * first and put back if either replacement fails, so a failed run never leaves this run's sources
@@ -180,7 +181,12 @@ public final class AtlasGenerator {
             // still gets success=false plus the diagnostics that explain why.
             if (success) {
                 harvestResources(stagedClasses, stagedResources);
-
+            }
+            // A run that emitted nothing publishes nothing, for the same reason a failed one does
+            // not: replacing the last good trees with an empty (or descriptor-only) one turns
+            // "these sources carry no ai-atlas annotations" into destructive state loss in a shared
+            // output directory. The caller gets an empty manifest and decides what that means.
+            if (success && emittedAnnotationOutput(stagedSources, stagedResources)) {
                 // Publishing and collecting are one critical section: a concurrent run must not swap
                 // the trees out from under this one's manifest, nor publish over a half-published tree.
                 ReentrantLock inProcess = OUTPUT_LOCKS.computeIfAbsent(output, dir -> new ReentrantLock());
@@ -332,6 +338,29 @@ public final class AtlasGenerator {
         return files.stream().sorted().toList();
     }
 
+    /**
+     * Whether this run produced anything derived from the ai-atlas annotations — a generated source
+     * or an OpenAPI document. "The staged tree is non-empty" is a different question: the processor
+     * emits {@code api-version.properties} and the deprecation manifest on every round, so a source
+     * set carrying no annotation at all still stages those two descriptors.
+     */
+    private static boolean emittedAnnotationOutput(Path stagedSources, Path stagedResources)
+            throws IOException {
+        try (Stream<Path> sources = Files.walk(stagedSources);
+             Stream<Path> resources = Files.walk(stagedResources)) {
+            return sources.filter(Files::isRegularFile)
+                           .anyMatch(p -> p.getFileName().toString().endsWith(JAVA_SUFFIX))
+                    || resources.filter(Files::isRegularFile)
+                           .anyMatch(p -> relativize(stagedResources, p)
+                                   .startsWith(OpenApiGenerator.RESOURCE_DIR));
+        }
+    }
+
+    /** The slash-separated path of {@code file} under {@code root}. */
+    private static String relativize(Path root, Path file) {
+        return root.relativize(file).toString().replace(File.separatorChar, '/');
+    }
+
     /** Copies processor-written resources out of the throwaway class output into {@code resourceOut}. */
     private static void harvestResources(Path classOut, Path resourceOut) throws IOException {
         try (Stream<Path> walk = Files.walk(classOut)) {
@@ -358,7 +387,7 @@ public final class AtlasGenerator {
     }
 
     private static GeneratedFile toGeneratedFile(Path root, Path file, boolean javaSource) {
-        String relative = root.relativize(file).toString().replace(File.separatorChar, '/');
+        String relative = relativize(root, file);
         String content;
         try {
             content = Files.readString(file, StandardCharsets.UTF_8);

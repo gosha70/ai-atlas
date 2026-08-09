@@ -12,7 +12,9 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
 import java.util.stream.Stream;
 
 /**
@@ -24,7 +26,8 @@ import java.util.stream.Stream;
  */
 @Command(name = OpenApiCommand.NAME,
         description = "Print or write the OpenAPI specification for the given sources.",
-        mixinStandardHelpOptions = true)
+        mixinStandardHelpOptions = true,
+        versionProvider = AtlasCli.VersionProvider.class)
 final class OpenApiCommand extends AtlasCommand {
 
     /** The subcommand name, and the {@code command} value in the JSON report. */
@@ -80,16 +83,26 @@ final class OpenApiCommand extends AtlasCommand {
     }
 
     /**
-     * Removes the throwaway generation directory. Runs in a {@code finally} block, so a directory
-     * that cannot be removed is deferred to JVM exit rather than masking the real failure.
+     * Removes the throwaway generation directory. Runs in a {@code finally} block, so a path that
+     * cannot be removed is deferred to JVM exit rather than masking the real failure — and the rest
+     * of the tree is still deleted now, since one undeletable file must not strand its siblings.
      */
     private static void deleteRecursively(Path root) {
+        List<Path> deferred = new ArrayList<>();
         try (Stream<Path> walk = Files.walk(root)) {
             for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(path);
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException e) {
+                    deferred.add(path);
+                }
             }
         } catch (IOException | UncheckedIOException e) {
-            root.toFile().deleteOnExit();
+            deferred.add(root);
         }
+        // deleteOnExit deletes in reverse registration order, and a directory only goes away once
+        // it is empty — so register shallowest-first to have the JVM delete children first.
+        deferred.sort(Comparator.naturalOrder());
+        deferred.forEach(path -> path.toFile().deleteOnExit());
     }
 }

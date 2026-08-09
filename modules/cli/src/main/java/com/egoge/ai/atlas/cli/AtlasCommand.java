@@ -13,6 +13,7 @@ import picocli.CommandLine.Spec;
 
 import java.io.File;
 import java.io.PrintWriter;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -76,6 +77,12 @@ abstract class AtlasCommand implements Callable<Integer> {
      * Splits every {@code --classpath} value on the platform path separator, so a single shell
      * {@code "$(cat cp.txt)"} and repeated {@code --classpath a.jar --classpath b.jar} both work.
      * Blank entries are dropped rather than handed to javac as an empty path.
+     *
+     * <p>Every surviving entry is checked here, at the boundary: javac ignores a classpath entry it
+     * cannot read, so a typo in a jar path would otherwise surface much later as a wall of
+     * missing-symbol errors that say nothing about the real cause.
+     *
+     * @throws IllegalArgumentException if an entry does not exist or cannot be read
      */
     private List<Path> classpathEntries() {
         List<Path> entries = new ArrayList<>();
@@ -83,11 +90,22 @@ abstract class AtlasCommand implements Callable<Integer> {
             for (String entry : value.split(File.pathSeparator, -1)) {
                 String trimmed = entry.trim();
                 if (!trimmed.isEmpty()) {
-                    entries.add(Path.of(trimmed));
+                    entries.add(validClasspathEntry(Path.of(trimmed)));
                 }
             }
         }
         return entries;
+    }
+
+    /** Rejects a classpath entry javac would silently skip, naming the offending path. */
+    private static Path validClasspathEntry(Path entry) {
+        if (!Files.exists(entry)) {
+            throw new IllegalArgumentException("classpath entry does not exist: " + entry);
+        }
+        if (!Files.isReadable(entry)) {
+            throw new IllegalArgumentException("classpath entry is not readable: " + entry);
+        }
+        return entry;
     }
 
     /**
