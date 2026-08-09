@@ -9,7 +9,7 @@
     "generate-api": "openapi-generator-cli generate -i ../demo/build/classes/java/main/META-INF/openapi/openapi.json -g typescript-fetch -o src/api/generated --additional-properties=supportsES6=true,typescriptThreePlus=true"
   },
   "dependencies": {
-    "next": "15.5.18",
+    "next": "16.3.0",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
@@ -17,7 +17,7 @@
     "postcss": ">=8.5.10"
   },
   "devDependencies": {
-    "@openapitools/openapi-generator-cli": "2.31.1",
+    "@openapitools/openapi-generator-cli": "2.40.1",
     "@types/node": "22.15.21",
     "@types/react": "19.1.4",
     "typescript": "5.8.3"
