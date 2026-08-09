@@ -139,7 +139,7 @@ abstract class AtlasCommand implements Callable<Integer> {
         }
         if (json) {
             out().println(report.status(ok).diagnostics(result.diagnostics()).render());
-        } else {
+        } else if (ok) {
             humanReport.run();
         }
         printDiagnostics(result.diagnostics());

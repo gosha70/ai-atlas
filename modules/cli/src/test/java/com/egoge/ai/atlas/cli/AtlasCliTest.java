@@ -162,6 +162,17 @@ class AtlasCliTest {
         }
 
         @Test
+        @DisplayName("non-JSON compile failure does not print a success-style summary on stdout")
+        void compileFailureHumanReport() {
+            int exitCode = run("generate", "--sources", sources.toString(),
+                    "--out", out.toString());
+
+            assertThat(exitCode).isEqualTo(1);
+            assertThat(stdout.toString()).doesNotContain("Generated");
+            assertThat(stderr.toString()).contains("generation failed");
+        }
+
+        @Test
         @DisplayName("fails with exit 1 and keeps the last good output when nothing is generated")
         void nothingToEmit() throws IOException {
             assertThat(run("generate", "--sources", sources.toString(),
@@ -184,6 +195,19 @@ class AtlasCliTest {
             assertThat(report.get("errors").get(0).asText()).contains("nothing to generate");
             assertThat(CliTestFixtures.readTree(out))
                     .as("the previously published output must survive").isEqualTo(published);
+        }
+
+        @Test
+        @DisplayName("non-JSON nothing-to-emit does not print a success-style summary on stdout")
+        void nothingToEmitHumanReport() throws IOException {
+            Path plain = CliTestFixtures.writePlainSource(workspace.resolve("plain-src"));
+
+            int exitCode = run("generate", "--sources", plain.toString(),
+                    "--classpath", testClasspath(), "--out", out.toString());
+
+            assertThat(exitCode).isEqualTo(1);
+            assertThat(stdout.toString()).doesNotContain("Generated");
+            assertThat(stderr.toString()).contains("nothing to generate");
         }
 
         @Test
