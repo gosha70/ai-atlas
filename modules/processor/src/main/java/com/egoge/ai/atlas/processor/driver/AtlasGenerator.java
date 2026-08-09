@@ -20,17 +20,12 @@ import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -195,7 +190,7 @@ public final class AtlasGenerator {
                 try (FileChannel channel = FileChannel.open(output.resolve(LOCK_FILE),
                              StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                      FileLock crossProcess = channel.lock()) {
-                    publishAll(stagedSources, stagedResources, sourceOut, resourceOut, backup);
+                    OutputPublisher.publish(stagedSources, stagedResources, sourceOut, resourceOut, backup);
                     files.addAll(collectGenerated(sourceOut, true));
                     files.addAll(collectGenerated(resourceOut, false));
                 } finally {
@@ -205,7 +200,7 @@ public final class AtlasGenerator {
         } catch (IOException e) {
             throw new UncheckedIOException("ai-atlas generation failed to write to " + output, e);
         } finally {
-            deleteRecursively(staging);
+            OutputPublisher.deleteRecursively(staging);
         }
 
         files.sort(Comparator.comparing((GeneratedFile f) -> f.kind().ordinal())
@@ -213,66 +208,6 @@ public final class AtlasGenerator {
 
         return new GenerationResult(success, output, files, findOpenApi(files, processorOptions),
                 collector.getDiagnostics().stream().map(AtlasGenerator::toDiagnostic).toList());
-    }
-
-    /**
-     * Replaces both owned roots with this run's staged trees as a unit. The previous trees are moved
-     * aside into {@code backup} rather than deleted, so if either replacement fails they can be put
-     * back — the alternative leaves the caller with this run's sources beside the last run's
-     * resources. {@code backup} lives inside the staging directory, so the superseded trees are
-     * discarded with it once the run succeeds.
-     */
-    private static void publishAll(Path stagedSources, Path stagedResources,
-                                   Path sourceOut, Path resourceOut, Path backup) throws IOException {
-        List<Move> plan = List.of(
-                new Move(sourceOut, backup.resolve(SOURCES_DIR)),
-                new Move(resourceOut, backup.resolve(RESOURCES_DIR)),
-                new Move(stagedSources, sourceOut),
-                new Move(stagedResources, resourceOut));
-        Deque<Move> done = new ArrayDeque<>();
-        try {
-            for (Move move : plan) {
-                if (moveIfExists(move)) {
-                    done.push(move.reversed());
-                }
-            }
-        } catch (IOException e) {
-            rollback(done, e);
-            throw e;
-        }
-    }
-
-    /** Renames {@code move.from()} when it is there; reports whether anything moved. */
-    private static boolean moveIfExists(Move move) throws IOException {
-        if (!Files.exists(move.from())) {
-            return false;
-        }
-        Files.createDirectories(move.to().getParent());
-        Files.move(move.from(), move.to());
-        return true;
-    }
-
-    /**
-     * Undoes the renames already applied, newest first. A rename that cannot be undone is attached
-     * to the failure being reported rather than replacing it.
-     */
-    private static void rollback(Deque<Move> done, IOException failure) {
-        while (!done.isEmpty()) {
-            Move move = done.pop();
-            try {
-                Files.move(move.from(), move.to());
-            } catch (IOException e) {
-                failure.addSuppressed(e);
-            }
-        }
-    }
-
-    /** One rename in a publication plan. */
-    private record Move(Path from, Path to) {
-
-        Move reversed() {
-            return new Move(to, from);
-        }
     }
 
     private static boolean compile(JavaCompiler compiler, DiagnosticCollector<JavaFileObject> collector,
@@ -471,30 +406,5 @@ public final class AtlasGenerator {
         JavaFileObject source = diagnostic.getSource();
         return new Diagnostic(severity, diagnostic.getMessage(Locale.ROOT),
                 source == null ? "" : source.getName());
-    }
-
-    // Best-effort cleanup inline in post-order; failures fall back to deleteOnExit.
-    private static void deleteRecursively(Path root) {
-        if (root == null || !Files.exists(root)) {
-            return;
-        }
-        try {
-            Files.walkFileTree(root, new SimpleFileVisitor<>() {
-                @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    try { Files.deleteIfExists(file); } catch (IOException ignored) {
-                        file.toFile().deleteOnExit(); }
-                    return FileVisitResult.CONTINUE;
-                }
-                @Override public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
-                    if (exc != null) { dir.toFile().deleteOnExit();
-                        return FileVisitResult.CONTINUE; }
-                    try { Files.deleteIfExists(dir); } catch (IOException ignored) {
-                        dir.toFile().deleteOnExit(); }
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        } catch (IOException | UncheckedIOException e) {
-            root.toFile().deleteOnExit();
-        }
     }
 }
