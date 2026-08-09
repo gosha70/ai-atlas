@@ -11,9 +11,12 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -90,6 +93,14 @@ class AtlasGeneratorOutputTest {
         GenerationResult first = generateFromSourceStrings(sourceDir);
         assertThat(first.files()).isNotEmpty();
 
+        // Snapshot the PUBLISHED trees, not just the manifest. The manifest assertions below pass
+        // even against an implementation that publishes unconditionally — it wipes these trees and
+        // still returns a manifest without CustomerDto.java. Only comparing the on-disk trees
+        // before and after distinguishes "reported nothing" from "destroyed the last good output".
+        Map<String, String> sourcesBefore = readTree(outputDir.resolve(AtlasGenerator.SOURCES_DIR));
+        Map<String, String> resourcesBefore = readTree(outputDir.resolve(AtlasGenerator.RESOURCES_DIR));
+        assertThat(sourcesBefore).isNotEmpty();
+
         Files.writeString(sourceDir.resolve("test/Customer.java"),
                 "package test; public class Customer { this is not java }", StandardCharsets.UTF_8);
         GenerationResult second =
@@ -97,6 +108,30 @@ class AtlasGeneratorOutputTest {
 
         assertThat(second.success()).isFalse();
         assertThat(second.files()).noneMatch(file -> file.relativePath().endsWith("CustomerDto.java"));
+        assertThat(second.diagnostics()).isNotEmpty();
+        assertThat(readTree(outputDir.resolve(AtlasGenerator.SOURCES_DIR))).isEqualTo(sourcesBefore);
+        assertThat(readTree(outputDir.resolve(AtlasGenerator.RESOURCES_DIR)))
+                .isEqualTo(resourcesBefore);
+    }
+
+    /**
+     * Every regular file under {@code root}, keyed by its relative path — unlike
+     * {@link DriverTestFixtures#readJavaTree(Path)} this keeps resources too, which is what a
+     * failed rerun must leave untouched alongside the sources. A missing root reads as empty so a
+     * run that never published anything is still comparable.
+     */
+    private static Map<String, String> readTree(Path root) throws IOException {
+        Map<String, String> byPath = new TreeMap<>();
+        if (!Files.isDirectory(root)) {
+            return byPath;
+        }
+        try (Stream<Path> walk = Files.walk(root)) {
+            for (Path file : walk.filter(Files::isRegularFile).toList()) {
+                String relative = root.relativize(file).toString().replace(File.separatorChar, '/');
+                byPath.put(relative, Files.readString(file, StandardCharsets.UTF_8));
+            }
+        }
+        return byPath;
     }
 
     @Test
