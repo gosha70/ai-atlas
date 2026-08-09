@@ -3,6 +3,7 @@
  */
 package com.egoge.ai.atlas.cli;
 
+import com.egoge.ai.atlas.processor.driver.GeneratedFile;
 import com.egoge.ai.atlas.processor.driver.GenerationResult;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -10,12 +11,14 @@ import picocli.CommandLine.Option;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * {@code atlas openapi} — produces just the OpenAPI document for a source set.
@@ -51,6 +54,14 @@ final class OpenApiCommand extends AtlasCommand {
             Path written = document == null ? null : write(document);
             String failure = result.success() && document == null ? NO_SPEC : null;
             JsonOutput report = JsonOutput.forCommand(NAME).openApi(document, written);
+            // When --out wrote the spec to disk, it is an artifact this run emitted — surface it in
+            // the stable manifest so a hook consumer sees the same files / counts contract across
+            // both commands.
+            if (written != null && document != null) {
+                report.files(List.of(
+                        new GeneratedFile(GeneratedFile.Kind.OPENAPI,
+                                written.getFileName().toString(), written, document)));
+            }
             return report(report, result, failure, () -> print(document, written));
         } finally {
             deleteRecursively(workDir);
@@ -86,17 +97,47 @@ final class OpenApiCommand extends AtlasCommand {
      * Removes the throwaway generation directory. Runs in a {@code finally} block, so a path that
      * cannot be removed is deferred to JVM exit rather than masking the real failure — and the rest
      * of the tree is still deleted now, since one undeletable file must not strand its siblings.
+     *
+     * <p>Entries are deleted inline in post-order — no buffering of the full tree — so a traversal
+     * failure mid-tree still removes every entry that was already visited. Per-entry deletion
+     * failures are collected and deferred to {@code deleteOnExit}; only those failures (not the
+     * whole tree) are buffered.
      */
     private static void deleteRecursively(Path root) {
+        if (root == null || !Files.exists(root)) {
+            return;
+        }
         List<Path> deferred = new ArrayList<>();
-        try (Stream<Path> walk = Files.walk(root)) {
-            for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {
-                try {
-                    Files.deleteIfExists(path);
-                } catch (IOException e) {
-                    deferred.add(path);
+        try {
+            Files.walkFileTree(root, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    if (!tryDelete(file)) {
+                        deferred.add(file);
+                    }
+                    return FileVisitResult.CONTINUE;
                 }
-            }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
+                    if (exc != null) {
+                        deferred.add(dir);
+                        return FileVisitResult.CONTINUE;
+                    }
+                    if (!tryDelete(dir)) {
+                        deferred.add(dir);
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                private boolean tryDelete(Path path) {
+                    try {
+                        return Files.deleteIfExists(path);
+                    } catch (IOException ignored) {
+                        return false;
+                    }
+                }
+            });
         } catch (IOException | UncheckedIOException e) {
             deferred.add(root);
         }

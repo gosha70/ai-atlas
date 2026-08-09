@@ -20,10 +20,13 @@ import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -106,9 +109,7 @@ public final class AtlasGenerator {
      */
     private static final Map<Path, ReentrantLock> OUTPUT_LOCKS = new ConcurrentHashMap<>();
 
-    private AtlasGenerator() {
-    }
-
+    private AtlasGenerator() {} // package-private on purpose
     /**
      * Runs generation with no processor options, i.e. framework defaults.
      *
@@ -472,20 +473,27 @@ public final class AtlasGenerator {
                 source == null ? "" : source.getName());
     }
 
-    /**
-     * Best-effort cleanup of the throwaway class output. Runs in a {@code finally} block, so an
-     * unremovable temp directory is left on disk rather than masking the generation failure that
-     * would otherwise be reported.
-     */
+    // Best-effort cleanup inline in post-order; failures fall back to deleteOnExit.
     private static void deleteRecursively(Path root) {
         if (root == null || !Files.exists(root)) {
             return;
         }
-        try (Stream<Path> walk = Files.walk(root)) {
-            for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(path);
-            }
-        } catch (IOException e) {
+        try {
+            Files.walkFileTree(root, new SimpleFileVisitor<>() {
+                @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    try { Files.deleteIfExists(file); } catch (IOException ignored) {
+                        file.toFile().deleteOnExit(); }
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
+                    if (exc != null) { dir.toFile().deleteOnExit();
+                        return FileVisitResult.CONTINUE; }
+                    try { Files.deleteIfExists(dir); } catch (IOException ignored) {
+                        dir.toFile().deleteOnExit(); }
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException | UncheckedIOException e) {
             root.toFile().deleteOnExit();
         }
     }

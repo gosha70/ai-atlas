@@ -271,6 +271,15 @@ class AtlasCliTest {
                     .isEqualTo(target.toAbsolutePath().normalize().toString());
             assertThat(report.get("openApi").get("document").asText())
                     .isEqualTo(Files.readString(target));
+            // The --out file is an artifact this run emitted; it must surface in the common manifest
+            // so a hook consumer sees consistent files / counts across both commands.
+            assertThat(report.get("files")).hasSize(1);
+            JsonNode file = report.get("files").get(0);
+            assertThat(file.get("kind").asText()).isEqualTo("OPENAPI");
+            assertThat(file.get("path").asText())
+                    .isEqualTo(target.toAbsolutePath().normalize().toString());
+            assertThat(file.get("source").asBoolean()).isFalse();
+            assertThat(report.get("counts").get("OPENAPI").asInt()).isEqualTo(1);
         }
 
         @Test
