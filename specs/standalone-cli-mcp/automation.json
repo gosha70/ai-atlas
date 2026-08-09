@@ -35,7 +35,7 @@
   },
   "caps": {
     "wall_clock_sec": 28800,
-    "cost_usd": 75
+    "cost_usd": 120
   },
   "unattended": {
     "on_review_breaker": "terminate",
