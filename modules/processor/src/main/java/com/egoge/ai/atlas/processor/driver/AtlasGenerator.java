@@ -17,12 +17,17 @@ import javax.tools.ToolProvider;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -30,6 +35,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
 
 /**
@@ -53,6 +60,14 @@ import java.util.stream.Stream;
  * run. Anything else the caller keeps under the output directory is left untouched, and files under
  * it are excluded from source discovery so an output directory nested inside a source root is safe
  * to reuse.
+ *
+ * <p>Publication of those two roots is <em>atomic as a pair</em>: the previous trees are moved aside
+ * first and put back if either replacement fails, so a failed run never leaves this run's sources
+ * next to the previous run's resources. It is also <em>serialized per output directory</em> —
+ * across threads through an in-process lock and across processes through a lock file
+ * ({@value #LOCK_FILE}) in the output directory — so concurrent runs sharing one output directory
+ * neither interleave their publications nor collect a half-replaced tree. Runs writing to
+ * <em>different</em> output directories never block each other.
  */
 public final class AtlasGenerator {
 
@@ -60,8 +75,11 @@ public final class AtlasGenerator {
     public static final String SOURCES_DIR = "sources";
     /** Name of the generated-resources root inside the output directory. */
     public static final String RESOURCES_DIR = "resources";
+    /** Name of the inter-process lock file the driver keeps in the output directory. */
+    public static final String LOCK_FILE = ".atlas-lock";
 
     private static final String CLASSES_DIR = "classes";
+    private static final String BACKUP_DIR = "backup";
     private static final String STAGING_PREFIX = ".atlas-staging";
     private static final String JAVA_SUFFIX = ".java";
     private static final String CLASS_SUFFIX = ".class";
@@ -78,6 +96,14 @@ public final class AtlasGenerator {
     private static final String DTO_DECLARATION_PREFIX = "public record ";
     private static final String LEGACY_OPENAPI_PATH =
             OpenApiGenerator.RESOURCE_DIR + OpenApiGenerator.LEGACY_RESOURCE_NAME;
+    /**
+     * Orders threads of this JVM that publish into the same output directory. A {@link FileLock} is
+     * held per JVM, not per thread, so two threads locking one file would collide instead of
+     * queueing — this lock has to be taken first. Keyed by the normalized output directory, so runs
+     * writing elsewhere are unaffected; entries are retained because callers reuse a small, fixed
+     * set of output directories.
+     */
+    private static final Map<Path, ReentrantLock> OUTPUT_LOCKS = new ConcurrentHashMap<>();
 
     private AtlasGenerator() {
     }
@@ -142,16 +168,25 @@ public final class AtlasGenerator {
             Path stagedSources = Files.createDirectories(staging.resolve(SOURCES_DIR));
             Path stagedResources = Files.createDirectories(staging.resolve(RESOURCES_DIR));
             Path stagedClasses = Files.createDirectories(staging.resolve(CLASSES_DIR));
+            Path backup = Files.createDirectories(staging.resolve(BACKUP_DIR));
 
             success = compile(compiler, collector, sourceFiles, classpath,
                     stagedSources, stagedClasses, processorOptions);
             harvestResources(stagedClasses, stagedResources);
 
-            publish(stagedSources, sourceOut);
-            publish(stagedResources, resourceOut);
-
-            files.addAll(collectGenerated(sourceOut, true));
-            files.addAll(collectGenerated(resourceOut, false));
+            // Publishing and collecting are one critical section: a concurrent run must not swap
+            // the trees out from under this one's manifest, nor publish over a half-published tree.
+            ReentrantLock inProcess = OUTPUT_LOCKS.computeIfAbsent(output, dir -> new ReentrantLock());
+            inProcess.lock();
+            try (FileChannel channel = FileChannel.open(output.resolve(LOCK_FILE),
+                         StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                 FileLock crossProcess = channel.lock()) {
+                publishAll(stagedSources, stagedResources, sourceOut, resourceOut, backup);
+                files.addAll(collectGenerated(sourceOut, true));
+                files.addAll(collectGenerated(resourceOut, false));
+            } finally {
+                inProcess.unlock();
+            }
         } catch (IOException e) {
             throw new UncheckedIOException("ai-atlas generation failed to write to " + output, e);
         } finally {
@@ -165,11 +200,64 @@ public final class AtlasGenerator {
                 collector.getDiagnostics().stream().map(AtlasGenerator::toDiagnostic).toList());
     }
 
-    /** Replaces an owned output root with this run's staged tree. */
-    private static void publish(Path staged, Path target) throws IOException {
-        deleteRecursively(target);
-        Files.createDirectories(target.getParent());
-        Files.move(staged, target);
+    /**
+     * Replaces both owned roots with this run's staged trees as a unit. The previous trees are moved
+     * aside into {@code backup} rather than deleted, so if either replacement fails they can be put
+     * back — the alternative leaves the caller with this run's sources beside the last run's
+     * resources. {@code backup} lives inside the staging directory, so the superseded trees are
+     * discarded with it once the run succeeds.
+     */
+    private static void publishAll(Path stagedSources, Path stagedResources,
+                                   Path sourceOut, Path resourceOut, Path backup) throws IOException {
+        List<Move> plan = List.of(
+                new Move(sourceOut, backup.resolve(SOURCES_DIR)),
+                new Move(resourceOut, backup.resolve(RESOURCES_DIR)),
+                new Move(stagedSources, sourceOut),
+                new Move(stagedResources, resourceOut));
+        Deque<Move> done = new ArrayDeque<>();
+        try {
+            for (Move move : plan) {
+                if (moveIfExists(move)) {
+                    done.push(move.reversed());
+                }
+            }
+        } catch (IOException e) {
+            rollback(done, e);
+            throw e;
+        }
+    }
+
+    /** Renames {@code move.from()} when it is there; reports whether anything moved. */
+    private static boolean moveIfExists(Move move) throws IOException {
+        if (!Files.exists(move.from())) {
+            return false;
+        }
+        Files.createDirectories(move.to().getParent());
+        Files.move(move.from(), move.to());
+        return true;
+    }
+
+    /**
+     * Undoes the renames already applied, newest first. A rename that cannot be undone is attached
+     * to the failure being reported rather than replacing it.
+     */
+    private static void rollback(Deque<Move> done, IOException failure) {
+        while (!done.isEmpty()) {
+            Move move = done.pop();
+            try {
+                Files.move(move.from(), move.to());
+            } catch (IOException e) {
+                failure.addSuppressed(e);
+            }
+        }
+    }
+
+    /** One rename in a publication plan. */
+    private record Move(Path from, Path to) {
+
+        Move reversed() {
+            return new Move(to, from);
+        }
     }
 
     private static boolean compile(JavaCompiler compiler, DiagnosticCollector<JavaFileObject> collector,

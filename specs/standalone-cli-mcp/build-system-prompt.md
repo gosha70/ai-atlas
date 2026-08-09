@@ -40,8 +40,9 @@ report — do NOT silently deviate, expand scope, or drop a required feature.
   for the same inputs. Prove it with a golden test.
 - **FR-011 / ADR-4 packaging:** `cli` and `mcp-stdio` ship as **Gradle Shadow fat jars** (`atlas.jar`,
   `atlas-mcp.jar`) invocable via `java -jar`. Pin the Shadow plugin version in `gradle/libs.versions.toml`.
-- **FR-009:** generated files keep `@Generated("ai.atlas.processor")`. No change to the annotation contract
-  or to generated-code shapes.
+- **FR-009:** generated files keep `@Generated("com.egoge.ai.atlas.processor")` — the value the generators
+  have emitted since the `ai.atlas` → `com.egoge.ai.atlas` rename; see the FR-009 erratum in `spec.md`.
+  No change to the annotation contract or to generated-code shapes.
 - **STDIO transport uses the MCP Java SDK, NOT Spring AI** (ADR-2). Do not add STDIO to the Spring AI server.
 - **`gradle/libs.versions.toml` is the SOLE version authority** — every new dependency (picocli, MCP SDK,
   Shadow plugin) goes in the catalog; no inline versions.

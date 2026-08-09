@@ -47,11 +47,14 @@ Confidence: high
 
 ## Maintainer follow-ups (not blocking this gate)
 
-The stale `ai.atlas.processor` literal exists in three places; one is now corrected:
+The stale `ai.atlas.processor` literal exists in three places; two are now corrected:
 
-1. `specs/standalone-cli-mcp/spec.md` FR-009 — **corrected** via the erratum (this session).
-2. `CLAUDE.md`, "Annotation Processing Rules" — still stale. The build session correctly declined to edit a
-   project rules file; a one-word maintainer change.
+1. `specs/standalone-cli-mcp/spec.md` FR-009 — **corrected** via the erratum (2026-08-08 session).
+2. Project rule files — **corrected** in the round-5 fix session, after the reviewer ruled that a
+   feature-local erratum cannot override an authoritative rule and reissued the finding as blocking:
+   `AGENTS.md` / `CLAUDE.md` "Annotation Processing Rules", `CONTRIBUTING.md` "Code Style", and
+   `.github/PULL_REQUEST_TEMPLATE.md`. Documentation only — nothing the processor emits changed.
+   Note `AGENTS.md` / `CLAUDE.md` are git-ignored, so that part is machine-local and not committed.
 3. GitHub issue gosha70/ai-atlas#12, L78 — still stale. Worth a short comment on the issue so the origin of
    record does not keep re-seeding the error into future specs.
 

@@ -96,9 +96,15 @@ unchanged.
   > identical behaviour*, which the Constraints section reinforces ("No … changes to generated-code
   > shapes"); changing the emitted string would itself be the breaking change. The canonical value is
   > therefore `com.egoge.ai.atlas.processor`, and `AtlasGeneratorGoldenTest` asserts it.
-  > **Still open for the maintainer:** `CLAUDE.md` ("Annotation Processing Rules") carries the same
-  > stale `@Generated("ai.atlas.processor")` line. It is a project rules file, so this build session
-  > did not edit it; correcting that line is a one-word maintainer change.
+  > **Rule files realigned (2026-08-09, review round 5).** Round 4 left the same stale literal in the
+  > project rule files and deferred it to the maintainer; review round 5 ruled that a feature-local
+  > erratum cannot override an authoritative rule, so the rule files were corrected to state what the
+  > generators emit: `AGENTS.md` / `CLAUDE.md` ("Annotation Processing Rules", line 80),
+  > `CONTRIBUTING.md` ("Code Style"), and `.github/PULL_REQUEST_TEMPLATE.md` (checklist). This is a
+  > documentation correction only — no generator, no emitted byte, and no consumer output changed.
+  > `README.md` and `docs/processor-internals.md` already showed the correct value.
+  > **For the maintainer:** `AGENTS.md` and `CLAUDE.md` are git-ignored machine-local files, so that
+  > half of the correction is not carried by the commit and must be re-applied on other checkouts.
 - **FR-010**: The change MUST add `docs/harness-integration.md` documenting the CLI + STDIO paths and a
   sample Claude Code hook, alongside the existing SSE path.
 
