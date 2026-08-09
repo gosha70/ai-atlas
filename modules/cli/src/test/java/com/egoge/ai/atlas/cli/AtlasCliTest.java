@@ -335,7 +335,7 @@ class AtlasCliTest {
         @DisplayName("every command that advertises --version prints one")
         void versionOnEveryCommandThatAdvertisesIt() {
             for (List<String> command : List.of(List.<String>of(), List.of("generate"),
-                    List.of("openapi"))) {
+                    List.of("openapi"), List.of("inspect"))) {
                 resetStreams();
                 List<String> args = new ArrayList<>(command);
                 args.add("--version");

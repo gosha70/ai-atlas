@@ -69,6 +69,7 @@ public final class JsonOutput {
     private static final String KEY_OPEN_API = "openApi";
     private static final String KEY_DIAGNOSTICS = "diagnostics";
     private static final String KEY_ERRORS = "errors";
+    private static final String KEY_SERVICES = "services";
 
     private static final String KEY_KIND = "kind";
     private static final String KEY_RELATIVE_PATH = "relativePath";
@@ -132,6 +133,37 @@ public final class JsonOutput {
             node.put(KEY_SOURCE, file.kind().isSource());
             String kind = file.kind().name();
             counts.put(kind, counts.path(kind).asInt() + 1);
+        }
+        return this;
+    }
+
+    /**
+     * Like {@link #files(List)} but sets each absolute {@code path} to {@code null} — the files
+     * were collected from a throwaway run and were never written to a caller-visible directory.
+     */
+    public JsonOutput inspectFiles(List<GeneratedFile> files) {
+        ArrayNode array = root.putArray(KEY_FILES);
+        ObjectNode counts = root.putObject(KEY_COUNTS);
+        for (GeneratedFile file : files) {
+            ObjectNode node = array.addObject();
+            node.put(KEY_KIND, file.kind().name());
+            node.put(KEY_RELATIVE_PATH, file.relativePath());
+            node.putNull(KEY_PATH);
+            node.put(KEY_SOURCE, file.kind().isSource());
+            String kind = file.kind().name();
+            counts.put(kind, counts.path(kind).asInt() + 1);
+        }
+        return this;
+    }
+
+    /**
+     * Sets the {@code services} array — the simple names of the {@code @AgenticExposed} service
+     * classes discovered in the source set. Only populated by the {@code inspect} command.
+     */
+    public JsonOutput inspectServices(List<String> services) {
+        ArrayNode array = root.putArray(KEY_SERVICES);
+        for (String service : services) {
+            array.add(service);
         }
         return this;
     }

@@ -38,7 +38,7 @@ import java.util.concurrent.Callable;
         mixinStandardHelpOptions = true,
         versionProvider = AtlasCli.VersionProvider.class,
         synopsisSubcommandLabel = "<command>",
-        subcommands = {GenerateCommand.class, OpenApiCommand.class})
+        subcommands = {GenerateCommand.class, OpenApiCommand.class, InspectCommand.class})
 public final class AtlasCli implements Callable<Integer> {
 
     /** The executable's command name, as it appears in usage help. */
