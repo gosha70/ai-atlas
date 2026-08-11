@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -44,6 +45,11 @@ class AtlasMcpServerTest {
     private static final String JAR_PROPERTY = "ai.atlas.mcp.jar";
     /** System property carrying the module's resolved runtime classpath; set by the build. */
     private static final String RUNTIME_CLASSPATH_PROPERTY = "ai.atlas.mcp.runtimeClasspath";
+    /**
+     * System property carrying a JVM argument the build wants on the spawned server's command
+     * line — the JaCoCo agent, so the child's coverage lands in the module's execution data.
+     */
+    private static final String CHILD_JVM_ARG_PROPERTY = "ai.atlas.mcp.childJvmArg";
 
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(300);
 
@@ -88,7 +94,9 @@ class AtlasMcpServerTest {
     private static Path workspace;
 
     private static Path sources;
+    private static Path plainSources;
     private static McpSyncClient client;
+    private static McpSchema.InitializeResult initialized;
 
     @BeforeAll
     static void startServerAndConnect() throws IOException {
@@ -98,20 +106,32 @@ class AtlasMcpServerTest {
                 StandardCharsets.UTF_8);
         Files.writeString(packageDir.resolve("CustomerService.java"), SERVICE_SOURCE,
                 StandardCharsets.UTF_8);
+        // Compiles cleanly but carries no ai-atlas annotation — the "nothing to emit" input.
+        plainSources = Files.createDirectories(workspace.resolve("plain-src"));
+        Files.writeString(plainSources.resolve("Plain.java"), "public class Plain {}",
+                StandardCharsets.UTF_8);
 
         String jar = System.getProperty(JAR_PROPERTY);
         assertThat(jar).as("the mcp-stdio build must export the built atlas-mcp.jar to this test")
                 .isNotNull();
 
         // The spec's .mcp.json launch, verbatim: {"command":"java","args":["-jar","atlas-mcp.jar"]}
+        // — plus the build's JaCoCo agent argument when present, so the child's coverage counts.
+        List<String> args = new ArrayList<>();
+        String childJvmArg = System.getProperty(CHILD_JVM_ARG_PROPERTY);
+        if (childJvmArg != null && !childJvmArg.isBlank()) {
+            args.add(childJvmArg);
+        }
+        args.add("-jar");
+        args.add(jar);
         ServerParameters launch = ServerParameters.builder(javaExecutable())
-                .args("-jar", jar)
+                .args(args.toArray(String[]::new))
                 .build();
         client = McpClient.sync(new StdioClientTransport(launch,
                         new JacksonMcpJsonMapper(new ObjectMapper())))
                 .requestTimeout(CALL_TIMEOUT)
                 .build();
-        McpSchema.InitializeResult initialized = client.initialize();
+        initialized = client.initialize();
         assertThat(initialized.serverInfo().name()).isEqualTo(AtlasMcpServer.SERVER_NAME);
     }
 
@@ -134,7 +154,23 @@ class AtlasMcpServerTest {
             assertThat(tool.description()).as(tool.name()).isNotBlank();
             assertThat(tool.inputSchema().properties()).as(tool.name())
                     .containsKey(AtlasMcpServer.ARG_SOURCES);
+            // FR-005: a call cannot compile without the Spring types, so classpath is required.
+            assertThat(tool.inputSchema().required()).as(tool.name())
+                    .contains(AtlasMcpServer.ARG_SOURCES, AtlasMcpServer.ARG_CLASSPATH);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> optionsSchema = (Map<String, Object>)
+                    tool.inputSchema().properties().get(AtlasMcpServer.ARG_OPTIONS);
+            assertThat(optionsSchema).as(tool.name())
+                    .containsEntry("additionalProperties", Map.of("type", "string"));
         }
+    }
+
+    @Test
+    @DisplayName("the static tool list does not advertise listChanged notifications")
+    void advertisesNoToolListChanges() {
+        assertThat(initialized.capabilities().tools().listChanged())
+                .as("the tool list is static and no notifications are ever emitted")
+                .isFalse();
     }
 
     @Test
@@ -151,7 +187,9 @@ class AtlasMcpServerTest {
         report.get("files").forEach(file -> assertThat(file.get("path").isNull()).isTrue());
         assertThat(report.get("counts").get("DTO")).isNotNull();
         assertThat(report.get("summary").asText()).contains("1 @AgenticExposed service");
-        assertThat(report.get("outputDir")).isNull();
+        // Stable shape: the field is always present, holding explicit null when inapplicable.
+        assertThat(report.has("outputDir")).isTrue();
+        assertThat(report.get("outputDir").isNull()).isTrue();
     }
 
     @Test
@@ -193,15 +231,102 @@ class AtlasMcpServerTest {
     @DisplayName("a bad call comes back as an isError result carrying the same document shape")
     void reportsArgumentErrorsInBand() throws IOException {
         // atlas_generate without its required 'out' argument.
+        JsonNode report = assertRejected(AtlasMcpServer.TOOL_GENERATE, Map.of(
+                AtlasMcpServer.ARG_SOURCES, List.of(sources.toString()),
+                AtlasMcpServer.ARG_CLASSPATH, testClasspath()));
+        assertThat(report.get("summary").asText()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("the advertised schema is enforced: no scalars, coercions or missing classpath")
+    void rejectsArgumentsOutsideTheSchema() throws IOException {
+        // A scalar where the schema says array of strings.
+        assertRejected(AtlasMcpServer.TOOL_INSPECT, Map.of(
+                AtlasMcpServer.ARG_SOURCES, sources.toString(),
+                AtlasMcpServer.ARG_CLASSPATH, testClasspath()));
+        // A non-string source element must not be coerced into a path.
+        assertRejected(AtlasMcpServer.TOOL_INSPECT, Map.of(
+                AtlasMcpServer.ARG_SOURCES, List.of(42),
+                AtlasMcpServer.ARG_CLASSPATH, testClasspath()));
+        // FR-005: classpath is required and must not be blank.
+        assertRejected(AtlasMcpServer.TOOL_INSPECT, Map.of(
+                AtlasMcpServer.ARG_SOURCES, List.of(sources.toString())));
+        assertRejected(AtlasMcpServer.TOOL_INSPECT, Map.of(
+                AtlasMcpServer.ARG_SOURCES, List.of(sources.toString()),
+                AtlasMcpServer.ARG_CLASSPATH, "  "));
+        // A non-string option value must not be stringified into a -A option.
+        assertRejected(AtlasMcpServer.TOOL_INSPECT, Map.of(
+                AtlasMcpServer.ARG_SOURCES, List.of(sources.toString()),
+                AtlasMcpServer.ARG_CLASSPATH, testClasspath(),
+                AtlasMcpServer.ARG_OPTIONS, Map.of("ai.atlas.api.major", 2)));
+    }
+
+    @Test
+    @DisplayName("atlas_openapi with no annotated types reports the missing document, not a "
+            + "bogus zero-diagnostic compile failure")
+    void openApiWithoutAnnotationsExplainsTheMissingDocument() throws IOException {
         McpSchema.CallToolResult result = client.callTool(new McpSchema.CallToolRequest(
-                AtlasMcpServer.TOOL_GENERATE,
-                Map.of(AtlasMcpServer.ARG_SOURCES, List.of(sources.toString()))));
+                AtlasMcpServer.TOOL_OPENAPI, Map.of(
+                        AtlasMcpServer.ARG_SOURCES, List.of(plainSources.toString()),
+                        AtlasMcpServer.ARG_CLASSPATH, testClasspath())));
 
         assertThat(result.isError()).isTrue();
         JsonNode report = MAPPER.readTree(text(result));
         assertThat(report.get("status").asText()).isEqualTo(AtlasMcpServer.STATUS_ERROR);
+        assertThat(report.get("summary").asText())
+                .contains("no OpenAPI document")
+                .doesNotContain("error diagnostic");
         assertThat(report.get("errors")).isNotEmpty();
-        assertThat(report.get("summary").asText()).isNotBlank();
+        assertThat(report.has("openApi")).isTrue();
+        assertThat(report.get("openApi").isNull()).isTrue();
+    }
+
+    @Test
+    @DisplayName("atlas_generate that emits nothing fails and leaves prior output untouched — "
+            + "and says so")
+    void generateWithoutAnnotationsFailsAndPreservesPriorOutput() throws IOException {
+        Path out = workspace.resolve("generated-stale");
+        callOk(AtlasMcpServer.TOOL_GENERATE, Map.of(
+                AtlasMcpServer.ARG_SOURCES, List.of(sources.toString()),
+                AtlasMcpServer.ARG_CLASSPATH, testClasspath(),
+                AtlasMcpServer.ARG_OUT, out.toString()));
+        Path priorDto = out.resolve("sources/test/generated/CustomerDto.java");
+        assertThat(priorDto).exists();
+
+        McpSchema.CallToolResult result = client.callTool(new McpSchema.CallToolRequest(
+                AtlasMcpServer.TOOL_GENERATE, Map.of(
+                        AtlasMcpServer.ARG_SOURCES, List.of(plainSources.toString()),
+                        AtlasMcpServer.ARG_CLASSPATH, testClasspath(),
+                        AtlasMcpServer.ARG_OUT, out.toString())));
+
+        assertThat(result.isError()).isTrue();
+        JsonNode report = MAPPER.readTree(text(result));
+        assertThat(report.get("status").asText()).isEqualTo(AtlasMcpServer.STATUS_ERROR);
+        assertThat(report.get("summary").asText()).contains("produced nothing to generate");
+        assertThat(report.get("errors")).isNotEmpty();
+        assertThat(report.get("files")).isEmpty();
+        // The prior tree really is untouched — exactly what the failure message warns about.
+        assertThat(priorDto).exists();
+    }
+
+    @Test
+    @DisplayName("a compilation failure reports its error diagnostics, distinct from the "
+            + "semantic no-output failures")
+    void compilationFailureCarriesDiagnostics() throws IOException {
+        Path broken = Files.createDirectories(workspace.resolve("broken-src"));
+        Files.writeString(broken.resolve("Broken.java"), "public class Broken { int x = }",
+                StandardCharsets.UTF_8);
+
+        McpSchema.CallToolResult result = client.callTool(new McpSchema.CallToolRequest(
+                AtlasMcpServer.TOOL_INSPECT, Map.of(
+                        AtlasMcpServer.ARG_SOURCES, List.of(broken.toString()),
+                        AtlasMcpServer.ARG_CLASSPATH, testClasspath())));
+
+        assertThat(result.isError()).isTrue();
+        JsonNode report = MAPPER.readTree(text(result));
+        assertThat(report.get("summary").asText())
+                .matches("Generation failed with [1-9]\\d* error diagnostic\\(s\\).*");
+        assertThat(report.get("diagnostics")).isNotEmpty();
     }
 
     @Test
@@ -225,6 +350,26 @@ class AtlasMcpServerTest {
                 .as("the mcp-stdio module must declare no Spring dependency of its own; Spring "
                         + "types reach generation through the caller-supplied classpath argument")
                 .isEmpty();
+    }
+
+    /**
+     * Calls the tool, asserts the call was rejected in-band with the stable document shape —
+     * every key present, {@code outputDir} and {@code openApi} explicit null — and returns the
+     * parsed document.
+     */
+    private static JsonNode assertRejected(String tool, Map<String, Object> arguments)
+            throws IOException {
+        McpSchema.CallToolResult result =
+                client.callTool(new McpSchema.CallToolRequest(tool, arguments));
+        assertThat(result.isError()).as(arguments.toString()).isTrue();
+        JsonNode report = MAPPER.readTree(text(result));
+        assertThat(report.get("status").asText()).isEqualTo(AtlasMcpServer.STATUS_ERROR);
+        assertThat(report.get("errors")).isNotEmpty();
+        assertThat(report.has("outputDir")).as("outputDir is present").isTrue();
+        assertThat(report.get("outputDir").isNull()).isTrue();
+        assertThat(report.has("openApi")).as("openApi is present").isTrue();
+        assertThat(report.get("openApi").isNull()).isTrue();
+        return report;
     }
 
     /** Calls the tool, asserts the MCP result is not an error, and parses its JSON document. */

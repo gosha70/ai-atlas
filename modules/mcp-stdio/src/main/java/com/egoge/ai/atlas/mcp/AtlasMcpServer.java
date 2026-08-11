@@ -69,8 +69,18 @@ public final class AtlasMcpServer {
     public static final String STATUS_ERROR = "error";
 
     private static final String DEV_VERSION = "development";
+    // Semantic failures: the compile succeeded but the tool could not deliver what it promises.
+    // Full sentences, because they double as the result's summary line (the review headline).
     private static final String NO_SPEC =
-            "no OpenAPI document was generated — are any types annotated with @AgenticExposed?";
+            "The sources compiled, but no OpenAPI document was generated — are any types "
+                    + "annotated with @AgenticExposed?";
+    private static final String NOTHING_TO_GENERATE =
+            "The sources compiled but produced nothing to generate — are any types annotated "
+                    + "with @AgenticExposed or @AgenticEntity? Any previously generated output "
+                    + "under '" + ARG_OUT + "' was left as it was.";
+    private static final String NOTHING_TO_INSPECT =
+            "The sources compiled but produced nothing to inspect — are any types annotated "
+                    + "with @AgenticExposed or @AgenticEntity?";
     private static final String GENERATION_FAILED = "generation failed; no output was written.";
 
     // Result document keys — the CLI's JsonOutput schema, with "tool" and "summary" added and no
@@ -99,6 +109,7 @@ public final class AtlasMcpServer {
     private static final String SCHEMA_TYPE = "type";
     private static final String SCHEMA_ITEMS = "items";
     private static final String SCHEMA_DESCRIPTION = "description";
+    private static final String SCHEMA_ADDITIONAL_PROPERTIES = "additionalProperties";
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -116,7 +127,9 @@ public final class AtlasMcpServer {
         McpJsonMapper jsonMapper = new JacksonMcpJsonMapper(MAPPER);
         McpSyncServer server = McpServer.sync(new StdioServerTransportProvider(jsonMapper))
                 .serverInfo(SERVER_NAME, version())
-                .capabilities(McpSchema.ServerCapabilities.builder().tools(true).build())
+                // tools(false): the tool list is static, so listChanged notifications are
+                // neither supported nor advertised.
+                .capabilities(McpSchema.ServerCapabilities.builder().tools(false).build())
                 .tools(inspectTool(), generateTool(), openApiTool())
                 .build();
         Runtime.getRuntime().addShutdownHook(new Thread(server::closeGracefully, "atlas-mcp-shutdown"));
@@ -140,7 +153,11 @@ public final class AtlasMcpServer {
                 arguments -> {
                     GenerationResult result = AtlasGenerator.generateInspect(sources(arguments),
                             classpath(arguments), options(arguments));
-                    return document(TOOL_INSPECT, result, null);
+                    // A discovered service with no emitted file is still something to inspect —
+                    // only "no files AND no services" means there was nothing (as in the CLI).
+                    String failure = result.success() && result.files().isEmpty()
+                            && result.discoveredServices().isEmpty() ? NOTHING_TO_INSPECT : null;
+                    return document(TOOL_INSPECT, result, failure);
                 });
     }
 
@@ -156,7 +173,12 @@ public final class AtlasMcpServer {
                 arguments -> {
                     GenerationResult result = AtlasGenerator.generate(sources(arguments),
                             classpath(arguments), outputDir(arguments), options(arguments));
-                    return document(TOOL_GENERATE, result, null);
+                    // A clean compile that emitted no files is the documented "nothing to
+                    // generate" failure (as in the CLI): the driver published nothing, so any
+                    // previous output under 'out' must not be mistaken for this run's.
+                    String failure = result.success() && result.files().isEmpty()
+                            ? NOTHING_TO_GENERATE : null;
+                    return document(TOOL_GENERATE, result, failure);
                 });
     }
 
@@ -222,14 +244,16 @@ public final class AtlasMcpServer {
                 SCHEMA_TYPE, "string",
                 SCHEMA_DESCRIPTION, "Compile classpath for the sources, as one "
                         + "path-separator-separated string ('" + File.pathSeparator + "' on this "
-                        + "platform). Must carry the Spring AI and Spring Web types the generated "
-                        + "wrappers reference, or generation will not compile."));
+                        + "platform). Required (FR-005): it must carry the Spring AI and Spring "
+                        + "Web types the generated wrappers reference, or generation will not "
+                        + "compile."));
         properties.put(ARG_OPTIONS, Map.of(
                 SCHEMA_TYPE, TYPE_OBJECT,
+                SCHEMA_ADDITIONAL_PROPERTIES, Map.of(SCHEMA_TYPE, "string"),
                 SCHEMA_DESCRIPTION, "Annotation-processor options as string-to-string pairs, "
                         + "e.g. {\"ai.atlas.api.major\": \"2\"}. Must match the target build's "
                         + "options for the output to match it."));
-        List<String> required = new ArrayList<>(List.of(ARG_SOURCES));
+        List<String> required = new ArrayList<>(List.of(ARG_SOURCES, ARG_CLASSPATH));
         if (withOut) {
             properties.put(ARG_OUT, Map.of(
                     SCHEMA_TYPE, "string",
@@ -240,12 +264,18 @@ public final class AtlasMcpServer {
         return new McpSchema.JsonSchema(TYPE_OBJECT, properties, required, false, null, null);
     }
 
-    /** Renders a {@link GenerationResult} as the stable tool-result document. */
+    /**
+     * Renders a {@link GenerationResult} as the stable tool-result document. Every key is present
+     * in every result — {@code outputDir} and {@code openApi} hold explicit JSON {@code null} when
+     * inapplicable — so consumers never have to distinguish "missing" from "null".
+     */
     private static ObjectNode document(String tool, GenerationResult result, String failure) {
         boolean ok = result.success() && failure == null;
         ObjectNode root = base(tool, ok ? STATUS_OK : STATUS_ERROR);
-        root.put(KEY_SUMMARY, summary(tool, result, ok));
-        if (result.outputDir() != null) {
+        root.put(KEY_SUMMARY, summary(tool, result, failure));
+        if (result.outputDir() == null) {
+            root.putNull(KEY_OUTPUT_DIR);
+        } else {
             root.put(KEY_OUTPUT_DIR, result.outputDir().toString());
         }
         ArrayNode files = root.putArray(KEY_FILES);
@@ -282,10 +312,14 @@ public final class AtlasMcpServer {
         return root;
     }
 
-    /** Fills {@code openApi} with the document and, when it was written to disk, its path. */
+    /**
+     * Fills {@code openApi} with the document and, when it was written to disk, its path — or
+     * with explicit JSON {@code null} when this run produced no document.
+     */
     private static void openApi(ObjectNode root, GenerationResult result) {
         String openApi = result.openApi();
         if (openApi == null) {
+            root.putNull(KEY_OPEN_API);
             return;
         }
         ObjectNode node = root.putObject(KEY_OPEN_API);
@@ -303,12 +337,19 @@ public final class AtlasMcpServer {
         node.put(KEY_DOCUMENT, openApi);
     }
 
-    /** One human-readable line saying what the run did — the review headline (FR-007). */
-    private static String summary(String tool, GenerationResult result, boolean ok) {
-        if (!ok) {
+    /**
+     * One human-readable line saying what the run did — the review headline (FR-007). A failed
+     * compilation reports its error diagnostics; a semantic failure (clean compile, but the tool
+     * could not deliver) is its own headline, not a bogus "failed with 0 error diagnostic(s)".
+     */
+    private static String summary(String tool, GenerationResult result, String failure) {
+        if (!result.success()) {
             long errorCount = result.errors().size();
             return "Generation failed with " + errorCount + " error diagnostic(s); "
                     + "no output was written.";
+        }
+        if (failure != null) {
+            return failure;
         }
         int services = result.discoveredServices().size();
         int files = result.files().size();
@@ -324,12 +365,18 @@ public final class AtlasMcpServer {
                 + " artifact(s) would be generated. Nothing was written to disk.";
     }
 
-    /** A complete document for a call that failed before a {@link GenerationResult} existed. */
+    /**
+     * A complete document for a call that failed before a {@link GenerationResult} existed. Same
+     * keys, same order as {@link #document}: {@code outputDir} and {@code openApi} are explicit
+     * JSON {@code null}, never missing.
+     */
     private static ObjectNode failure(String tool, String message) {
         ObjectNode root = base(tool, STATUS_ERROR);
         root.put(KEY_SUMMARY, "Tool call failed: " + message);
+        root.putNull(KEY_OUTPUT_DIR);
         root.putArray(KEY_FILES);
         root.putObject(KEY_COUNTS);
+        root.putNull(KEY_OPEN_API);
         root.putArray(KEY_DIAGNOSTICS);
         root.putArray(KEY_ERRORS).add(message);
         root.putArray(KEY_SERVICES);
@@ -344,42 +391,46 @@ public final class AtlasMcpServer {
         return root;
     }
 
-    /** The {@code sources} argument as paths; existence is validated by the generator. */
+    /**
+     * The {@code sources} argument as paths; existence is validated by the generator. Exactly the
+     * advertised schema is accepted — an array of strings. A scalar or a non-string element is
+     * rejected rather than coerced, so a malformed call fails loudly instead of compiling from
+     * a path like "123".
+     */
     private static List<Path> sources(Map<String, Object> arguments) {
-        Object raw = arguments.get(ARG_SOURCES);
-        List<String> values;
-        if (raw instanceof String single) {
-            values = List.of(single);
-        } else if (raw instanceof Collection<?> collection) {
-            values = collection.stream().map(String::valueOf).toList();
-        } else {
+        if (!(arguments.get(ARG_SOURCES) instanceof Collection<?> collection)) {
             throw new IllegalArgumentException(
                     "'" + ARG_SOURCES + "' is required and must be an array of path strings");
         }
-        List<Path> sources = values.stream()
-                .map(String::trim)
-                .filter(value -> !value.isEmpty())
-                .map(Path::of)
-                .toList();
+        List<Path> sources = new ArrayList<>();
+        for (Object element : collection) {
+            if (!(element instanceof String value)) {
+                throw new IllegalArgumentException("'" + ARG_SOURCES + "' entries must be "
+                        + "strings, got: " + typeName(element));
+            }
+            String trimmed = value.trim();
+            if (!trimmed.isEmpty()) {
+                sources.add(Path.of(trimmed));
+            }
+        }
         if (sources.isEmpty()) {
             throw new IllegalArgumentException("'" + ARG_SOURCES + "' must not be empty");
         }
-        return sources;
+        return List.copyOf(sources);
     }
 
     /**
-     * The {@code classpath} argument split on the platform path separator, blank entries dropped.
-     * Every surviving entry is checked here, at the boundary: javac silently ignores a classpath
-     * entry it cannot read, so a typo would otherwise surface as a wall of missing-symbol errors.
+     * The required {@code classpath} argument split on the platform path separator, blank entries
+     * dropped. It is required (FR-005): the generated wrappers reference Spring AI and Spring Web
+     * types, so a call without a classpath cannot produce compilable output. Every surviving
+     * entry is checked here, at the boundary: javac silently ignores a classpath entry it cannot
+     * read, so a typo would otherwise surface as a wall of missing-symbol errors.
      */
     private static List<Path> classpath(Map<String, Object> arguments) {
-        Object raw = arguments.get(ARG_CLASSPATH);
-        if (raw == null) {
-            return List.of();
-        }
-        if (!(raw instanceof String value)) {
-            throw new IllegalArgumentException(
-                    "'" + ARG_CLASSPATH + "' must be one path-separator-separated string");
+        if (!(arguments.get(ARG_CLASSPATH) instanceof String value) || value.isBlank()) {
+            throw new IllegalArgumentException("'" + ARG_CLASSPATH + "' is required and must be "
+                    + "one non-blank path-separator-separated string carrying the Spring AI and "
+                    + "Spring Web types the generated wrappers reference");
         }
         List<Path> entries = new ArrayList<>();
         for (String entry : value.split(File.pathSeparator, -1)) {
@@ -396,6 +447,10 @@ public final class AtlasMcpServer {
             }
             entries.add(path);
         }
+        if (entries.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "'" + ARG_CLASSPATH + "' must carry at least one entry");
+        }
         return entries;
     }
 
@@ -408,7 +463,12 @@ public final class AtlasMcpServer {
         return Path.of(value.trim());
     }
 
-    /** The optional {@code options} argument as processor {@code -A} options. */
+    /**
+     * The optional {@code options} argument as processor {@code -A} options. Non-string keys or
+     * values are rejected rather than coerced: a caller passing {@code {"ai.atlas.api.major": 2}}
+     * almost meant {@code "2"}, but silently stringifying would also accept arrays and objects
+     * the processor could never have been handed by a real build.
+     */
     private static Map<String, String> options(Map<String, Object> arguments) {
         Object raw = arguments.get(ARG_OPTIONS);
         if (raw == null) {
@@ -419,7 +479,22 @@ public final class AtlasMcpServer {
                     "'" + ARG_OPTIONS + "' must be an object of string-to-string pairs");
         }
         Map<String, String> options = new LinkedHashMap<>();
-        map.forEach((key, value) -> options.put(String.valueOf(key), String.valueOf(value)));
+        map.forEach((key, value) -> {
+            if (!(key instanceof String name) || name.isBlank()) {
+                throw new IllegalArgumentException(
+                        "'" + ARG_OPTIONS + "' keys must be non-blank strings");
+            }
+            if (!(value instanceof String option)) {
+                throw new IllegalArgumentException("'" + ARG_OPTIONS + "' values must be "
+                        + "strings; '" + name + "' is " + typeName(value));
+            }
+            options.put(name, option);
+        });
         return options;
+    }
+
+    /** The plain type name of a rejected argument value, for error messages; handles null. */
+    private static String typeName(Object value) {
+        return value == null ? "null" : value.getClass().getSimpleName();
     }
 }

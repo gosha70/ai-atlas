@@ -19,7 +19,17 @@ apply(from = rootProject.file("gradle/publishing.gradle.kts"))
 
 val mainClassName = "com.egoge.ai.atlas.mcp.AtlasMcpServer"
 
+// JaCoCo can only see AtlasMcpServer's lines if the spawned server JVM itself carries the agent:
+// the round-trip test runs atlas-mcp.jar as a child process, outside the test task's own
+// instrumentation. The test is handed a ready-made -javaagent argument for the child's command
+// line; the child appends its execution data to the test task's file, so report and verification
+// see one merged picture.
+val jacocoChildAgent: Configuration by configurations.creating
+val jacocoToolVersion = the<JacocoPluginExtension>().toolVersion
+
 dependencies {
+    "jacocoChildAgent"("org.jacoco:org.jacoco.agent:$jacocoToolVersion:runtime")
+
     implementation(project(":modules:processor"))
     implementation(libs.mcp.sdk)
     implementation(libs.jackson.databind)
@@ -82,5 +92,12 @@ tasks.withType<Test>().configureEach {
     doFirst {
         systemProperty("ai.atlas.mcp.runtimeClasspath", runtimeClasspath.get().asPath)
         systemProperty("ai.atlas.mcp.jar", shadowJar.get().archiveFile.get().asFile.absolutePath)
+        val jacocoExec = extensions.findByType(org.gradle.testing.jacoco.plugins.JacocoTaskExtension::class.java)
+            ?.takeIf { it.isEnabled }?.destinationFile
+        if (jacocoExec != null) {
+            systemProperty("ai.atlas.mcp.childJvmArg",
+                "-javaagent:${jacocoChildAgent.singleFile.absolutePath}"
+                    + "=destfile=${jacocoExec.absolutePath},append=true,includes=com.egoge.ai.atlas.*")
+        }
     }
 }
