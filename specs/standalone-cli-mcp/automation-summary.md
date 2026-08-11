@@ -54,3 +54,6 @@ approved-by: gosha 2026-08-09
 
 ### Phase 3 complete — US3: CLI inspect (dry run) (2026-08-11T20:45:01Z)
 Review: PASS (see specs/standalone-cli-mcp/collaboration/build-review.md).
+
+### Phase 4 complete — US4: STDIO MCP server (2026-08-11T22:18:37Z)
+Review: PASS (see specs/standalone-cli-mcp/collaboration/build-review.md).
