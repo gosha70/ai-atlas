@@ -7,7 +7,6 @@ import com.egoge.ai.atlas.processor.AgenticProcessor;
 import com.egoge.ai.atlas.processor.generator.ApiVersionPropertiesGenerator;
 import com.egoge.ai.atlas.processor.generator.DeprecationManifestGenerator;
 import com.egoge.ai.atlas.processor.generator.OpenApiGenerator;
-import com.egoge.ai.atlas.processor.generator.ServiceManifestGenerator;
 
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -128,6 +127,7 @@ public final class AtlasGenerator {
         Path sourceOut = output.resolve(SOURCES_DIR);
         Path resourceOut = output.resolve(RESOURCES_DIR);
         DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
+        AgenticProcessor processor = new AgenticProcessor();
         Path staging = null;
         boolean success;
         List<GeneratedFile> files = new ArrayList<>();
@@ -141,7 +141,7 @@ public final class AtlasGenerator {
             Path backup = Files.createDirectories(staging.resolve(BACKUP_DIR));
 
             success = compile(compiler, collector, sourceFiles, classpath,
-                    stagedSources, stagedClasses, processorOptions);
+                    stagedSources, stagedClasses, processorOptions, processor);
 
             // Only a successful run publishes. A failed compile leaves the staged tree partial (or
             // empty), and publishing it would replace the last good sources/ and resources/ with
@@ -175,10 +175,9 @@ public final class AtlasGenerator {
         files.sort(Comparator.comparing((GeneratedFile f) -> f.kind().ordinal())
                 .thenComparing(GeneratedFile::relativePath));
 
-        List<String> discoveredServices = readDiscoveredServices(files);
         return new GenerationResult(success, output, files, findOpenApi(files, processorOptions),
                 collector.getDiagnostics().stream().map(AtlasGenerator::toDiagnostic).toList(),
-                discoveredServices);
+                success ? processor.discoveredServices() : List.of());
     }
 
     /**
@@ -206,6 +205,7 @@ public final class AtlasGenerator {
         }
 
         DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
+        AgenticProcessor processor = new AgenticProcessor();
         boolean success;
         List<GeneratedFile> files = new ArrayList<>();
         try (StandardJavaFileManager stdFileManager =
@@ -213,7 +213,8 @@ public final class AtlasGenerator {
              InMemoryJavaFileManager inMemory = new InMemoryJavaFileManager(stdFileManager)) {
 
             stdFileManager.setLocationFromPaths(StandardLocation.CLASS_PATH, classpath);
-            success = compileInMemory(compiler, collector, sourceFiles, inMemory, processorOptions);
+            success = compileInMemory(compiler, collector, sourceFiles, inMemory,
+                    processorOptions, processor);
 
             Map<String, InMemoryJavaFileObject> classOutput =
                     inMemory.capturedAt(StandardLocation.CLASS_OUTPUT);
@@ -243,26 +244,16 @@ public final class AtlasGenerator {
         files.sort(Comparator.comparing((GeneratedFile f) -> f.kind().ordinal())
                 .thenComparing(GeneratedFile::relativePath));
 
-        List<String> discoveredServices = readDiscoveredServices(files);
         return new GenerationResult(success, null, files, findOpenApi(files, processorOptions),
                 collector.getDiagnostics().stream().map(AtlasGenerator::toDiagnostic).toList(),
-                discoveredServices);
-    }
-
-    // Reads service names from service-manifest.properties. The manifest stays in the reported
-    // file list: it is published like the deprecation manifest, and files() must match disk.
-    private static List<String> readDiscoveredServices(List<GeneratedFile> files) {
-        return files.stream()
-                .filter(f -> ServiceManifestGenerator.RESOURCE_PATH.equals(f.relativePath()))
-                .findFirst()
-                .map(f -> f.content().lines().filter(l -> !l.isBlank()).toList())
-                .orElseGet(List::of);
+                success ? processor.discoveredServices() : List.of());
     }
 
     private static boolean compile(JavaCompiler compiler, DiagnosticCollector<JavaFileObject> collector,
                                    List<Path> sourceFiles, List<Path> classpath,
                                    Path sourceOut, Path classOut,
-                                   Map<String, String> processorOptions) throws IOException {
+                                   Map<String, String> processorOptions,
+                                   AgenticProcessor processor) throws IOException {
         try (StandardJavaFileManager fileManager =
                      compiler.getStandardFileManager(collector, Locale.ROOT, StandardCharsets.UTF_8)) {
             fileManager.setLocationFromPaths(StandardLocation.SOURCE_OUTPUT, List.of(sourceOut));
@@ -272,7 +263,7 @@ public final class AtlasGenerator {
             JavaCompiler.CompilationTask task = compiler.getTask(null, fileManager, collector,
                     compilerOptions(processorOptions), null,
                     fileManager.getJavaFileObjectsFromPaths(sourceFiles));
-            task.setProcessors(List.of(new AgenticProcessor()));
+            task.setProcessors(List.of(processor));
             return Boolean.TRUE.equals(task.call());
         }
     }
@@ -282,11 +273,12 @@ public final class AtlasGenerator {
                                            DiagnosticCollector<JavaFileObject> collector,
                                            List<Path> sourceFiles,
                                            InMemoryJavaFileManager fileManager,
-                                           Map<String, String> processorOptions) {
+                                           Map<String, String> processorOptions,
+                                           AgenticProcessor processor) {
         JavaCompiler.CompilationTask task = compiler.getTask(null, fileManager, collector,
                 compilerOptions(processorOptions), null,
                 fileManager.delegate().getJavaFileObjectsFromPaths(sourceFiles));
-        task.setProcessors(List.of(new AgenticProcessor()));
+        task.setProcessors(List.of(processor));
         return Boolean.TRUE.equals(task.call());
     }
 
@@ -446,9 +438,6 @@ public final class AtlasGenerator {
         }
         if (relativePath.equals(DeprecationManifestGenerator.RESOURCE_PATH)) {
             return GeneratedFile.Kind.DEPRECATION_MANIFEST;
-        }
-        if (relativePath.equals(ServiceManifestGenerator.RESOURCE_PATH)) {
-            return GeneratedFile.Kind.SERVICE_MANIFEST;
         }
         return GeneratedFile.Kind.OTHER;
     }

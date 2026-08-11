@@ -40,7 +40,10 @@ final class InspectCommand extends AtlasCommand {
                 .inspectFiles(result.files())
                 .openApi(result.openApi(), null)
                 .inspectServices(services);
-        String failure = result.success() && result.files().isEmpty() ? NOTHING_TO_EMIT : null;
+        // A discovered service with no emitted file (all methods filtered out, or none public) is
+        // still something to inspect — only "no files AND no services" means there was nothing.
+        String failure = result.success() && result.files().isEmpty() && services.isEmpty()
+                ? NOTHING_TO_EMIT : null;
         return report(report, result, failure, () -> printSummary(result, services));
     }
 

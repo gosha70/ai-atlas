@@ -205,6 +205,98 @@ class InspectCommandTest {
         }
 
         @Test
+        @DisplayName("reports a nested service under its qualified name")
+        void nestedServiceQualifiedName() throws IOException {
+            Path nested = Files.createDirectories(workspace.resolve("nested-service-src"));
+            Path packageDir = Files.createDirectories(nested.resolve("test"));
+            Files.writeString(packageDir.resolve("Customer.java"), CliTestFixtures.ENTITY_SOURCE);
+            Files.writeString(packageDir.resolve("Outer.java"), """
+                    package test;
+
+                    import com.egoge.ai.atlas.annotations.AgenticExposed;
+
+                    public class Outer {
+                        @AgenticExposed(description = "Look customers up", returnType = Customer.class)
+                        public static class Inner {
+                            public Customer findById(Long id) { return null; }
+                        }
+                    }
+                    """);
+
+            int exitCode = run("inspect", "--sources", nested.toString(),
+                    "--classpath", testClasspath(), "--json");
+
+            assertThat(exitCode).isZero();
+            JsonNode report = parseStdout();
+            // The wrapper file is named from the simple name; the report must still carry the
+            // real qualified name, never one reconstructed from artifact filenames.
+            assertThat(report.get("services")).anyMatch(
+                    node -> "test.Outer.Inner".equals(node.asText()));
+            assertThat(report.get("services")).noneMatch(
+                    node -> "test.Inner".equals(node.asText()));
+        }
+
+        @Test
+        @DisplayName("lists a service whose methods are all filtered out by the configured major")
+        void fullyFilteredServiceStillListed() throws IOException {
+            Path filtered = Files.createDirectories(workspace.resolve("filtered-src"));
+            Path packageDir = Files.createDirectories(filtered.resolve("test"));
+            Files.writeString(packageDir.resolve("Customer.java"), CliTestFixtures.ENTITY_SOURCE);
+            Files.writeString(packageDir.resolve("RetiredService.java"), """
+                    package test;
+
+                    import com.egoge.ai.atlas.annotations.AgenticExposed;
+
+                    @AgenticExposed(description = "Retired before the configured major",
+                                    returnType = Customer.class, apiUntil = 1)
+                    public class RetiredService {
+                        public Customer findById(Long id) { return null; }
+                    }
+                    """);
+
+            int exitCode = run("inspect", "--sources", filtered.toString(),
+                    "--classpath", testClasspath(), "-Aai.atlas.api.major=2", "--json");
+
+            assertThat(exitCode).isZero();
+            JsonNode report = parseStdout();
+            // No wrapper is generated at major 2, but the service was still discovered.
+            assertThat(report.get("files")).noneMatch(
+                    node -> node.get("relativePath").asText().contains("RetiredService"));
+            assertThat(report.get("services")).anyMatch(
+                    node -> "test.RetiredService".equals(node.asText()));
+        }
+
+        @Test
+        @DisplayName("a service with no public methods is reported, not treated as nothing to inspect")
+        void noPublicMethodServiceStillListed() throws IOException {
+            Path hidden = Files.createDirectories(workspace.resolve("hidden-src"));
+            Path packageDir = Files.createDirectories(hidden.resolve("test"));
+            Files.writeString(packageDir.resolve("HiddenService.java"), """
+                    package test;
+
+                    import com.egoge.ai.atlas.annotations.AgenticExposed;
+
+                    @AgenticExposed(description = "Nothing public to expose")
+                    public class HiddenService {
+                        private String lookup(Long id) { return null; }
+                    }
+                    """);
+
+            int exitCode = run("inspect", "--sources", hidden.toString(),
+                    "--classpath", testClasspath(), "--json");
+
+            // Nothing is generated, yet a service was discovered — that is a valid inspection
+            // result, not the "nothing to inspect" failure.
+            assertThat(exitCode).isZero();
+            JsonNode report = parseStdout();
+            assertThat(report.get("status").asText()).isEqualTo(JsonOutput.STATUS_OK);
+            assertThat(report.get("files")).isEmpty();
+            assertThat(report.get("errors")).isEmpty();
+            assertThat(report.get("services")).anyMatch(
+                    node -> "test.HiddenService".equals(node.asText()));
+        }
+
+        @Test
         @DisplayName("fails with exit 1 and an error document when the sources do not compile")
         void compileFailure() throws IOException {
             int exitCode = run("inspect", "--sources", sources.toString(), "--json");

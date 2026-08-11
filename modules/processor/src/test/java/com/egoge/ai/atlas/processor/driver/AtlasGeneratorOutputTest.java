@@ -24,7 +24,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import com.egoge.ai.atlas.processor.AgenticProcessor;
-import com.egoge.ai.atlas.processor.generator.ServiceManifestGenerator;
 
 import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.ENTITY_SOURCE;
 import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.EXTRA_ENTITY_SOURCE;
@@ -264,7 +263,7 @@ class AtlasGeneratorOutputTest {
 
         assertThat(result.success()).isTrue();
         // The wrapper file is named from the simple name, so reconstructing the service name from
-        // artifacts yields "test.Inner". The manifest must carry the real qualified name.
+        // artifacts yields "test.Inner". The result must carry the real qualified name.
         assertThat(result.discoveredServices()).contains("test.Outer.Inner");
         assertThat(result.discoveredServices()).doesNotContain("test.Inner");
     }
@@ -296,16 +295,39 @@ class AtlasGeneratorOutputTest {
     }
 
     @Test
-    void publishesTheServiceManifestAndReportsItAsAGeneratedFile(@TempDir Path sourceDir) throws IOException {
+    void reportsServicesWithNoPublicMethods(@TempDir Path sourceDir) throws IOException {
+        Path packageDir = Files.createDirectories(sourceDir.resolve("test"));
+        Files.writeString(packageDir.resolve("Customer.java"), ENTITY_SOURCE, StandardCharsets.UTF_8);
+        Files.writeString(packageDir.resolve("HiddenService.java"), """
+                package test;
+
+                import com.egoge.ai.atlas.annotations.AgenticExposed;
+
+                @AgenticExposed(description = "Nothing public to expose", returnType = Customer.class)
+                public class HiddenService {
+                    private Customer lookup(Long id) { return null; }
+                }
+                """, StandardCharsets.UTF_8);
+
+        GenerationResult result = AtlasGenerator.generate(List.of(sourceDir), currentClasspath(), outputDir);
+
+        assertThat(result.success()).isTrue();
+        // No public methods means no wrapper — but the type is still a discovered service.
+        assertThat(result.files()).noneMatch(f -> f.relativePath().contains("HiddenService"));
+        assertThat(result.discoveredServices()).contains("test.HiddenService");
+    }
+
+    @Test
+    void doesNotEmitAServiceManifestResource(@TempDir Path sourceDir) throws IOException {
         GenerationResult result = generateFromSourceStrings(sourceDir);
 
-        // files() must describe what actually landed on disk: the manifest is published under the
-        // resources root exactly like the deprecation manifest, so it must appear in the manifest too.
-        assertThat(result.filesOfKind(GeneratedFile.Kind.SERVICE_MANIFEST))
-                .singleElement()
-                .satisfies(f -> assertThat(f.relativePath()).isEqualTo(ServiceManifestGenerator.RESOURCE_PATH));
+        // Discovered service names travel on the processor instance, never as an emitted resource:
+        // a manifest file would change the generated output shape of every consumer build.
+        assertThat(result.files())
+                .noneMatch(f -> f.relativePath().contains("service-manifest"));
         assertThat(outputDir.resolve(AtlasGenerator.RESOURCES_DIR)
-                .resolve(ServiceManifestGenerator.RESOURCE_PATH)).exists();
+                .resolve("META-INF/ai-atlas/service-manifest.properties")).doesNotExist();
+        assertThat(result.discoveredServices()).contains("test.CustomerService");
     }
 
     private GenerationResult generateFromSourceStrings(Path sourceDir) throws IOException {

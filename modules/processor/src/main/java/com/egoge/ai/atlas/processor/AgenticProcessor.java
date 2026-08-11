@@ -12,7 +12,6 @@ import com.egoge.ai.atlas.processor.generator.DtoGenerator;
 import com.egoge.ai.atlas.processor.generator.McpToolGenerator;
 import com.egoge.ai.atlas.processor.generator.OpenApiGenerator;
 import com.egoge.ai.atlas.processor.generator.RestControllerGenerator;
-import com.egoge.ai.atlas.processor.generator.ServiceManifestGenerator;
 import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel;
@@ -67,6 +66,7 @@ public class AgenticProcessor extends AbstractProcessor {
     private final Map<String, EntityModel> entityRegistry = new HashMap<>();
     private final Set<String> dtoSkippedKeys = new HashSet<>();
     private final List<ServiceModel> serviceRegistry = new ArrayList<>();
+    private final Set<String> discoveredServiceNames = new LinkedHashSet<>();
     private boolean openApiGenerated = false;
     private boolean apiVersionPropertiesGenerated = false;
     private boolean deprecationManifestGenerated = false;
@@ -158,8 +158,6 @@ public class AgenticProcessor extends AbstractProcessor {
         }
         if (!deprecationManifestGenerated) {
             DeprecationManifestGenerator.generate(serviceRegistry, apiBasePath, apiMajor,
-                    processingEnv.getFiler(), processingEnv.getMessager());
-            ServiceManifestGenerator.generate(serviceRegistry,
                     processingEnv.getFiler(), processingEnv.getMessager());
             deprecationManifestGenerated = true;
         }
@@ -305,21 +303,23 @@ public class AgenticProcessor extends AbstractProcessor {
         // Sorted: RoundEnvironment is unordered, and registry order decides OpenAPI path order (FR-002).
         for (var entry : typesByQName.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
             String qName = entry.getKey();
-            TypeElement typeElement = entry.getValue();
+            discoveredServiceNames.add(qName);
             if (typeLevelTypes.contains(qName)) {
-                processServiceType(typeElement);
+                processServiceType(entry.getValue());
             } else {
-                processServiceWithMethods(typeElement, methodsByType.get(qName));
+                processServiceWithMethods(entry.getValue(), methodsByType.get(qName));
             }
         }
     }
+
+    /** Every discovered {@code @AgenticExposed} service (qualified, processing order) — recorded before method processing, so fully-filtered and no-public-method services are included. Read by the driver; never emitted to the class output. */
+    public List<String> discoveredServices() { return List.copyOf(discoveredServiceNames); }
 
     private void processServiceType(TypeElement typeElement) {
         List<ExecutableElement> methods = typeElement.getEnclosedElements().stream()
                 .filter(e -> e.getKind() == ElementKind.METHOD)
                 .filter(e -> e.getModifiers().contains(javax.lang.model.element.Modifier.PUBLIC))
-                .map(e -> (ExecutableElement) e)
-                .toList();
+                .map(e -> (ExecutableElement) e).toList();
 
         if (methods.isEmpty()) {
             processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,

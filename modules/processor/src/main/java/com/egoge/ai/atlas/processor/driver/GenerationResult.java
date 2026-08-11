@@ -14,14 +14,15 @@ import java.util.List;
  *                           when the run was an in-memory inspection that wrote nothing to the
  *                           filesystem
  * @param files              every artifact emitted by <em>this</em> run, ordered by kind then
- *                           relative path — including the service manifest, which is published
- *                           under the output tree like any other generated resource
+ *                           relative path
  * @param openApi            the versioned OpenAPI document, or {@code null} when none was emitted
  * @param diagnostics        every compiler / processor message, in the order javac reported them
  * @param discoveredServices the qualified names of every discovered {@code @AgenticExposed}
- *                           service, in the order the processor registered them — even services
- *                           whose methods are all filtered out by channel or version. Empty (never
- *                           null) when the compilation failed.
+ *                           service, in the order the processor saw them — even services whose
+ *                           methods are all filtered out by channel or version, and services with
+ *                           no public methods. Carried directly from the processor instance, not
+ *                           from any emitted artifact. Empty (never null) when the compilation
+ *                           failed.
  */
 public record GenerationResult(boolean success, Path outputDir, List<GeneratedFile> files,
                                String openApi, List<Diagnostic> diagnostics,
