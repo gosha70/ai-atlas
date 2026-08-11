@@ -3,10 +3,11 @@
  */
 package com.egoge.ai.atlas.runtime.mcp;
 
+import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.WebMvcSseServerTransportProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.mcp.server.autoconfigure.McpServerSseWebMvcAutoConfiguration;
-import org.springframework.ai.mcp.server.common.autoconfigure.McpServerObjectMapperAutoConfiguration;
 import org.springframework.ai.mcp.server.common.autoconfigure.properties.McpServerSseProperties;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -17,8 +18,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.ResolvableType;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.function.RouterFunction;
@@ -49,9 +52,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  *       {@code @Service} beans with {@code @Tool} methods (the shape of generated MCP tools).</li>
  *   <li>Its wiring contract — the conditional annotations and single bean method, so a change to
  *       the configuration class itself fails here rather than silently altering the SSE path.</li>
- *   <li>The transport — Spring AI's {@code McpServerSseWebMvcAutoConfiguration} is still
- *       registered, a servlet context wires the SDK's SSE transport provider and its router
- *       serving {@code GET /sse} / {@code POST /mcp/message}, and the default endpoint
+ *   <li>The deployed path end to end — one servlet context started through the auto-configurations
+ *       actually registered in the {@code AutoConfiguration.imports} files (the Atlas
+ *       auto-configuration plus Spring AI's MCP server stack) wires the Atlas callback provider,
+ *       the {@code McpSyncServer} that consumes it, and the SDK's SSE transport provider with its
+ *       router serving {@code GET /sse} / {@code POST /mcp/message} — and the default endpoint
  *       properties are unchanged. This module's own wiring registers no STDIO transport
  *       (STDIO lives only in the standalone {@code mcp-stdio} module).</li>
  * </ul>
@@ -63,6 +68,8 @@ class SseUnchangedTest {
     private static final String ENABLED_PROPERTY_NAME = "enabled";
     private static final String ATLAS_AUTO_CONFIGURATION =
             "com.egoge.ai.atlas.runtime.autoconfigure.AgenticAutoConfiguration";
+    private static final String MCP_SERVER_AUTO_CONFIGURATION_PACKAGE =
+            "org.springframework.ai.mcp.server.";
     private static final String SSE_ROUTER_BEAN = "webMvcSseServerRouterFunction";
     private static final String SSE_ENDPOINT = "/sse";
     private static final String SSE_MESSAGE_ENDPOINT = "/mcp/message";
@@ -143,16 +150,29 @@ class SseUnchangedTest {
     }
 
     @Test
-    void sseServerBeansAndRouteStillServed() {
+    void bootAutoConfigurationPathServesAtlasToolsOverSse() {
         new WebApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(
-                        JacksonAutoConfiguration.class,
-                        McpServerObjectMapperAutoConfiguration.class,
-                        McpServerSseWebMvcAutoConfiguration.class))
+                .withConfiguration(registeredMcpBootPath())
+                .withUserConfiguration(EchoToolConfiguration.class)
                 .run(context -> {
-                    // The SDK's WebMvc SSE transport and its router are wired as before.
+                    // Atlas tool discovery, the MCP server, and the SSE transport — together in
+                    // one context, wired through the actually-registered auto-configurations.
+                    assertThat(context).hasBean(PROVIDER_BEAN_METHOD);
+                    assertThat(context).hasSingleBean(McpSyncServer.class);
                     assertThat(context).hasSingleBean(WebMvcSseServerTransportProvider.class);
                     assertThat(context).hasBean(SSE_ROUTER_BEAN);
+
+                    // The Atlas provider discovered the echo tool bean…
+                    ToolCallback[] callbacks = context
+                            .getBean(PROVIDER_BEAN_METHOD, ToolCallbackProvider.class)
+                            .getToolCallbacks();
+                    assertThat(callbacks)
+                            .extracting(callback -> callback.getToolDefinition().name())
+                            .containsExactly(TOOL_NAME);
+
+                    // …and the server consumed it: the tool specifications the McpSyncServer was
+                    // built from carry the registered callback.
+                    assertThat(registeredToolNames(context)).contains(TOOL_NAME);
 
                     // The router still serves GET /sse (and only MCP routes).
                     RouterFunction<?> router = context.getBean(SSE_ROUTER_BEAN, RouterFunction.class);
@@ -160,6 +180,53 @@ class SseUnchangedTest {
                     assertThat(router.route(mockRequest("POST", SSE_MESSAGE_ENDPOINT))).isPresent();
                     assertThat(router.route(mockRequest("GET", "/not-an-mcp-route"))).isEmpty();
                 });
+    }
+
+    /**
+     * The Boot auto-configuration path as actually registered: the Atlas auto-configuration,
+     * every MCP server auto-configuration, and Jackson, resolved by name from the
+     * {@code AutoConfiguration.imports} files. Resolving from the registration files rather
+     * than referencing the classes directly means this fails when the deployed path stops
+     * importing any of them.
+     */
+    private static AutoConfigurations registeredMcpBootPath() {
+        List<String> imports = autoConfigurationImports();
+        assertThat(imports).contains(
+                ATLAS_AUTO_CONFIGURATION,
+                McpServerSseWebMvcAutoConfiguration.class.getName(),
+                JacksonAutoConfiguration.class.getName());
+        Class<?>[] path = imports.stream()
+                .filter(name -> name.equals(ATLAS_AUTO_CONFIGURATION)
+                        || name.equals(JacksonAutoConfiguration.class.getName())
+                        || name.startsWith(MCP_SERVER_AUTO_CONFIGURATION_PACKAGE))
+                .map(SseUnchangedTest::loadAutoConfiguration)
+                .toArray(Class<?>[]::new);
+        return AutoConfigurations.of(path);
+    }
+
+    private static Class<?> loadAutoConfiguration(String className) {
+        try {
+            return Class.forName(className);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException(
+                    "Registered auto-configuration not loadable: " + className, e);
+        }
+    }
+
+    /** Names of every tool specification handed to the MCP server in the given context. */
+    private static List<String> registeredToolNames(ApplicationContext context) {
+        ResolvableType specificationList = ResolvableType.forClassWithGenerics(
+                List.class, McpServerFeatures.SyncToolSpecification.class);
+        return Arrays.stream(context.getBeanNamesForType(specificationList))
+                .map(name -> {
+                    @SuppressWarnings("unchecked")
+                    List<McpServerFeatures.SyncToolSpecification> specifications =
+                            (List<McpServerFeatures.SyncToolSpecification>) context.getBean(name);
+                    return specifications;
+                })
+                .flatMap(List::stream)
+                .map(specification -> specification.tool().name())
+                .toList();
     }
 
     @Test

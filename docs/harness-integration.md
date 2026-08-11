@@ -267,12 +267,16 @@ generated MCP tool wrappers) with the Spring AI MCP server, which serves them ov
 
 - MCP endpoint: `http://localhost:8080/sse` — connect with any MCP client, e.g. the MCP
   Inspector.
-- Toggle: `ai.atlas.mcp.enabled` (default `true`); server identity via the standard
+- Toggles: `ai.atlas.mcp.enabled` (default `true`) controls Atlas tool discovery only — set it
+  to `false` and the generated tools are no longer registered, but Spring AI's MCP server and
+  the `/sse` endpoint stay up. To disable the server and its transport entirely, set
+  `spring.ai.mcp.server.enabled=false`. Server identity via the standard
   `spring.ai.mcp.server.*` properties. See the demo's `application.yml`.
 - Use this path when tools must be served continuously from a deployed application; use the
   CLI/STDIO path when a harness needs to *drive generation* at build/edit time.
 
 The SSE path is guarded by a regression test,
 `modules/runtime/src/test/java/com/egoge/ai/atlas/runtime/mcp/SseUnchangedTest.java`, which pins
-the runtime MCP wiring (tool discovery behaviour, its conditional activation, and the SSE
-transport on the classpath) so the standalone surfaces cannot drift it.
+the runtime MCP wiring end to end — it starts a context through the registered Boot
+auto-configurations and asserts the Atlas tool discovery, the MCP server consuming it, and the
+SSE transport routes together — so the standalone surfaces cannot drift it.
