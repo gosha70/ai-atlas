@@ -26,6 +26,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -43,30 +44,16 @@ import java.util.stream.Stream;
  *
  * <p>Generation happens in-process through the platform {@link JavaCompiler}, with the processor
  * registered explicitly — the same mechanism the annotation-processing build uses, so the emitted
- * artifacts are byte-identical to it.
+ * artifacts are byte-identical to it. This class declares no Spring dependency, but the
+ * {@code classpath} handed in by the caller must carry the Spring AI and Spring Web types the
+ * generated wrappers reference for the compilation to succeed.
  *
- * <p>This class depends on the JDK compiler only; it declares no Spring dependency. The generated
- * wrappers do reference {@code @Tool}, {@code @Service} and {@code @RestController}, so the
- * {@code classpath} handed in by the caller must carry the Spring AI and Spring Web types for the
- * compilation to succeed — exactly as the target application's own compile classpath does.
- *
- * <p>Output is laid out under the given output directory as {@value #SOURCES_DIR} (generated Java
- * sources, in package directories) and {@value #RESOURCES_DIR} (generated resources, under
- * {@code META-INF}). Those two roots are <em>owned</em> by the driver: each run generates into a
- * private staging directory and then replaces them wholesale, so the returned manifest lists
- * exactly what this run emitted — never an artifact left behind by an earlier or partially failed
- * run, and never replaced by a run that emitted nothing: that run publishes nothing and comes back
- * with an empty manifest. Anything else the caller keeps under the output directory is left
- * untouched, and files under it are excluded from source discovery so an output directory nested
- * inside a source root is safe to reuse.
- *
- * <p>Publication of those two roots is <em>atomic as a pair</em>: the previous trees are moved aside
- * first and put back if either replacement fails, so a failed run never leaves this run's sources
- * next to the previous run's resources. It is also <em>serialized per output directory</em> —
- * across threads through an in-process lock and across processes through a lock file
- * ({@value #LOCK_FILE}) in the output directory — so concurrent runs sharing one output directory
- * neither interleave their publications nor collect a half-replaced tree. Runs writing to
- * <em>different</em> output directories never block each other.
+ * <p>Output goes to the {@value #SOURCES_DIR} (Java sources) and {@value #RESOURCES_DIR}
+ * (resources) roots inside the given output directory. Each run stages into a private directory
+ * and publishes atomically — the previous trees are set aside and restored on failure, so a
+ * failed run never leaves partial state. Publication is serialized per output directory by an
+ * in-process lock and a cross-process lock file ({@value #LOCK_FILE}). Files under the output
+ * directory are excluded from source discovery so nested layouts are safe.
  */
 public final class AtlasGenerator {
 
@@ -115,23 +102,9 @@ public final class AtlasGenerator {
     }
 
     /**
-     * Equivalent to {@link #generate(List, List, Path, Map, boolean)} with {@code dryRun = false}.
-     */
-    public static GenerationResult generate(List<Path> sources, List<Path> classpath, Path outputDir,
-                                            Map<String, String> processorOptions) {
-        return generate(sources, classpath, outputDir, processorOptions, false);
-    }
-
-    /**
-     * Compiles {@code sources} with {@link AgenticProcessor} registered and collects everything it
-     * emitted.
-     *
-     * <p>When {@code dryRun} is {@code true} the run compiles into a staging directory and collects
-     * the generated artifacts, but <em>never publishes</em> them — no files are written to the
-     * output directory's {@value #SOURCES_DIR} / {@value #RESOURCES_DIR} roots, and no lock file is
-     * created. The staging directory is still cleaned up when the run finishes. This mode exists for
-     * inspection: the caller gets the same manifest a full run would produce, without the filesystem
-     * side effects.
+     * Compiles {@code sources} with {@link AgenticProcessor} registered, publishes the generated
+     * artifacts into {@code outputDir}'s {@value #SOURCES_DIR} / {@value #RESOURCES_DIR} roots, and
+     * collects everything that was emitted.
      *
      * @param sources          source roots (directories are scanned recursively) and/or individual
      *                         {@code .java} files
@@ -140,19 +113,18 @@ public final class AtlasGenerator {
      * @param outputDir        directory to write generated sources and resources into; its
      *                         {@value #SOURCES_DIR} and {@value #RESOURCES_DIR} roots are replaced
      *                         by this run, and it is normalized to an absolute path, so every
-     *                         returned {@link GeneratedFile#path()} is absolute. In dry-run mode
-     *                         only the staging subtree is written and then cleaned up.
+     *                         returned {@link GeneratedFile#path()} is absolute. Files under this
+     *                         directory are excluded from source discovery so an output directory
+     *                         nested inside a source root is safe to reuse.
      * @param processorOptions {@code -A} processor options, e.g.
      *                         {@link AgenticProcessor#OPT_API_MAJOR}
-     * @param dryRun           when {@code true}, skip publication — collect files from staging but
-     *                         never write them to the output roots
      * @return the generated files, the OpenAPI document and every diagnostic reported
      * @throws IllegalArgumentException if a source path does not exist or no sources were found
      * @throws IllegalStateException    if the running JVM is not a JDK (no system compiler)
      * @throws UncheckedIOException     if the output directories cannot be written
      */
     public static GenerationResult generate(List<Path> sources, List<Path> classpath, Path outputDir,
-                                            Map<String, String> processorOptions, boolean dryRun) {
+                                            Map<String, String> processorOptions) {
         Objects.requireNonNull(sources, "sources");
         Objects.requireNonNull(classpath, "classpath");
         Objects.requireNonNull(outputDir, "outputDir");
@@ -196,13 +168,7 @@ public final class AtlasGenerator {
             if (success) {
                 harvestResources(stagedClasses, stagedResources);
             }
-            if (dryRun) {
-                // Collect from staging — never publish, never lock, never write to the output roots.
-                if (success && emittedAnnotationOutput(stagedSources, stagedResources)) {
-                    files.addAll(collectGenerated(stagedSources, true));
-                    files.addAll(collectGenerated(stagedResources, false));
-                }
-            } else if (success && emittedAnnotationOutput(stagedSources, stagedResources)) {
+            if (success && emittedAnnotationOutput(stagedSources, stagedResources)) {
                 // Publishing and collecting are one critical section: a concurrent run must not swap
                 // the trees out from under this one's manifest, nor publish over a half-published tree.
                 ReentrantLock inProcess = OUTPUT_LOCKS.computeIfAbsent(output, dir -> new ReentrantLock());
@@ -230,6 +196,72 @@ public final class AtlasGenerator {
                 collector.getDiagnostics().stream().map(AtlasGenerator::toDiagnostic).toList());
     }
 
+    /**
+     * Compiles and collects generated artifacts entirely in-memory — <em>nothing</em> is written
+     * to the filesystem. The returned {@link GeneratedFile#path()} is always {@code null}, and
+     * {@link GenerationResult#outputDir()} is always {@code null}.
+     *
+     * <p>This is the entry point for the {@code atlas inspect} command. Without an output directory
+     * there is no source exclusion, so project-local sources are always discovered.
+     */
+    public static GenerationResult generateInspect(List<Path> sources, List<Path> classpath,
+                                                    Map<String, String> processorOptions) {
+        Objects.requireNonNull(sources, "sources");
+        Objects.requireNonNull(classpath, "classpath");
+        Objects.requireNonNull(processorOptions, "processorOptions");
+
+        List<Path> sourceFiles = collectSourceFiles(sources, null);
+        if (sourceFiles.isEmpty()) {
+            throw new IllegalArgumentException("No .java sources found under: " + sources);
+        }
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        if (compiler == null) {
+            throw new IllegalStateException(
+                    "No system Java compiler available — ai-atlas generation requires a JDK, not a JRE");
+        }
+
+        DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
+        boolean success;
+        List<GeneratedFile> files = new ArrayList<>();
+        try (StandardJavaFileManager stdFileManager =
+                     compiler.getStandardFileManager(collector, Locale.ROOT, StandardCharsets.UTF_8);
+             InMemoryJavaFileManager inMemory = new InMemoryJavaFileManager(stdFileManager)) {
+
+            stdFileManager.setLocationFromPaths(StandardLocation.CLASS_PATH, classpath);
+            success = compileInMemory(compiler, collector, sourceFiles, inMemory, processorOptions);
+
+            Map<String, InMemoryJavaFileObject> classOutput =
+                    inMemory.capturedAt(StandardLocation.CLASS_OUTPUT);
+            Map<String, InMemoryJavaFileObject> resourceFiles = new LinkedHashMap<>();
+            if (success) {
+                for (var entry : classOutput.entrySet()) {
+                    if (entry.getValue().getKind() != JavaFileObject.Kind.CLASS) {
+                        resourceFiles.put(entry.getKey(), entry.getValue());
+                    }
+                }
+            }
+
+            if (success) {
+                Map<String, InMemoryJavaFileObject> sourceOutput =
+                        inMemory.capturedAt(StandardLocation.SOURCE_OUTPUT);
+                if (!sourceOutput.isEmpty()
+                        || resourceFiles.keySet().stream()
+                                .anyMatch(k -> k.startsWith(OpenApiGenerator.RESOURCE_DIR))) {
+                    files.addAll(toGeneratedFiles(sourceOutput, true));
+                    files.addAll(toGeneratedFiles(resourceFiles, false));
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("ai-atlas inspection failed", e);
+        }
+
+        files.sort(Comparator.comparing((GeneratedFile f) -> f.kind().ordinal())
+                .thenComparing(GeneratedFile::relativePath));
+
+        return new GenerationResult(success, null, files, findOpenApi(files, processorOptions),
+                collector.getDiagnostics().stream().map(AtlasGenerator::toDiagnostic).toList());
+    }
+
     private static boolean compile(JavaCompiler compiler, DiagnosticCollector<JavaFileObject> collector,
                                    List<Path> sourceFiles, List<Path> classpath,
                                    Path sourceOut, Path classOut,
@@ -248,6 +280,42 @@ public final class AtlasGenerator {
         }
     }
 
+    /** Compiles with an in-memory file manager — output is captured, never written to disk. */
+    private static boolean compileInMemory(JavaCompiler compiler,
+                                           DiagnosticCollector<JavaFileObject> collector,
+                                           List<Path> sourceFiles,
+                                           InMemoryJavaFileManager fileManager,
+                                           Map<String, String> processorOptions) {
+        JavaCompiler.CompilationTask task = compiler.getTask(null, fileManager, collector,
+                compilerOptions(processorOptions), null,
+                fileManager.delegate().getJavaFileObjectsFromPaths(sourceFiles));
+        task.setProcessors(List.of(new AgenticProcessor()));
+        return Boolean.TRUE.equals(task.call());
+    }
+
+    /** Converts in-memory captured files to {@link GeneratedFile} objects. */
+    private static List<GeneratedFile> toGeneratedFiles(Map<String, InMemoryJavaFileObject> captured,
+                                                        boolean javaSources) {
+        List<GeneratedFile> result = new ArrayList<>();
+        for (var entry : captured.entrySet()) {
+            String key = entry.getKey();
+            try {
+                String content = entry.getValue().getContent();
+                // Java source keys are class names (dotted); convert to slash-separated paths.
+                // Resource keys already use '/' separators as written by the processor's Filer.
+                String relative = javaSources
+                        ? key.replace('.', '/') + JAVA_SUFFIX
+                        : key;
+                GeneratedFile.Kind kind = javaSources ? classifySource(content)
+                        : classifyResource(relative);
+                result.add(new GeneratedFile(kind, relative, null, content));
+            } catch (IOException e) {
+                throw new UncheckedIOException("Failed to read in-memory generated file: " + key, e);
+            }
+        }
+        return result;
+    }
+
     private static List<String> compilerOptions(Map<String, String> processorOptions) {
         List<String> options = new ArrayList<>();
         options.add(ENCODING_OPTION);
@@ -264,10 +332,12 @@ public final class AtlasGenerator {
     }
 
     /**
-     * Collects the compilation units, skipping anything inside {@code outputDir}. Without that
-     * exclusion a second run over a source root that contains the output directory would feed the
-     * previous run's generated sources back to javac, which then clashes with the processor
-     * re-creating those same types.
+     * Collects the compilation units, skipping anything inside {@code outputDir} when non-null.
+     * Without that exclusion a second run over a source root that contains the output directory
+     * would feed the previous run's generated sources back to javac, which then clashes with the
+     * processor re-creating those same types.
+     *
+     * <p>When {@code outputDir} is {@code null} (in-memory inspection), no paths are excluded.
      */
     private static List<Path> collectSourceFiles(List<Path> sources, Path outputDir) {
         Set<Path> files = new LinkedHashSet<>();
@@ -282,12 +352,12 @@ public final class AtlasGenerator {
                     walk.filter(Files::isRegularFile)
                             .filter(p -> p.getFileName().toString().endsWith(JAVA_SUFFIX))
                             .map(p -> p.toAbsolutePath().normalize())
-                            .filter(p -> !p.startsWith(outputDir))
+                            .filter(p -> outputDir == null || !p.startsWith(outputDir))
                             .forEach(files::add);
                 } catch (IOException e) {
                     throw new UncheckedIOException("Failed to scan source directory: " + source, e);
                 }
-            } else if (!root.startsWith(outputDir)) {
+            } else if (outputDir == null || !root.startsWith(outputDir)) {
                 files.add(root);
             }
         }

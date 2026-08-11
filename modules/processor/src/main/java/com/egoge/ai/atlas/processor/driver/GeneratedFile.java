@@ -13,7 +13,8 @@ import java.util.Objects;
  * @param relativePath slash-separated path relative to the root the file was written under —
  *                     the generated-sources root for {@link Kind#isSource() source} kinds,
  *                     the generated-resources root otherwise
- * @param path         absolute location on disk
+ * @param path         absolute location on disk, or {@code null} when the file was captured
+ *                     in-memory during an inspection run and was never written to the filesystem
  * @param content      the file's textual content, as written
  */
 public record GeneratedFile(Kind kind, String relativePath, Path path, String content) {
@@ -41,11 +42,10 @@ public record GeneratedFile(Kind kind, String relativePath, Path path, String co
         }
     }
 
-    /** Canonical constructor validating that no component is null. */
+    /** Canonical constructor validating non-null invariants. {@code path} may be null. */
     public GeneratedFile {
         Objects.requireNonNull(kind, "kind");
         Objects.requireNonNull(relativePath, "relativePath");
-        Objects.requireNonNull(path, "path");
         Objects.requireNonNull(content, "content");
     }
 }

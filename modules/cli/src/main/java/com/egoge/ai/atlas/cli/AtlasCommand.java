@@ -74,13 +74,12 @@ abstract class AtlasCommand implements Callable<Integer> {
     }
 
     /**
-     * Runs generation as a dry run — compiles into a throwaway staging directory, collects the
-     * generated files for inspection, but never publishes them to the output roots. The staging
-     * directory is cleaned up after collection.
+     * Runs generation entirely in-memory — nothing is written to the filesystem. Returns the same
+     * manifest a full {@link #generate(Path)} run would produce, for inspection.
      */
-    final GenerationResult generateDryRun(Path outputDir) {
-        return AtlasGenerator.generate(List.copyOf(sources), classpathEntries(), outputDir,
-                Map.copyOf(processorOptions), true);
+    final GenerationResult generateInspect() {
+        return AtlasGenerator.generateInspect(List.copyOf(sources), classpathEntries(),
+                Map.copyOf(processorOptions));
     }
 
     /**

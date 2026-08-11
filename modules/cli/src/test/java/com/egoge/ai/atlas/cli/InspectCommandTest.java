@@ -12,11 +12,15 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -116,8 +120,9 @@ class InspectCommandTest {
         @Test
         @DisplayName("no files are written to the source tree or any caller-visible directory")
         void noWriteGuarantee() throws IOException {
-            // Snapshot the file listing before the command runs.
-            var before = CliTestFixtures.readTree(sources);
+            // Snapshot the full workspace before the command runs.
+            var beforeWorkspace = CliTestFixtures.readTree(workspace);
+            var beforeSources = CliTestFixtures.readTree(sources);
 
             int exitCode = run("inspect", "--sources", sources.toString(),
                     "--classpath", testClasspath(), "--json");
@@ -126,15 +131,53 @@ class InspectCommandTest {
             // The source tree must be byte-for-byte identical.
             assertThat(CliTestFixtures.readTree(sources))
                     .as("the source tree must be unchanged — inspect writes nothing")
-                    .isEqualTo(before);
-            // The workspace must contain nothing new besides the sources the test itself created
-            // and the temp directories JUnit manages.
-            try (var entries = Files.list(workspace)) {
-                var names = entries.map(p -> p.getFileName().toString()).toList();
-                assertThat(names)
-                        .as("no output directories may appear in the workspace")
-                        .doesNotContain("sources", "resources", "out");
-            }
+                    .isEqualTo(beforeSources);
+            // The entire workspace must be unchanged — no staging, classes, backup, lock or
+            // output directories are created anywhere in the workspace.
+            assertThat(CliTestFixtures.readTree(workspace))
+                    .as("the entire workspace must be unchanged — inspect creates no files")
+                    .isEqualTo(beforeWorkspace);
+        }
+
+        @Test
+        @DisplayName("the generateInspect API does not create any filesystem artifacts")
+        void apiDoesNotCreateOutputPath() throws IOException {
+            // Snapshot the full workspace.
+            var beforeWorkspace = CliTestFixtures.readTree(workspace);
+
+            List<Path> cp = Arrays.stream(CliTestFixtures.testClasspath()
+                            .split(File.pathSeparator))
+                    .filter(s -> !s.isBlank())
+                    .map(Path::of)
+                    .toList();
+            var result = com.egoge.ai.atlas.processor.driver.AtlasGenerator.generateInspect(
+                    List.of(sources), cp, Map.of());
+
+            assertThat(result.success()).isTrue();
+            assertThat(result.outputDir()).isNull();
+            assertThat(result.files()).allMatch(f -> f.path() == null);
+            // The workspace must be completely unchanged — no files or directories were created.
+            assertThat(CliTestFixtures.readTree(workspace))
+                    .as("generateInspect must not create any filesystem artifact")
+                    .isEqualTo(beforeWorkspace);
+        }
+
+        @Test
+        @DisplayName("sources under a nested directory are discovered and inspected")
+        void discoversNestedSources() throws IOException {
+            Path nested = Files.createDirectories(workspace.resolve("nested-src"));
+            CliTestFixtures.writeSampleSources(nested);
+
+            int exitCode = run("inspect", "--sources", nested.toString(),
+                    "--classpath", testClasspath(), "--json");
+
+            assertThat(exitCode).isZero();
+            JsonNode report = parseStdout();
+            assertThat(report.get("status").asText()).isEqualTo(JsonOutput.STATUS_OK);
+            assertThat(report.get("files")).isNotEmpty();
+            assertThat(report.get("services")).isNotEmpty();
+            assertThat(report.get("services").get(0).asText())
+                    .isEqualTo("test.CustomerService");
         }
 
         @Test
