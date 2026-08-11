@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -259,6 +260,35 @@ class AtlasMcpServerTest {
                 AtlasMcpServer.ARG_SOURCES, List.of(sources.toString()),
                 AtlasMcpServer.ARG_CLASSPATH, testClasspath(),
                 AtlasMcpServer.ARG_OPTIONS, Map.of("ai.atlas.api.major", 2)));
+    }
+
+    @Test
+    @DisplayName("additionalProperties: false is enforced — an unknown top-level argument is "
+            + "rejected, not silently ignored")
+    void rejectsUnknownTopLevelArguments() throws IOException {
+        JsonNode report = assertRejected(AtlasMcpServer.TOOL_INSPECT, Map.of(
+                AtlasMcpServer.ARG_SOURCES, List.of(sources.toString()),
+                AtlasMcpServer.ARG_CLASSPATH, testClasspath(),
+                "unexpected", true));
+        assertThat(report.get("summary").asText()).contains("unexpected");
+        // 'out' belongs to atlas_generate's schema only; the other tools must reject it too.
+        assertRejected(AtlasMcpServer.TOOL_INSPECT, Map.of(
+                AtlasMcpServer.ARG_SOURCES, List.of(sources.toString()),
+                AtlasMcpServer.ARG_CLASSPATH, testClasspath(),
+                AtlasMcpServer.ARG_OUT, workspace.resolve("never-written").toString()));
+    }
+
+    @Test
+    @DisplayName("an explicit options: null violates the schema and is rejected, not treated "
+            + "as an omitted key")
+    void rejectsExplicitNullOptions() throws IOException {
+        // Map.of refuses nulls, so build the argument map by hand.
+        Map<String, Object> arguments = new HashMap<>();
+        arguments.put(AtlasMcpServer.ARG_SOURCES, List.of(sources.toString()));
+        arguments.put(AtlasMcpServer.ARG_CLASSPATH, testClasspath());
+        arguments.put(AtlasMcpServer.ARG_OPTIONS, null);
+        JsonNode report = assertRejected(AtlasMcpServer.TOOL_INSPECT, arguments);
+        assertThat(report.get("summary").asText()).contains(AtlasMcpServer.ARG_OPTIONS);
     }
 
     @Test

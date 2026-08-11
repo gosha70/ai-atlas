@@ -19,10 +19,8 @@ import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
 import io.modelcontextprotocol.spec.McpSchema;
 
 import java.io.File;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -151,8 +149,9 @@ public final class AtlasMcpServer {
                         + "produce before calling " + TOOL_GENERATE + ".",
                 false,
                 arguments -> {
-                    GenerationResult result = AtlasGenerator.generateInspect(sources(arguments),
-                            classpath(arguments), options(arguments));
+                    GenerationResult result = AtlasGenerator.generateInspect(
+                            ToolArguments.sources(arguments), ToolArguments.classpath(arguments),
+                            ToolArguments.options(arguments));
                     // A discovered service with no emitted file is still something to inspect —
                     // only "no files AND no services" means there was nothing (as in the CLI).
                     String failure = result.success() && result.files().isEmpty()
@@ -171,8 +170,9 @@ public final class AtlasMcpServer {
                         + "byte-identical to the annotation-processing build.",
                 true,
                 arguments -> {
-                    GenerationResult result = AtlasGenerator.generate(sources(arguments),
-                            classpath(arguments), outputDir(arguments), options(arguments));
+                    GenerationResult result = AtlasGenerator.generate(
+                            ToolArguments.sources(arguments), ToolArguments.classpath(arguments),
+                            ToolArguments.outputDir(arguments), ToolArguments.options(arguments));
                     // A clean compile that emitted no files is the documented "nothing to
                     // generate" failure (as in the CLI): the driver published nothing, so any
                     // previous output under 'out' must not be mistaken for this run's.
@@ -190,8 +190,9 @@ public final class AtlasMcpServer {
                         + "only the API contract is needed, e.g. to hand to a client generator.",
                 false,
                 arguments -> {
-                    GenerationResult result = AtlasGenerator.generateInspect(sources(arguments),
-                            classpath(arguments), options(arguments));
+                    GenerationResult result = AtlasGenerator.generateInspect(
+                            ToolArguments.sources(arguments), ToolArguments.classpath(arguments),
+                            ToolArguments.options(arguments));
                     String failure = result.success() && result.openApi() == null ? NO_SPEC : null;
                     return document(TOOL_OPENAPI, result, failure);
                 });
@@ -200,13 +201,17 @@ public final class AtlasMcpServer {
     /** Builds one tool specification with the shared input schema and error contract. */
     private static SyncToolSpecification tool(String name, String description, boolean withOut,
                                               Function<Map<String, Object>, ObjectNode> body) {
+        Function<Map<String, Object>, ObjectNode> checked = arguments -> {
+            ToolArguments.rejectUnknownArguments(arguments, withOut);
+            return body.apply(arguments);
+        };
         return SyncToolSpecification.builder()
                 .tool(McpSchema.Tool.builder()
                         .name(name)
                         .description(description)
                         .inputSchema(inputSchema(withOut))
                         .build())
-                .callHandler((exchange, request) -> call(name, request.arguments(), body))
+                .callHandler((exchange, request) -> call(name, request.arguments(), checked))
                 .build();
     }
 
@@ -391,110 +396,4 @@ public final class AtlasMcpServer {
         return root;
     }
 
-    /**
-     * The {@code sources} argument as paths; existence is validated by the generator. Exactly the
-     * advertised schema is accepted — an array of strings. A scalar or a non-string element is
-     * rejected rather than coerced, so a malformed call fails loudly instead of compiling from
-     * a path like "123".
-     */
-    private static List<Path> sources(Map<String, Object> arguments) {
-        if (!(arguments.get(ARG_SOURCES) instanceof Collection<?> collection)) {
-            throw new IllegalArgumentException(
-                    "'" + ARG_SOURCES + "' is required and must be an array of path strings");
-        }
-        List<Path> sources = new ArrayList<>();
-        for (Object element : collection) {
-            if (!(element instanceof String value)) {
-                throw new IllegalArgumentException("'" + ARG_SOURCES + "' entries must be "
-                        + "strings, got: " + typeName(element));
-            }
-            String trimmed = value.trim();
-            if (!trimmed.isEmpty()) {
-                sources.add(Path.of(trimmed));
-            }
-        }
-        if (sources.isEmpty()) {
-            throw new IllegalArgumentException("'" + ARG_SOURCES + "' must not be empty");
-        }
-        return List.copyOf(sources);
-    }
-
-    /**
-     * The required {@code classpath} argument split on the platform path separator, blank entries
-     * dropped. It is required (FR-005): the generated wrappers reference Spring AI and Spring Web
-     * types, so a call without a classpath cannot produce compilable output. Every surviving
-     * entry is checked here, at the boundary: javac silently ignores a classpath entry it cannot
-     * read, so a typo would otherwise surface as a wall of missing-symbol errors.
-     */
-    private static List<Path> classpath(Map<String, Object> arguments) {
-        if (!(arguments.get(ARG_CLASSPATH) instanceof String value) || value.isBlank()) {
-            throw new IllegalArgumentException("'" + ARG_CLASSPATH + "' is required and must be "
-                    + "one non-blank path-separator-separated string carrying the Spring AI and "
-                    + "Spring Web types the generated wrappers reference");
-        }
-        List<Path> entries = new ArrayList<>();
-        for (String entry : value.split(File.pathSeparator, -1)) {
-            String trimmed = entry.trim();
-            if (trimmed.isEmpty()) {
-                continue;
-            }
-            Path path = Path.of(trimmed);
-            if (!Files.exists(path)) {
-                throw new IllegalArgumentException("classpath entry does not exist: " + path);
-            }
-            if (!Files.isReadable(path)) {
-                throw new IllegalArgumentException("classpath entry is not readable: " + path);
-            }
-            entries.add(path);
-        }
-        if (entries.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "'" + ARG_CLASSPATH + "' must carry at least one entry");
-        }
-        return entries;
-    }
-
-    /** The required {@code out} argument of {@value TOOL_GENERATE}. */
-    private static Path outputDir(Map<String, Object> arguments) {
-        if (!(arguments.get(ARG_OUT) instanceof String value) || value.isBlank()) {
-            throw new IllegalArgumentException(
-                    "'" + ARG_OUT + "' is required and must be a directory path");
-        }
-        return Path.of(value.trim());
-    }
-
-    /**
-     * The optional {@code options} argument as processor {@code -A} options. Non-string keys or
-     * values are rejected rather than coerced: a caller passing {@code {"ai.atlas.api.major": 2}}
-     * almost meant {@code "2"}, but silently stringifying would also accept arrays and objects
-     * the processor could never have been handed by a real build.
-     */
-    private static Map<String, String> options(Map<String, Object> arguments) {
-        Object raw = arguments.get(ARG_OPTIONS);
-        if (raw == null) {
-            return Map.of();
-        }
-        if (!(raw instanceof Map<?, ?> map)) {
-            throw new IllegalArgumentException(
-                    "'" + ARG_OPTIONS + "' must be an object of string-to-string pairs");
-        }
-        Map<String, String> options = new LinkedHashMap<>();
-        map.forEach((key, value) -> {
-            if (!(key instanceof String name) || name.isBlank()) {
-                throw new IllegalArgumentException(
-                        "'" + ARG_OPTIONS + "' keys must be non-blank strings");
-            }
-            if (!(value instanceof String option)) {
-                throw new IllegalArgumentException("'" + ARG_OPTIONS + "' values must be "
-                        + "strings; '" + name + "' is " + typeName(value));
-            }
-            options.put(name, option);
-        });
-        return options;
-    }
-
-    /** The plain type name of a rejected argument value, for error messages; handles null. */
-    private static String typeName(Object value) {
-        return value == null ? "null" : value.getClass().getSimpleName();
-    }
 }
