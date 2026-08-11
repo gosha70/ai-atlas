@@ -3,17 +3,26 @@
  */
 package com.egoge.ai.atlas.runtime.mcp;
 
+import io.modelcontextprotocol.server.transport.WebMvcSseServerTransportProvider;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.mcp.server.autoconfigure.McpServerSseWebMvcAutoConfiguration;
+import org.springframework.ai.mcp.server.common.autoconfigure.McpServerObjectMapperAutoConfiguration;
+import org.springframework.ai.mcp.server.common.autoconfigure.properties.McpServerSseProperties;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.function.RouterFunction;
+import org.springframework.web.servlet.function.ServerRequest;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -40,10 +49,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  *       {@code @Service} beans with {@code @Tool} methods (the shape of generated MCP tools).</li>
  *   <li>Its wiring contract — the conditional annotations and single bean method, so a change to
  *       the configuration class itself fails here rather than silently altering the SSE path.</li>
- *   <li>The transport — the Spring AI WebMvc (SSE) MCP server auto-configuration and the SDK's
- *       SSE transport provider are still on the runtime classpath, while this module's own wiring
- *       registers no STDIO transport (STDIO lives only in the standalone {@code mcp-stdio}
- *       module).</li>
+ *   <li>The transport — Spring AI's {@code McpServerSseWebMvcAutoConfiguration} is still
+ *       registered, a servlet context wires the SDK's SSE transport provider and its router
+ *       serving {@code GET /sse} / {@code POST /mcp/message}, and the default endpoint
+ *       properties are unchanged. This module's own wiring registers no STDIO transport
+ *       (STDIO lives only in the standalone {@code mcp-stdio} module).</li>
  * </ul>
  */
 class SseUnchangedTest {
@@ -53,9 +63,9 @@ class SseUnchangedTest {
     private static final String ENABLED_PROPERTY_NAME = "enabled";
     private static final String ATLAS_AUTO_CONFIGURATION =
             "com.egoge.ai.atlas.runtime.autoconfigure.AgenticAutoConfiguration";
-    private static final String SPRING_AI_MCP_SERVER_PACKAGE = "org.springframework.ai.mcp.server";
-    private static final String SSE_TRANSPORT_CLASS =
-            "io.modelcontextprotocol.server.transport.WebMvcSseServerTransportProvider";
+    private static final String SSE_ROUTER_BEAN = "webMvcSseServerRouterFunction";
+    private static final String SSE_ENDPOINT = "/sse";
+    private static final String SSE_MESSAGE_ENDPOINT = "/mcp/message";
     private static final String AUTO_CONFIGURATION_IMPORTS =
             "META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports";
     private static final String TOOL_NAME = "echo_message";
@@ -125,19 +135,42 @@ class SseUnchangedTest {
     }
 
     @Test
-    void sseServerPathStillOnClasspath() throws ClassNotFoundException {
-        // The SDK's WebMvc SSE transport the Spring AI starter serves /sse with.
-        assertThat(Class.forName(SSE_TRANSPORT_CLASS)).isNotNull();
+    void sseAutoConfigurationStillRegistered() {
+        // The exact SSE auto-configuration — not just any class under the MCP server package —
+        // so removing the SSE auto-configuration (while e.g. streamable-HTTP remains) fails here.
+        assertThat(autoConfigurationImports())
+                .contains(McpServerSseWebMvcAutoConfiguration.class.getName());
+    }
 
-        // Spring AI's MCP server auto-configurations are still registered and loadable, so a
-        // consumer app gets the SSE server exactly as before this feature.
-        List<String> springAiMcpImports = autoConfigurationImports().stream()
-                .filter(line -> line.startsWith(SPRING_AI_MCP_SERVER_PACKAGE))
-                .toList();
-        assertThat(springAiMcpImports).isNotEmpty();
-        for (String autoConfiguration : springAiMcpImports) {
-            assertThat(Class.forName(autoConfiguration)).isNotNull();
-        }
+    @Test
+    void sseServerBeansAndRouteStillServed() {
+        new WebApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(
+                        JacksonAutoConfiguration.class,
+                        McpServerObjectMapperAutoConfiguration.class,
+                        McpServerSseWebMvcAutoConfiguration.class))
+                .run(context -> {
+                    // The SDK's WebMvc SSE transport and its router are wired as before.
+                    assertThat(context).hasSingleBean(WebMvcSseServerTransportProvider.class);
+                    assertThat(context).hasBean(SSE_ROUTER_BEAN);
+
+                    // The router still serves GET /sse (and only MCP routes).
+                    RouterFunction<?> router = context.getBean(SSE_ROUTER_BEAN, RouterFunction.class);
+                    assertThat(router.route(mockRequest("GET", SSE_ENDPOINT))).isPresent();
+                    assertThat(router.route(mockRequest("POST", SSE_MESSAGE_ENDPOINT))).isPresent();
+                    assertThat(router.route(mockRequest("GET", "/not-an-mcp-route"))).isEmpty();
+                });
+    }
+
+    @Test
+    void defaultSseEndpointsUnchanged() {
+        McpServerSseProperties properties = new McpServerSseProperties();
+        assertThat(properties.getSseEndpoint()).isEqualTo(SSE_ENDPOINT);
+        assertThat(properties.getSseMessageEndpoint()).isEqualTo(SSE_MESSAGE_ENDPOINT);
+    }
+
+    private static ServerRequest mockRequest(String method, String path) {
+        return ServerRequest.create(new MockHttpServletRequest(method, path), List.of());
     }
 
     /** Every auto-configuration registered on the test classpath, across all jars. */

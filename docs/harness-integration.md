@@ -14,7 +14,8 @@ Both surfaces run the same generators through the same driver (`AtlasGenerator` 
 
 > **JDK required.** The standalone surfaces compile your sources in-process via
 > `javax.tools.JavaCompiler` (`ToolProvider.getSystemJavaCompiler()`), which a JRE does not
-> provide. Run them on a JDK, version 21 or later.
+> provide. Run them on a JDK, version 17 or later (the project toolchain target — see
+> `gradle/libs.versions.toml`).
 
 ## Building the executables
 
