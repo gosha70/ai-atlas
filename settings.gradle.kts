@@ -25,5 +25,6 @@ include(
     ":modules:runtime",
     ":modules:gradle-plugin",
     ":modules:cli",
+    ":modules:mcp-stdio",
     ":demo"
 )

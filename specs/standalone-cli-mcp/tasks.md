@@ -48,13 +48,13 @@
 
 | # | [P] | Task | File(s) | Owner | Done |
 |---|-----|------|---------|-------|------|
-| 10 | | New `modules/mcp-stdio` (MCP Java SDK + **Shadow fat jar** → `atlas-mcp.jar`); add mcp-sdk to catalog + `settings.gradle.kts` | `modules/mcp-stdio/build.gradle.kts`, `gradle/libs.versions.toml`, `settings.gradle.kts` | MCP & Spring AI Specialist | [ ] |
-| 11 | | `AtlasMcpServer` `main()` — stdio transport; register `atlas_inspect_services`, `atlas_generate`, `atlas_openapi` over `AtlasGenerator`; results include file manifest + summary | `modules/mcp-stdio/src/main/java/com/egoge/ai/atlas/mcp/AtlasMcpServer.java` | MCP & Spring AI Specialist | [ ] |
-| 12 | [P] | Round-trip test: list tools + call each; assert manifest/summary; no Spring Web on classpath | `modules/mcp-stdio/src/test/java/com/egoge/ai/atlas/mcp/AtlasMcpServerTest.java` | MCP & Spring AI Specialist | [ ] |
+| 10 | | New `modules/mcp-stdio` (MCP Java SDK + **Shadow fat jar** → `atlas-mcp.jar`); add mcp-sdk to catalog + `settings.gradle.kts` | `modules/mcp-stdio/build.gradle.kts`, `gradle/libs.versions.toml`, `settings.gradle.kts` | MCP & Spring AI Specialist | [x] |
+| 11 | | `AtlasMcpServer` `main()` — stdio transport; register `atlas_inspect_services`, `atlas_generate`, `atlas_openapi` over `AtlasGenerator`; results include file manifest + summary | `modules/mcp-stdio/src/main/java/com/egoge/ai/atlas/mcp/AtlasMcpServer.java` | MCP & Spring AI Specialist | [x] |
+| 12 | [P] | Round-trip test: list tools + call each; assert manifest/summary; no Spring Web on classpath | `modules/mcp-stdio/src/test/java/com/egoge/ai/atlas/mcp/AtlasMcpServerTest.java` | MCP & Spring AI Specialist | [x] |
 
 **Checkpoint US4** — verify before continuing:
-- [ ] Round-trip test passes; three tools listed and callable with no Spring Boot app running
-- [ ] Shadow `atlas-mcp.jar` builds and starts a stdio server via `java -jar` (matches the `.mcp.json` launch)
+- [x] Round-trip test passes; three tools listed and callable with no Spring Boot app running
+- [x] Shadow `atlas-mcp.jar` builds and starts a stdio server via `java -jar` (matches the `.mcp.json` launch — the round-trip test spawns exactly `java -jar atlas-mcp.jar` through the SDK's `StdioClientTransport`)
 
 ---
 

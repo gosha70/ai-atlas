@@ -20,6 +20,9 @@ jackson = "2.18.6"
 picocli = "4.7.7"
 shadow = "8.3.9"
 
+# Standalone STDIO MCP server — kept in lockstep with the version Spring AI pulls transitively
+mcp-sdk = "0.18.2"
+
 # Testing
 junit = "5.12.2"
 compile-testing = "0.21.0"
@@ -49,6 +52,9 @@ jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", ver
 
 # Standalone CLI
 picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
+
+# Standalone STDIO MCP server
+mcp-sdk = { module = "io.modelcontextprotocol.sdk:mcp", version.ref = "mcp-sdk" }
 
 # Testing
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
