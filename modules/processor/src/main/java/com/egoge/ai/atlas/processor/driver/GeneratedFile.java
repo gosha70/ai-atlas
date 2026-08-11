@@ -33,6 +33,8 @@ public record GeneratedFile(Kind kind, String relativePath, Path path, String co
         API_VERSION_PROPERTIES,
         /** The deprecation manifest describing sunset endpoints. */
         DEPRECATION_MANIFEST,
+        /** The service manifest listing every discovered service by qualified name. */
+        SERVICE_MANIFEST,
         /** Any other emitted artifact. */
         OTHER;
 

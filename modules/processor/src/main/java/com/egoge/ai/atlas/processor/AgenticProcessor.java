@@ -12,6 +12,7 @@ import com.egoge.ai.atlas.processor.generator.DtoGenerator;
 import com.egoge.ai.atlas.processor.generator.McpToolGenerator;
 import com.egoge.ai.atlas.processor.generator.OpenApiGenerator;
 import com.egoge.ai.atlas.processor.generator.RestControllerGenerator;
+import com.egoge.ai.atlas.processor.generator.ServiceManifestGenerator;
 import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel;
@@ -74,10 +75,7 @@ public class AgenticProcessor extends AbstractProcessor {
     private String openApiInfoVersion;
     private boolean versionConfigValid;
 
-    @Override
-    public SourceVersion getSupportedSourceVersion() {
-        return SourceVersion.latestSupported();
-    }
+    @Override public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
         super.init(processingEnv);
@@ -160,6 +158,8 @@ public class AgenticProcessor extends AbstractProcessor {
         }
         if (!deprecationManifestGenerated) {
             DeprecationManifestGenerator.generate(serviceRegistry, apiBasePath, apiMajor,
+                    processingEnv.getFiler(), processingEnv.getMessager());
+            ServiceManifestGenerator.generate(serviceRegistry,
                     processingEnv.getFiler(), processingEnv.getMessager());
             deprecationManifestGenerated = true;
         }

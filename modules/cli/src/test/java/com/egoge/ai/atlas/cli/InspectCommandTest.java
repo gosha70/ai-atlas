@@ -5,7 +5,6 @@ package com.egoge.ai.atlas.cli;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.egoge.ai.atlas.processor.driver.GeneratedFile;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -299,44 +298,4 @@ class InspectCommandTest {
         }
     }
 
-    @Nested
-    @DisplayName("qualifiedServiceName")
-    class QualifiedServiceName {
-
-        @Test
-        @DisplayName("extracts the qualified service name from an MCP tool relative path")
-        void fromMcpTool() {
-            GeneratedFile toolFile = new GeneratedFile(GeneratedFile.Kind.MCP_TOOL,
-                    "test/generated/CustomerServiceMcpTool.java",
-                    Path.of("/tmp/atlas-inspect-123/sources/test/generated/CustomerServiceMcpTool.java"),
-                    "// generated");
-
-            assertThat(InspectCommand.qualifiedServiceName(toolFile))
-                    .isEqualTo("test.CustomerService");
-        }
-
-        @Test
-        @DisplayName("extracts the qualified service name from a REST controller relative path")
-        void fromRestController() {
-            GeneratedFile ctrlFile = new GeneratedFile(GeneratedFile.Kind.REST_CONTROLLER,
-                    "test/generated/CustomerServiceRestController.java",
-                    Path.of("/tmp/atlas-inspect-123/sources/test/generated/CustomerServiceRestController.java"),
-                    "// generated");
-
-            assertThat(InspectCommand.qualifiedServiceName(ctrlFile))
-                    .isEqualTo("test.CustomerService");
-        }
-
-        @Test
-        @DisplayName("handles services in the default package")
-        void defaultPackage() {
-            GeneratedFile toolFile = new GeneratedFile(GeneratedFile.Kind.MCP_TOOL,
-                    "generated/SimpleServiceMcpTool.java",
-                    Path.of("/tmp/atlas-inspect-123/sources/generated/SimpleServiceMcpTool.java"),
-                    "// generated");
-
-            assertThat(InspectCommand.qualifiedServiceName(toolFile))
-                    .isEqualTo("SimpleService");
-        }
-    }
 }

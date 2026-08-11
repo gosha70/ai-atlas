@@ -161,8 +161,9 @@ public final class JsonOutput {
     }
 
     /**
-     * Sets the {@code services} array — the simple names of the {@code @AgenticExposed} service
-     * classes discovered in the source set. Only populated by the {@code inspect} command.
+     * Sets the {@code services} array — the qualified names of the {@code @AgenticExposed} service
+     * classes discovered in the source set, including services whose methods are all filtered out
+     * by channel or version. Only populated by the {@code inspect} command.
      */
     public JsonOutput inspectServices(List<String> services) {
         ArrayNode array = root.putArray(KEY_SERVICES);

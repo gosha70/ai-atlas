@@ -7,6 +7,7 @@ import com.egoge.ai.atlas.processor.AgenticProcessor;
 import com.egoge.ai.atlas.processor.generator.ApiVersionPropertiesGenerator;
 import com.egoge.ai.atlas.processor.generator.DeprecationManifestGenerator;
 import com.egoge.ai.atlas.processor.generator.OpenApiGenerator;
+import com.egoge.ai.atlas.processor.generator.ServiceManifestGenerator;
 
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -71,24 +72,14 @@ public final class AtlasGenerator {
     private static final String CLASS_SUFFIX = ".class";
     private static final String OPTION_PREFIX = "-A";
     private static final String ENCODING_OPTION = "-encoding";
-    /**
-     * Classification anchors. Generated type-level annotations and the type declaration itself are
-     * emitted by JavaPoet at column 0, whereas caller-supplied text only ever reaches the output
-     * inside an (indented, newline-escaped) string literal — so anchoring to whole lines cannot be
-     * spoofed by an annotation description that happens to contain one of these markers.
-     */
+    // Classification: generated type-level annotations and the type declaration are at column 0;
+    // caller text only appears inside indented, escaped string literals — whole-line anchors work.
     private static final String REST_CONTROLLER_ANNOTATION = "@RestController";
     private static final String MCP_TOOL_ANNOTATION = "@Service";
     private static final String DTO_DECLARATION_PREFIX = "public record ";
-    private static final String LEGACY_OPENAPI_PATH =
-            OpenApiGenerator.RESOURCE_DIR + OpenApiGenerator.LEGACY_RESOURCE_NAME;
-    /**
-     * Orders threads of this JVM that publish into the same output directory. A {@link FileLock} is
-     * held per JVM, not per thread, so two threads locking one file would collide instead of
-     * queueing — this lock has to be taken first. Keyed by the normalized output directory, so runs
-     * writing elsewhere are unaffected; entries are retained because callers reuse a small, fixed
-     * set of output directories.
-     */
+    private static final String LEGACY_OPENAPI_PATH = OpenApiGenerator.RESOURCE_DIR + OpenApiGenerator.LEGACY_RESOURCE_NAME;
+    // Serializes threads publishing to the same output directory — FileLock is per-JVM, so an
+    // in-process lock is also needed. Keyed by normalized output directory.
     private static final Map<Path, ReentrantLock> OUTPUT_LOCKS = new ConcurrentHashMap<>();
 
     private AtlasGenerator() {} // package-private on purpose
@@ -102,26 +93,18 @@ public final class AtlasGenerator {
     }
 
     /**
-     * Compiles {@code sources} with {@link AgenticProcessor} registered, publishes the generated
-     * artifacts into {@code outputDir}'s {@value #SOURCES_DIR} / {@value #RESOURCES_DIR} roots, and
-     * collects everything that was emitted.
+     * Compiles {@code sources} with {@link AgenticProcessor}, publishes into {@code outputDir}'s
+     * {@value #SOURCES_DIR}/{@value #RESOURCES_DIR} roots, and returns every emitted artifact.
      *
-     * @param sources          source roots (directories are scanned recursively) and/or individual
-     *                         {@code .java} files
-     * @param classpath        the target application's compile classpath; must supply the Spring AI
-     *                         and Spring Web types referenced by the generated wrappers
-     * @param outputDir        directory to write generated sources and resources into; its
-     *                         {@value #SOURCES_DIR} and {@value #RESOURCES_DIR} roots are replaced
-     *                         by this run, and it is normalized to an absolute path, so every
-     *                         returned {@link GeneratedFile#path()} is absolute. Files under this
-     *                         directory are excluded from source discovery so an output directory
-     *                         nested inside a source root is safe to reuse.
-     * @param processorOptions {@code -A} processor options, e.g.
-     *                         {@link AgenticProcessor#OPT_API_MAJOR}
-     * @return the generated files, the OpenAPI document and every diagnostic reported
-     * @throws IllegalArgumentException if a source path does not exist or no sources were found
-     * @throws IllegalStateException    if the running JVM is not a JDK (no system compiler)
-     * @throws UncheckedIOException     if the output directories cannot be written
+     * @param sources          source roots (scanned recursively) or individual {@code .java} files
+     * @param classpath        compile classpath (must carry Spring AI/Spring Web types)
+     * @param outputDir        replaced-run output root; normalized absolute. Files under it are
+     *                         excluded from discovery, so a nested layout is safe.
+     * @param processorOptions {@code -A} options, e.g. {@link AgenticProcessor#OPT_API_MAJOR}
+     * @return generated files, OpenAPI document, and diagnostics
+     * @throws IllegalArgumentException if no sources found or a path does not exist
+     * @throws IllegalStateException    if running on a JRE (no system compiler)
+     * @throws UncheckedIOException     if output directories cannot be written
      */
     public static GenerationResult generate(List<Path> sources, List<Path> classpath, Path outputDir,
                                             Map<String, String> processorOptions) {
@@ -192,8 +175,10 @@ public final class AtlasGenerator {
         files.sort(Comparator.comparing((GeneratedFile f) -> f.kind().ordinal())
                 .thenComparing(GeneratedFile::relativePath));
 
+        List<String> discoveredServices = readDiscoveredServices(files);
         return new GenerationResult(success, output, files, findOpenApi(files, processorOptions),
-                collector.getDiagnostics().stream().map(AtlasGenerator::toDiagnostic).toList());
+                collector.getDiagnostics().stream().map(AtlasGenerator::toDiagnostic).toList(),
+                discoveredServices);
     }
 
     /**
@@ -258,8 +243,20 @@ public final class AtlasGenerator {
         files.sort(Comparator.comparing((GeneratedFile f) -> f.kind().ordinal())
                 .thenComparing(GeneratedFile::relativePath));
 
+        List<String> discoveredServices = readDiscoveredServices(files);
         return new GenerationResult(success, null, files, findOpenApi(files, processorOptions),
-                collector.getDiagnostics().stream().map(AtlasGenerator::toDiagnostic).toList());
+                collector.getDiagnostics().stream().map(AtlasGenerator::toDiagnostic).toList(),
+                discoveredServices);
+    }
+
+    // Reads service names from service-manifest.properties. The manifest stays in the reported
+    // file list: it is published like the deprecation manifest, and files() must match disk.
+    private static List<String> readDiscoveredServices(List<GeneratedFile> files) {
+        return files.stream()
+                .filter(f -> ServiceManifestGenerator.RESOURCE_PATH.equals(f.relativePath()))
+                .findFirst()
+                .map(f -> f.content().lines().filter(l -> !l.isBlank()).toList())
+                .orElseGet(List::of);
     }
 
     private static boolean compile(JavaCompiler compiler, DiagnosticCollector<JavaFileObject> collector,
@@ -449,6 +446,9 @@ public final class AtlasGenerator {
         }
         if (relativePath.equals(DeprecationManifestGenerator.RESOURCE_PATH)) {
             return GeneratedFile.Kind.DEPRECATION_MANIFEST;
+        }
+        if (relativePath.equals(ServiceManifestGenerator.RESOURCE_PATH)) {
+            return GeneratedFile.Kind.SERVICE_MANIFEST;
         }
         return GeneratedFile.Kind.OTHER;
     }

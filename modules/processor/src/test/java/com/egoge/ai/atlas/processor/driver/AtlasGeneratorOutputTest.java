@@ -23,6 +23,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
+import com.egoge.ai.atlas.processor.AgenticProcessor;
+import com.egoge.ai.atlas.processor.generator.ServiceManifestGenerator;
+
+import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.ENTITY_SOURCE;
 import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.EXTRA_ENTITY_SOURCE;
 import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.currentClasspath;
 import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.dtoNames;
@@ -237,6 +241,71 @@ class AtlasGeneratorOutputTest {
         assertThatThrownBy(() -> AtlasGenerator.generate(List.of(sourceDir), currentClasspath(), outputDir))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("No .java sources");
+    }
+
+    @Test
+    void reportsNestedServicesUnderTheirQualifiedName(@TempDir Path sourceDir) throws IOException {
+        Path packageDir = Files.createDirectories(sourceDir.resolve("test"));
+        Files.writeString(packageDir.resolve("Customer.java"), ENTITY_SOURCE, StandardCharsets.UTF_8);
+        Files.writeString(packageDir.resolve("Outer.java"), """
+                package test;
+
+                import com.egoge.ai.atlas.annotations.AgenticExposed;
+
+                public class Outer {
+                    @AgenticExposed(description = "Look customers up", returnType = Customer.class)
+                    public static class Inner {
+                        public Customer findById(Long id) { return null; }
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        GenerationResult result = AtlasGenerator.generate(List.of(sourceDir), currentClasspath(), outputDir);
+
+        assertThat(result.success()).isTrue();
+        // The wrapper file is named from the simple name, so reconstructing the service name from
+        // artifacts yields "test.Inner". The manifest must carry the real qualified name.
+        assertThat(result.discoveredServices()).contains("test.Outer.Inner");
+        assertThat(result.discoveredServices()).doesNotContain("test.Inner");
+    }
+
+    @Test
+    void reportsServicesWhoseMethodsAreAllFilteredOut(@TempDir Path sourceDir) throws IOException {
+        Path packageDir = Files.createDirectories(sourceDir.resolve("test"));
+        Files.writeString(packageDir.resolve("Customer.java"), ENTITY_SOURCE, StandardCharsets.UTF_8);
+        Files.writeString(packageDir.resolve("RetiredService.java"), """
+                package test;
+
+                import com.egoge.ai.atlas.annotations.AgenticExposed;
+
+                @AgenticExposed(description = "Retired before the configured major",
+                                returnType = Customer.class, apiUntil = 1)
+                public class RetiredService {
+                    public Customer findById(Long id) { return null; }
+                }
+                """, StandardCharsets.UTF_8);
+
+        GenerationResult result = AtlasGenerator.generate(List.of(sourceDir), currentClasspath(), outputDir,
+                Map.of(AgenticProcessor.OPT_API_MAJOR, "2"));
+
+        assertThat(result.success()).isTrue();
+        // Every method is filtered out at major 2, so no wrapper is emitted for this service.
+        assertThat(result.files()).noneMatch(f -> f.relativePath().contains("RetiredService"));
+        // It is still a discovered @AgenticExposed service and must be reported as one.
+        assertThat(result.discoveredServices()).contains("test.RetiredService");
+    }
+
+    @Test
+    void publishesTheServiceManifestAndReportsItAsAGeneratedFile(@TempDir Path sourceDir) throws IOException {
+        GenerationResult result = generateFromSourceStrings(sourceDir);
+
+        // files() must describe what actually landed on disk: the manifest is published under the
+        // resources root exactly like the deprecation manifest, so it must appear in the manifest too.
+        assertThat(result.filesOfKind(GeneratedFile.Kind.SERVICE_MANIFEST))
+                .singleElement()
+                .satisfies(f -> assertThat(f.relativePath()).isEqualTo(ServiceManifestGenerator.RESOURCE_PATH));
+        assertThat(outputDir.resolve(AtlasGenerator.RESOURCES_DIR)
+                .resolve(ServiceManifestGenerator.RESOURCE_PATH)).exists();
     }
 
     private GenerationResult generateFromSourceStrings(Path sourceDir) throws IOException {
