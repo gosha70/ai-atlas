@@ -51,3 +51,6 @@ processor options (`-Aai.atlas.api.major=2` etc. — omitting them legitimately 
 <!-- checkpoint-after-phase: 2 -->
 
 approved-by: gosha 2026-08-09
+
+### Phase 3 complete — US3: CLI inspect (dry run) (2026-08-11T20:45:01Z)
+Review: PASS (see specs/standalone-cli-mcp/collaboration/build-review.md).
