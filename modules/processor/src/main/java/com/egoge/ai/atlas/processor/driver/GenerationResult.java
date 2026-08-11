@@ -5,25 +5,34 @@ package com.egoge.ai.atlas.processor.driver;
 
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Structured outcome of an {@link AtlasGenerator} run.
  *
- * @param success     {@code true} when the underlying compilation completed without errors
- * @param outputDir   the directory the run wrote into
- * @param files       every emitted artifact, ordered by kind then relative path
- * @param openApi     the versioned OpenAPI document, or {@code null} when none was emitted
- * @param diagnostics every compiler / processor message, in the order javac reported them
+ * @param success            {@code true} when the underlying compilation completed without errors
+ * @param outputDir          the absolute, normalized directory the run wrote into, or {@code null}
+ *                           when the run was an in-memory inspection that wrote nothing to the
+ *                           filesystem
+ * @param files              every artifact emitted by <em>this</em> run, ordered by kind then
+ *                           relative path
+ * @param openApi            the versioned OpenAPI document, or {@code null} when none was emitted
+ * @param diagnostics        every compiler / processor message, in the order javac reported them
+ * @param discoveredServices the qualified names of every discovered {@code @AgenticExposed}
+ *                           service, in the order the processor saw them — even services whose
+ *                           methods are all filtered out by channel or version, and services with
+ *                           no public methods. Carried directly from the processor instance, not
+ *                           from any emitted artifact. Empty (never null) when the compilation
+ *                           failed.
  */
 public record GenerationResult(boolean success, Path outputDir, List<GeneratedFile> files,
-                               String openApi, List<Diagnostic> diagnostics) {
+                               String openApi, List<Diagnostic> diagnostics,
+                               List<String> discoveredServices) {
 
     /** Canonical constructor taking defensive, immutable copies of the collections. */
     public GenerationResult {
-        Objects.requireNonNull(outputDir, "outputDir");
         files = List.copyOf(files);
         diagnostics = List.copyOf(diagnostics);
+        discoveredServices = List.copyOf(discoveredServices);
     }
 
     /** Returns the emitted files of the given kind. */

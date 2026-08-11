@@ -85,8 +85,26 @@ unchanged.
   before writing to disk.
 - **FR-008**: The existing runtime SSE MCP server path MUST remain unchanged and continue to be the default
   for live/deployed tool serving.
-- **FR-009**: All files emitted through the new surfaces MUST retain the `@Generated("ai.atlas.processor")`
-  marker — behaviour identical to the annotation-processing path.
+- **FR-009**: All files emitted through the new surfaces MUST retain the `@Generated(...)` marker the
+  annotation-processing path emits — behaviour identical to it, i.e. no change to the generated shape.
+  > **Erratum (2026-08-09, review round 4).** This requirement was written as
+  > `@Generated("ai.atlas.processor")`. The value the generators have actually emitted since the
+  > `ai.atlas` → `com.egoge.ai.atlas` package rename — long before this feature — is
+  > **`@Generated("com.egoge.ai.atlas.processor")`** (see `DtoGenerator`, `McpToolGenerator`,
+  > `RestControllerGenerator`, and `docs/processor-internals.md`). The literal in the original FR-009
+  > text was a stale carry-over, not a request to change output. FR-009's binding intent is *retain /
+  > identical behaviour*, which the Constraints section reinforces ("No … changes to generated-code
+  > shapes"); changing the emitted string would itself be the breaking change. The canonical value is
+  > therefore `com.egoge.ai.atlas.processor`, and `AtlasGeneratorGoldenTest` asserts it.
+  > **Rule files realigned (2026-08-09, review round 5).** Round 4 left the same stale literal in the
+  > project rule files and deferred it to the maintainer; review round 5 ruled that a feature-local
+  > erratum cannot override an authoritative rule, so the rule files were corrected to state what the
+  > generators emit: `AGENTS.md` / `CLAUDE.md` ("Annotation Processing Rules", line 80),
+  > `CONTRIBUTING.md` ("Code Style"), and `.github/PULL_REQUEST_TEMPLATE.md` (checklist). This is a
+  > documentation correction only — no generator, no emitted byte, and no consumer output changed.
+  > `README.md` and `docs/processor-internals.md` already showed the correct value.
+  > **For the maintainer:** `AGENTS.md` and `CLAUDE.md` are git-ignored machine-local files, so that
+  > half of the correction is not carried by the commit and must be re-applied on other checkouts.
 - **FR-010**: The change MUST add `docs/harness-integration.md` documenting the CLI + STDIO paths and a
   sample Claude Code hook, alongside the existing SSE path.
 

@@ -63,7 +63,7 @@ Open an issue first to discuss the approach. This prevents duplicate effort and 
 
 - Java 21 features are welcome (records, sealed classes, pattern matching)
 - Use JavaPoet for all code generation — no string concatenation
-- All generated files must include `@Generated("ai.atlas.processor")`
+- All generated files must include `@Generated("com.egoge.ai.atlas.processor")`
 - Processor tests must use Google compile-testing (never mock `ProcessingEnvironment`)
 - No wildcard imports, no commented-out code, no unused imports
 

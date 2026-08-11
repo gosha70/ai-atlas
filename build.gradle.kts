@@ -72,7 +72,8 @@ subprojects {
     val coverageThresholds = mapOf(
         "processor" to 0.85,
         "runtime"   to 0.45,
-        "demo"      to 0.80
+        "demo"      to 0.80,
+        "mcp-stdio" to 0.80
     )
 
     val threshold = coverageThresholds[project.name]

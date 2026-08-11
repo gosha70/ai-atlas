@@ -66,6 +66,7 @@ public class AgenticProcessor extends AbstractProcessor {
     private final Map<String, EntityModel> entityRegistry = new HashMap<>();
     private final Set<String> dtoSkippedKeys = new HashSet<>();
     private final List<ServiceModel> serviceRegistry = new ArrayList<>();
+    private final Set<String> discoveredServiceNames = new LinkedHashSet<>();
     private boolean openApiGenerated = false;
     private boolean apiVersionPropertiesGenerated = false;
     private boolean deprecationManifestGenerated = false;
@@ -74,10 +75,7 @@ public class AgenticProcessor extends AbstractProcessor {
     private String openApiInfoVersion;
     private boolean versionConfigValid;
 
-    @Override
-    public SourceVersion getSupportedSourceVersion() {
-        return SourceVersion.latestSupported();
-    }
+    @Override public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
         super.init(processingEnv);
@@ -302,24 +300,26 @@ public class AgenticProcessor extends AbstractProcessor {
                 methodsByType.computeIfAbsent(qName, k -> new ArrayList<>()).add(method);
             }
         }
-
-        for (var entry : typesByQName.entrySet()) {
+        // Sorted: RoundEnvironment is unordered, and registry order decides OpenAPI path order (FR-002).
+        for (var entry : typesByQName.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
             String qName = entry.getKey();
-            TypeElement typeElement = entry.getValue();
+            discoveredServiceNames.add(qName);
             if (typeLevelTypes.contains(qName)) {
-                processServiceType(typeElement);
+                processServiceType(entry.getValue());
             } else {
-                processServiceWithMethods(typeElement, methodsByType.get(qName));
+                processServiceWithMethods(entry.getValue(), methodsByType.get(qName));
             }
         }
     }
+
+    /** Every discovered {@code @AgenticExposed} service (qualified, processing order) — recorded before method processing, so fully-filtered and no-public-method services are included. Read by the driver; never emitted to the class output. */
+    public List<String> discoveredServices() { return List.copyOf(discoveredServiceNames); }
 
     private void processServiceType(TypeElement typeElement) {
         List<ExecutableElement> methods = typeElement.getEnclosedElements().stream()
                 .filter(e -> e.getKind() == ElementKind.METHOD)
                 .filter(e -> e.getModifiers().contains(javax.lang.model.element.Modifier.PUBLIC))
-                .map(e -> (ExecutableElement) e)
-                .toList();
+                .map(e -> (ExecutableElement) e).toList();
 
         if (methods.isEmpty()) {
             processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,

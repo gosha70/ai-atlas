@@ -32,5 +32,5 @@
 
 - [ ] No new dependencies added to `annotations` module
 - [ ] No runtime dependencies added to `processor` module
-- [ ] All generated code includes `@Generated("ai.atlas.processor")`
+- [ ] All generated code includes `@Generated("com.egoge.ai.atlas.processor")`
 - [ ] Documentation updated (if public API changed)

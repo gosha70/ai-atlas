@@ -25,11 +25,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
-import java.util.stream.Stream;
 
+import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.ENTITY_SOURCE;
+import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.SERVICE_SOURCE;
+import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.currentClasspath;
+import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.generatedSourcesByPath;
+import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.readJavaTree;
+import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.writeSampleSources;
 import static com.google.testing.compile.Compiler.javac;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
@@ -37,51 +41,56 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *
  * <p>Two references are checked: an in-process annotation-processing run over the same sources
  * (always available), and the real {@code :demo:compileJava} output wired in by Gradle.
+ *
+ * <p>Output-directory behaviour — staging, atomic publication, concurrency, input rejection — lives
+ * in {@link AtlasGeneratorOutputTest}.
  */
 class AtlasGeneratorGoldenTest {
 
+    /**
+     * The marker the generators have emitted since the {@code ai.atlas} → {@code com.egoge.ai.atlas}
+     * package rename, and the value FR-009's "behaviour identical to the annotation-processing path"
+     * resolves to. See the FR-009 erratum in {@code specs/standalone-cli-mcp/spec.md}; the project
+     * rule files (AGENTS.md / CLAUDE.md, CONTRIBUTING.md, the PR template) state the same value.
+     */
     private static final String GENERATED_MARKER = "@Generated(\"com.egoge.ai.atlas.processor\")";
-    private static final String JAVA_SUFFIX = ".java";
     private static final String SOURCE_OUTPUT_PREFIX = "/SOURCE_OUTPUT/";
     private static final String OPTION_PREFIX = "option.";
     private static final String CLASSPATH_KEY = "classpath";
     private static final String DEMO_SOURCES_PROPERTY = "ai.atlas.demo.sources";
     private static final String DEMO_GENERATED_PROPERTY = "ai.atlas.demo.generatedSources";
     private static final String DEMO_INPUTS_PROPERTY = "ai.atlas.demo.generationInputs";
-    private static final String DEFAULT_OPENAPI_PATH = OpenApiGenerator.RESOURCE_DIR + "openapi-v1.json";
+    private static final String DEMO_CLASSES_PROPERTY = "ai.atlas.demo.classesDir";
+    /** The compile-testing reference runs without {@code -A} options, i.e. on the default major. */
+    private static final int DEFAULT_API_MAJOR = 1;
+    private static final String DEFAULT_OPENAPI_PATH =
+            OpenApiGenerator.versionedResourcePath(DEFAULT_API_MAJOR);
 
-    private static final String ENTITY_SOURCE = """
+    /** Entity whose caller-supplied descriptions contain every artifact-classification marker. */
+    private static final String MARKER_ENTITY_SOURCE = """
             package test;
 
             import com.egoge.ai.atlas.annotations.AgenticEntity;
             import com.egoge.ai.atlas.annotations.AgenticField;
 
-            @AgenticEntity(description = "A customer of the shop")
-            public class Customer {
-                @AgenticField(description = "Unique identifier")
+            @AgenticEntity(description = "public record @RestController @Service @Tool( soup")
+            public class Marker {
+                @AgenticField(description = "public record @RestController @Service @Tool( soup")
                 private Long id;
 
-                @AgenticField(description = "Display name")
-                private String name;
-
-                private String socialSecurityNumber;
-
                 public Long getId() { return id; }
-                public String getName() { return name; }
-                public String getSocialSecurityNumber() { return socialSecurityNumber; }
             }
             """;
 
-    private static final String SERVICE_SOURCE = """
+    private static final String MARKER_SERVICE_SOURCE = """
             package test;
 
             import com.egoge.ai.atlas.annotations.AgenticExposed;
-            import java.util.List;
 
-            @AgenticExposed(description = "Look customers up", returnType = Customer.class)
-            public class CustomerService {
-                public Customer findById(Long id) { return null; }
-                public List<Customer> findAll() { return List.of(); }
+            @AgenticExposed(description = "public record @RestController @Service @Tool( soup",
+                    returnType = Marker.class)
+            public class MarkerService {
+                public Marker findById(Long id) { return null; }
             }
             """;
 
@@ -136,7 +145,18 @@ class AtlasGeneratorGoldenTest {
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
         assertThat(generatedSourcesByPath(result)).isEqualTo(readJavaTree(demoGenerated));
-        assertThat(result.openApi()).as("OpenAPI spec").isNotNull();
+
+        // FR-002 covers the OpenAPI document too, so compare it with the spec the demo's own
+        // annotation-processing build wrote into its class output — not merely a non-null check.
+        Path demoClasses = pathProperty(DEMO_CLASSES_PROPERTY);
+        String demoApiMajor = processorOptions.get(AgenticProcessor.OPT_API_MAJOR);
+        assumeTrue(demoClasses != null && demoApiMajor != null,
+                "demo class output and api major are wired by Gradle; skipping");
+        Path demoSpec = demoClasses.resolve(
+                OpenApiGenerator.versionedResourcePath(Integer.parseInt(demoApiMajor.trim())));
+        assertThat(demoSpec).as("demo build's versioned OpenAPI spec").isRegularFile();
+        assertThat(result.openApi()).as("OpenAPI spec, byte-for-byte vs :demo:compileJava")
+                .isEqualTo(Files.readString(demoSpec, StandardCharsets.UTF_8));
     }
 
     @Test
@@ -155,83 +175,53 @@ class AtlasGeneratorGoldenTest {
     }
 
     @Test
-    void capturesCompilationErrorsAsDiagnostics(@TempDir Path sourceDir) throws IOException {
-        Files.writeString(sourceDir.resolve("Broken.java"), """
-                package test;
-                public class Broken { this is not java }
-                """, StandardCharsets.UTF_8);
+    void changingTheApiMajorSelectsTheRequestedSpec(@TempDir Path sourceDir) throws IOException {
+        writeSampleSources(sourceDir);
+        AtlasGenerator.generate(List.of(sourceDir), currentClasspath(), outputDir,
+                Map.of(AgenticProcessor.OPT_API_MAJOR, "1"));
 
-        GenerationResult result = AtlasGenerator.generate(List.of(sourceDir), currentClasspath(), outputDir);
+        GenerationResult second = AtlasGenerator.generate(List.of(sourceDir), currentClasspath(),
+                outputDir, Map.of(AgenticProcessor.OPT_API_MAJOR, "2"));
 
-        assertThat(result.success()).isFalse();
-        assertThat(result.hasErrors()).isTrue();
-        assertThat(result.errors()).first()
-                .satisfies(d -> assertThat(d.source()).endsWith("Broken.java"));
+        assertThat(second.filesOfKind(GeneratedFile.Kind.OPENAPI))
+                .extracting(GeneratedFile::relativePath)
+                .containsExactlyInAnyOrder(OpenApiGenerator.versionedResourcePath(2),
+                        OpenApiGenerator.RESOURCE_DIR + OpenApiGenerator.LEGACY_RESOURCE_NAME);
+        assertThat(second.openApi()).contains("/v2/").doesNotContain("/v1/");
     }
 
     @Test
-    void regeneratingIntoTheSameOutputDirectoryOverwritesResources(@TempDir Path sourceDir) throws IOException {
-        generateFromSourceStrings(sourceDir);
-        GenerationResult second = generateFromSourceStrings(sourceDir);
+    void classifiesArtifactsWhoseDescriptionsContainClassificationMarkers(@TempDir Path sourceDir)
+            throws IOException {
+        Path packageDir = Files.createDirectories(sourceDir.resolve("test"));
+        Files.writeString(packageDir.resolve("Marker.java"), MARKER_ENTITY_SOURCE, StandardCharsets.UTF_8);
+        Files.writeString(packageDir.resolve("MarkerService.java"), MARKER_SERVICE_SOURCE,
+                StandardCharsets.UTF_8);
 
-        assertThat(second.filesOfKind(GeneratedFile.Kind.OPENAPI)).hasSize(2);
-        assertThat(second.filesOfKind(GeneratedFile.Kind.API_VERSION_PROPERTIES)).hasSize(1);
-        assertThat(second.openApi()).isNotNull();
-    }
+        GenerationResult result =
+                AtlasGenerator.generate(List.of(sourceDir), currentClasspath(), outputDir);
 
-    @Test
-    void rejectsSourcePathThatDoesNotExist() {
-        Path missing = outputDir.resolve("nowhere");
-
-        assertThatThrownBy(() -> AtlasGenerator.generate(List.of(missing), currentClasspath(), outputDir))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("does not exist");
-    }
-
-    @Test
-    void rejectsSourceSetWithoutJavaFiles(@TempDir Path sourceDir) {
-        assertThatThrownBy(() -> AtlasGenerator.generate(List.of(sourceDir), currentClasspath(), outputDir))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("No .java sources");
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.filesOfKind(GeneratedFile.Kind.DTO)).singleElement()
+                .satisfies(file -> {
+                    assertThat(file.relativePath()).endsWith("MarkerDto.java");
+                    assertThat(file.content()).as("markers really do reach the generated source")
+                            .contains("@RestController").contains("@Tool(");
+                });
+        assertThat(result.filesOfKind(GeneratedFile.Kind.MCP_TOOL)).singleElement()
+                .satisfies(file -> assertThat(file.relativePath()).endsWith("MarkerServiceMcpTool.java"));
+        assertThat(result.filesOfKind(GeneratedFile.Kind.REST_CONTROLLER)).singleElement()
+                .satisfies(file -> assertThat(file.relativePath())
+                        .endsWith("MarkerServiceRestController.java"));
     }
 
     private GenerationResult generateFromSourceStrings(Path sourceDir) throws IOException {
-        Path packageDir = Files.createDirectories(sourceDir.resolve("test"));
-        Files.writeString(packageDir.resolve("Customer.java"), ENTITY_SOURCE, StandardCharsets.UTF_8);
-        Files.writeString(packageDir.resolve("CustomerService.java"), SERVICE_SOURCE, StandardCharsets.UTF_8);
+        writeSampleSources(sourceDir);
 
         GenerationResult result = AtlasGenerator.generate(List.of(sourceDir), currentClasspath(), outputDir);
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
         return result;
-    }
-
-    private static Map<String, String> generatedSourcesByPath(GenerationResult result) {
-        Map<String, String> byPath = new TreeMap<>();
-        result.files().stream()
-                .filter(file -> file.relativePath().endsWith(JAVA_SUFFIX))
-                .forEach(file -> byPath.put(file.relativePath(), file.content()));
-        return byPath;
-    }
-
-    private static Map<String, String> readJavaTree(Path root) throws IOException {
-        Map<String, String> byPath = new TreeMap<>();
-        try (Stream<Path> walk = Files.walk(root)) {
-            for (Path file : walk.filter(Files::isRegularFile).toList()) {
-                if (!file.getFileName().toString().endsWith(JAVA_SUFFIX)) {
-                    continue;
-                }
-                String relative = root.relativize(file).toString().replace(File.separatorChar, '/');
-                byPath.put(relative, Files.readString(file, StandardCharsets.UTF_8));
-            }
-        }
-        return byPath;
-    }
-
-    private static List<Path> currentClasspath() {
-        return Arrays.stream(System.getProperty("java.class.path").split(File.pathSeparator))
-                .map(Path::of)
-                .toList();
     }
 
     private static List<Path> splitClasspath(String classpath) {

@@ -48,13 +48,13 @@
 
 | # | [P] | Task | File(s) | Owner | Done |
 |---|-----|------|---------|-------|------|
-| 10 | | New `modules/mcp-stdio` (MCP Java SDK + **Shadow fat jar** → `atlas-mcp.jar`); add mcp-sdk to catalog + `settings.gradle.kts` | `modules/mcp-stdio/build.gradle.kts`, `gradle/libs.versions.toml`, `settings.gradle.kts` | MCP & Spring AI Specialist | [ ] |
-| 11 | | `AtlasMcpServer` `main()` — stdio transport; register `atlas_inspect_services`, `atlas_generate`, `atlas_openapi` over `AtlasGenerator`; results include file manifest + summary | `modules/mcp-stdio/src/main/java/com/egoge/ai/atlas/mcp/AtlasMcpServer.java` | MCP & Spring AI Specialist | [ ] |
-| 12 | [P] | Round-trip test: list tools + call each; assert manifest/summary; no Spring Web on classpath | `modules/mcp-stdio/src/test/java/com/egoge/ai/atlas/mcp/AtlasMcpServerTest.java` | MCP & Spring AI Specialist | [ ] |
+| 10 | | New `modules/mcp-stdio` (MCP Java SDK + **Shadow fat jar** → `atlas-mcp.jar`); add mcp-sdk to catalog + `settings.gradle.kts` | `modules/mcp-stdio/build.gradle.kts`, `gradle/libs.versions.toml`, `settings.gradle.kts` | MCP & Spring AI Specialist | [x] |
+| 11 | | `AtlasMcpServer` `main()` — stdio transport; register `atlas_inspect_services`, `atlas_generate`, `atlas_openapi` over `AtlasGenerator`; results include file manifest + summary | `modules/mcp-stdio/src/main/java/com/egoge/ai/atlas/mcp/AtlasMcpServer.java` | MCP & Spring AI Specialist | [x] |
+| 12 | [P] | Round-trip test: list tools + call each; assert manifest/summary; no Spring Web on classpath | `modules/mcp-stdio/src/test/java/com/egoge/ai/atlas/mcp/AtlasMcpServerTest.java` | MCP & Spring AI Specialist | [x] |
 
 **Checkpoint US4** — verify before continuing:
-- [ ] Round-trip test passes; three tools listed and callable with no Spring Boot app running
-- [ ] Shadow `atlas-mcp.jar` builds and starts a stdio server via `java -jar` (matches the `.mcp.json` launch)
+- [x] Round-trip test passes; three tools listed and callable with no Spring Boot app running
+- [x] Shadow `atlas-mcp.jar` builds and starts a stdio server via `java -jar` (matches the `.mcp.json` launch — the round-trip test spawns exactly `java -jar atlas-mcp.jar` through the SDK's `StdioClientTransport`)
 
 ---
 
@@ -62,20 +62,20 @@
 
 | # | [P] | Task | File(s) | Owner | Done |
 |---|-----|------|---------|-------|------|
-| 13 | | `docs/harness-integration.md`: CLI usage, `.mcp.json` stdio snippet, sample Claude Code hook, and the existing SSE path | `docs/harness-integration.md` | Team Lead | [ ] |
-| 14 | [P] | Assertion/test that runtime SSE MCP wiring is unchanged (FR-008) | `modules/runtime/src/test/java/com/egoge/ai/atlas/runtime/mcp/SseUnchangedTest.java` | MCP & Spring AI Specialist | [ ] |
+| 13 | | `docs/harness-integration.md`: CLI usage, `.mcp.json` stdio snippet, sample Claude Code hook, and the existing SSE path | `docs/harness-integration.md` | Team Lead | [x] |
+| 14 | [P] | Assertion/test that runtime SSE MCP wiring is unchanged (FR-008) | `modules/runtime/src/test/java/com/egoge/ai/atlas/runtime/mcp/SseUnchangedTest.java` | MCP & Spring AI Specialist | [x] |
 
 **Checkpoint US5** — verify before continuing:
-- [ ] Docs cover both paths + a runnable hook example
-- [ ] SSE path assertion passes
+- [x] Docs cover both paths + a runnable hook example (hook executed against the demo module: success → exit 0 + summary; compile failure → exit 2 + errors on stderr; non-Java edit → silent exit 0)
+- [x] SSE path assertion passes (`SseUnchangedTest`, 7 tests green)
 
 ---
 
 ## Final Verification
 
-- [ ] Java compiles: 0 errors across all modules
-- [ ] Linter/warnings: no new warnings introduced
-- [ ] `./gradlew build` — all modules + tests green (no regressions)
-- [ ] No `[NEEDS CLARIFICATION]` markers remain in spec.md
-- [ ] CLI `--json` and MCP tool outputs are documented in `docs/harness-integration.md`
-- [ ] Runtime SSE MCP path unchanged (FR-008)
+- [x] Java compiles: 0 errors across all modules
+- [x] Linter/warnings: no new warnings introduced (Checkstyle green incl. the new test)
+- [x] `./gradlew build` — all modules + tests green (no regressions)
+- [x] No `[NEEDS CLARIFICATION]` markers remain in spec.md
+- [x] CLI `--json` and MCP tool outputs are documented in `docs/harness-integration.md`
+- [x] Runtime SSE MCP path unchanged (FR-008) — guarded by `SseUnchangedTest`
