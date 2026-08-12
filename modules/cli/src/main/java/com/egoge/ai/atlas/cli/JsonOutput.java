@@ -52,6 +52,15 @@ import java.util.List;
  *
  * <p>Stability contract: within a {@code schemaVersion}, keys and value types are only ever added,
  * never removed or retyped. Consumers must ignore unknown keys.
+ *
+ * <p>A diagnostic's {@code source} may be empty — many processor messages carry no file. When set,
+ * it is the absolute path of a caller-supplied source, or, for a message about a generated
+ * artifact, an identifier for that artifact: {@code generate} names the absolute path it published
+ * the artifact under, which exists once the command returns — unless the run published nothing
+ * (status {@code error}, or nothing to emit), in which case it names the relative path under the
+ * output roots, e.g. {@code sources/com/example/FooDto.java}, since no file was written. The
+ * {@code inspect} command writes nothing by design and names generated artifacts by their
+ * in-memory path. In no case does the value vary between runs over identical inputs.
  */
 public final class JsonOutput {
 

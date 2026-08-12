@@ -3,6 +3,7 @@
  */
 package com.egoge.ai.atlas.cli;
 
+import com.egoge.ai.atlas.processor.driver.AtlasGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AtlasCliTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String STAGING_PREFIX = AtlasGenerator.STAGING_PREFIX;
 
     @TempDir
     private Path workspace;
@@ -127,6 +129,60 @@ class AtlasCliTest {
             assertThat(report.get("counts").get("MCP_TOOL").asInt()).isEqualTo(1);
             assertThat(report.get("counts").get("REST_CONTROLLER").asInt()).isEqualTo(1);
             assertThat(report.get("openApi").get("document").asText()).contains("openapi");
+        }
+
+        @Test
+        @DisplayName("--json diagnostics name published paths, never the staging directory")
+        void jsonDiagnosticsAvoidStagingPaths() throws IOException {
+            CliTestFixtures.writeRawCollectionSource(sources);
+
+            assertThat(run("generate", "--sources", sources.toString(),
+                    "--classpath", testClasspath(), "--out", out.toString(), "--json")).isZero();
+            List<JsonNode> diagnostics = new ArrayList<>();
+            parseStdout().get("diagnostics").forEach(diagnostics::add);
+
+            assertThat(diagnostics).isNotEmpty().allSatisfy(node -> {
+                assertThat(node.get("source").asText()).doesNotContain(STAGING_PREFIX);
+                assertThat(node.get("message").asText()).doesNotContain(STAGING_PREFIX);
+            });
+            // The javac note about the generated DTO must point at a file the caller can open.
+            assertThat(diagnostics)
+                    .filteredOn(node -> node.get("source").asText().endsWith("OrderDto.java"))
+                    .isNotEmpty()
+                    .allSatisfy(node -> assertThat(Path.of(node.get("source").asText()))
+                            .isEqualTo(out.resolve("sources/test/generated/OrderDto.java"))
+                            .exists());
+        }
+
+        @Test
+        @DisplayName("--json diagnostics from a failed run claim no path under --out")
+        void jsonDiagnosticsOfAFailedRunClaimNoPublishedPath() throws IOException {
+            // Only the annotations on --classpath: the sample sources compile, the generated
+            // wrappers do not, so the run publishes nothing into --out.
+            assertThat(run("generate", "--sources", sources.toString(),
+                    "--classpath", CliTestFixtures.annotationsOnlyClasspath(),
+                    "--out", out.toString(), "--json")).isEqualTo(1);
+            JsonNode report = parseStdout();
+            assertThat(report.get("status").asText()).isEqualTo(JsonOutput.STATUS_ERROR);
+            assertThat(out.resolve("sources")).doesNotExist();
+
+            List<JsonNode> diagnostics = new ArrayList<>();
+            report.get("diagnostics").forEach(diagnostics::add);
+            assertThat(diagnostics).isNotEmpty().allSatisfy(node -> {
+                String source = node.get("source").asText();
+                assertThat(source).doesNotContain(STAGING_PREFIX);
+                assertThat(node.get("message").asText()).doesNotContain(STAGING_PREFIX);
+                // Every path the document names must be one the caller can actually open.
+                assertThat(source.isEmpty() || !Path.of(source).isAbsolute()
+                        || Files.exists(Path.of(source)))
+                        .as("source must not name a file that does not exist: %s", source)
+                        .isTrue();
+            });
+            // The errors are about generated wrappers, named by their relative artifact path.
+            assertThat(diagnostics)
+                    .filteredOn(node -> node.get("source").asText().endsWith("McpTool.java"))
+                    .isNotEmpty()
+                    .allSatisfy(node -> assertThat(Path.of(node.get("source").asText())).isRelative());
         }
 
         @Test

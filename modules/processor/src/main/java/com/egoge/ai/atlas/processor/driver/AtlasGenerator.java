@@ -63,10 +63,15 @@ public final class AtlasGenerator {
     public static final String RESOURCES_DIR = "resources";
     /** Name of the inter-process lock file the driver keeps in the output directory. */
     public static final String LOCK_FILE = ".atlas-lock";
+    /**
+     * Name prefix of the per-run staging directory the driver creates inside the output directory.
+     * It carries a random suffix, lives only for the duration of a run, and never appears in a
+     * {@link GenerationResult} — neither in a {@link GeneratedFile} path nor in a {@link Diagnostic}.
+     */
+    public static final String STAGING_PREFIX = ".atlas-staging";
 
     private static final String CLASSES_DIR = "classes";
     private static final String BACKUP_DIR = "backup";
-    private static final String STAGING_PREFIX = ".atlas-staging";
     private static final String JAVA_SUFFIX = ".java";
     private static final String CLASS_SUFFIX = ".class";
     private static final String OPTION_PREFIX = "-A";
@@ -130,6 +135,7 @@ public final class AtlasGenerator {
         AgenticProcessor processor = new AgenticProcessor();
         Path staging = null;
         boolean success;
+        boolean published = false;
         List<GeneratedFile> files = new ArrayList<>();
         try {
             Files.createDirectories(output);
@@ -160,6 +166,7 @@ public final class AtlasGenerator {
                              StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                      FileLock crossProcess = channel.lock()) {
                     OutputPublisher.publish(stagedSources, stagedResources, sourceOut, resourceOut, backup);
+                    published = true;
                     files.addAll(collectGenerated(sourceOut, true));
                     files.addAll(collectGenerated(resourceOut, false));
                 } finally {
@@ -175,8 +182,15 @@ public final class AtlasGenerator {
         files.sort(Comparator.comparing((GeneratedFile f) -> f.kind().ordinal())
                 .thenComparing(GeneratedFile::relativePath));
 
+        // javac names the file it compiled, which for a generated source is the staged copy — a
+        // randomly-suffixed path that no longer exists by the time the caller reads the result. Only
+        // a run that published can name the surviving copy; a run that published nothing (a failed
+        // compile, or nothing to emit) has no file to point at and says so with a relative path.
+        DiagnosticMapper diagnostics = published
+                ? DiagnosticMapper.republishing(staging, output)
+                : DiagnosticMapper.unpublished(staging);
         return new GenerationResult(success, output, files, findOpenApi(files, processorOptions),
-                collector.getDiagnostics().stream().map(AtlasGenerator::toDiagnostic).toList(),
+                collector.getDiagnostics().stream().map(diagnostics::map).toList(),
                 success ? processor.discoveredServices() : List.of());
     }
 
@@ -245,7 +259,9 @@ public final class AtlasGenerator {
                 .thenComparing(GeneratedFile::relativePath));
 
         return new GenerationResult(success, null, files, findOpenApi(files, processorOptions),
-                collector.getDiagnostics().stream().map(AtlasGenerator::toDiagnostic).toList(),
+                // Nothing is staged here — the in-memory run compiles straight from the caller's
+                // sources, so every diagnostic path is already the one to report.
+                collector.getDiagnostics().stream().map(DiagnosticMapper.passThrough()::map).toList(),
                 success ? processor.discoveredServices() : List.of());
     }
 
@@ -475,15 +491,4 @@ public final class AtlasGenerator {
         }
     }
 
-    private static Diagnostic toDiagnostic(javax.tools.Diagnostic<? extends JavaFileObject> diagnostic) {
-        Diagnostic.Severity severity = switch (diagnostic.getKind()) {
-            case ERROR -> Diagnostic.Severity.ERROR;
-            case WARNING, MANDATORY_WARNING -> Diagnostic.Severity.WARNING;
-            case NOTE -> Diagnostic.Severity.NOTE;
-            default -> Diagnostic.Severity.OTHER;
-        };
-        JavaFileObject source = diagnostic.getSource();
-        return new Diagnostic(severity, diagnostic.getMessage(Locale.ROOT),
-                source == null ? "" : source.getName());
-    }
 }
