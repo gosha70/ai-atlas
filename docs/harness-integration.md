@@ -211,6 +211,10 @@ so the agent can self-correct. Save as `.claude/hooks/atlas-verify.sh` (and `chm
 # Dry-run ai-atlas generation after a Java file edit; report failures back to the agent.
 set -euo pipefail
 
+# Hooks are not guaranteed to run from the project root — anchor every relative default
+# to the project via CLAUDE_PROJECT_DIR (set by Claude Code for all hook commands).
+cd "${CLAUDE_PROJECT_DIR:-.}"
+
 ATLAS_JAR="${ATLAS_JAR:-modules/cli/build/libs/atlas.jar}"
 SOURCES="${ATLAS_SOURCES:-src/main/java}"
 CLASSPATH_FILE="${ATLAS_CLASSPATH_FILE:-build/atlas-classpath.txt}"   # see writeAtlasClasspath
@@ -243,13 +247,18 @@ Register it in the consumer project's `.claude/settings.json`:
       {
         "matcher": "Edit|Write",
         "hooks": [
-          { "type": "command", "command": "bash .claude/hooks/atlas-verify.sh" }
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/atlas-verify.sh" }
         ]
       }
     ]
   }
 }
 ```
+
+The `$CLAUDE_PROJECT_DIR` prefix (provided by Claude Code to every hook command — see the
+[hooks reference](https://code.claude.com/docs/en/hooks)) matters: hooks inherit whatever
+directory the session is in, which need not be the project root. A bare relative path would
+make the script's missing-file guard exit silently instead of running the check.
 
 The same shape works for any harness that can shell out: run `atlas inspect --json` (or
 `generate --json`), branch on the exit code, and parse stdout.
