@@ -27,10 +27,12 @@ import com.egoge.ai.atlas.processor.AgenticProcessor;
 
 import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.ENTITY_SOURCE;
 import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.EXTRA_ENTITY_SOURCE;
+import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.annotationsOnlyClasspath;
 import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.currentClasspath;
 import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.dtoNames;
 import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.generatedSourcesByPath;
 import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.readJavaTree;
+import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.writeRawCollectionSources;
 import static com.egoge.ai.atlas.processor.driver.DriverTestFixtures.writeSampleSources;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -62,6 +64,82 @@ class AtlasGeneratorOutputTest {
         assertThat(result.hasErrors()).isTrue();
         assertThat(result.errors()).first()
                 .satisfies(d -> assertThat(d.source()).endsWith("Broken.java"));
+    }
+
+    @Test
+    void diagnosticsAboutGeneratedSourcesPointAtThePublishedCopy(@TempDir Path sourceDir)
+            throws IOException {
+        writeRawCollectionSources(sourceDir);
+        Path publishedDto = outputDir.resolve(AtlasGenerator.SOURCES_DIR)
+                .resolve("test/generated/OrderDto.java");
+
+        GenerationResult first = generate(sourceDir);
+        // javac reports the generated DTO's raw-Collection mapping as "unchecked or unsafe
+        // operations", naming the file it compiled — the staged copy, which the run then deletes.
+        assertThat(first.diagnostics())
+                .as("fixture must produce a diagnostic about a generated source")
+                .anySatisfy(d -> assertThat(d.source()).endsWith("OrderDto.java"));
+
+        assertThat(first.diagnostics()).allSatisfy(d -> {
+            assertThat(d.source()).doesNotContain(AtlasGenerator.STAGING_PREFIX);
+            assertThat(d.message()).doesNotContain(AtlasGenerator.STAGING_PREFIX);
+        });
+        assertThat(first.diagnostics())
+                .filteredOn(d -> d.source().endsWith("OrderDto.java"))
+                .allSatisfy(d -> {
+                    assertThat(Path.of(d.source()))
+                            .as("a diagnostic's source must exist after the run")
+                            .isEqualTo(publishedDto).exists();
+                    assertThat(d.message()).doesNotContain(AtlasGenerator.STAGING_PREFIX);
+                });
+
+        // The staging suffix is random per run, so leaking it also breaks byte-for-byte comparison
+        // of two --json envelopes over identical inputs.
+        GenerationResult second = generate(sourceDir);
+        assertThat(second.diagnostics()).isEqualTo(first.diagnostics());
+    }
+
+    @Test
+    void aFailedRunNamesGeneratedSourcesItNeverPublished(@TempDir Path sourceDir) throws IOException {
+        writeSampleSources(sourceDir);
+
+        // Without Spring on the classpath the generated wrappers do not compile, so the run
+        // publishes nothing — there is no file under the output directory to point a caller at.
+        GenerationResult result = AtlasGenerator.generate(List.of(sourceDir),
+                annotationsOnlyClasspath(), outputDir);
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.errors()).isNotEmpty();
+        assertThat(result.diagnostics()).allSatisfy(d -> {
+            assertThat(d.source()).doesNotContain(AtlasGenerator.STAGING_PREFIX);
+            assertThat(d.message()).doesNotContain(AtlasGenerator.STAGING_PREFIX);
+        });
+        // A published path would be a lie here: claiming <out>/sources/… when nothing was written
+        // swaps a deleted staging path for a deterministic one that still cannot be opened.
+        assertThat(result.diagnostics())
+                .filteredOn(d -> d.source().endsWith("McpTool.java"))
+                .isNotEmpty()
+                .allSatisfy(d -> {
+                    assertThat(d.source()).isEqualTo(
+                            (AtlasGenerator.SOURCES_DIR + "/test/generated/CustomerServiceMcpTool.java")
+                                    .replace('/', File.separatorChar));
+                    assertThat(Path.of(d.source())).isRelative();
+                });
+        assertThat(outputDir.resolve(AtlasGenerator.SOURCES_DIR)).doesNotExist();
+    }
+
+    @Test
+    void diagnosticsAboutCallerSuppliedSourcesAreLeftAlone(@TempDir Path sourceDir) throws IOException {
+        writeRawCollectionSources(sourceDir);
+
+        GenerationResult result = generate(sourceDir);
+
+        // The PII note on Order.ssn belongs to the caller's own file — not staged, not rewritten.
+        assertThat(result.diagnostics())
+                .filteredOn(d -> d.source().endsWith("Order.java"))
+                .isNotEmpty()
+                .allSatisfy(d -> assertThat(Path.of(d.source()))
+                        .isEqualTo(sourceDir.resolve("test/Order.java")));
     }
 
     @Test
@@ -328,6 +406,15 @@ class AtlasGeneratorOutputTest {
         assertThat(outputDir.resolve(AtlasGenerator.RESOURCES_DIR)
                 .resolve("META-INF/ai-atlas/service-manifest.properties")).doesNotExist();
         assertThat(result.discoveredServices()).contains("test.CustomerService");
+    }
+
+    /** Generates from whatever the caller already wrote into {@code sourceDir}. */
+    private GenerationResult generate(Path sourceDir) {
+        GenerationResult result =
+                AtlasGenerator.generate(List.of(sourceDir), currentClasspath(), outputDir);
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.success()).isTrue();
+        return result;
     }
 
     private GenerationResult generateFromSourceStrings(Path sourceDir) throws IOException {

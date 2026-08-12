@@ -3,7 +3,10 @@
  */
 package com.egoge.ai.atlas.cli;
 
+import com.egoge.ai.atlas.annotations.AgenticEntity;
+
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -62,7 +65,40 @@ final class CliTestFixtures {
             }
             """;
 
+    /**
+     * An entity whose collection is raw-typed. The DTO generated from it maps that collection
+     * through a raw {@code Stream}, so javac emits its mandatory "uses unchecked or unsafe
+     * operations" note naming the <em>generated</em> file — the diagnostic that used to report the
+     * driver's staging path.
+     */
+    static final String RAW_COLLECTION_ENTITY_SOURCE = """
+            package test;
+
+            import com.egoge.ai.atlas.annotations.AgenticEntity;
+            import com.egoge.ai.atlas.annotations.AgenticField;
+            import java.util.ArrayList;
+            import java.util.Collection;
+
+            @AgenticEntity(description = "An order with raw-typed lines")
+            public class Order {
+                @AgenticField(description = "Unique identifier")
+                private Long id;
+
+                @AgenticField(description = "Order lines", type = Customer.class)
+                private Collection lines = new ArrayList<>();
+
+                public Long getId() { return id; }
+                public Collection getLines() { return lines; }
+            }
+            """;
+
     private CliTestFixtures() {
+    }
+
+    /** Adds {@link #RAW_COLLECTION_ENTITY_SOURCE} to a source root {@link #writeSampleSources} filled. */
+    static void writeRawCollectionSource(Path sourceDir) throws IOException {
+        Files.writeString(sourceDir.resolve("test").resolve("Order.java"),
+                RAW_COLLECTION_ENTITY_SOURCE, StandardCharsets.UTF_8);
     }
 
     /** Writes {@link #ENTITY_SOURCE} and {@link #SERVICE_SOURCE} into {@code sourceDir}. */
@@ -83,6 +119,20 @@ final class CliTestFixtures {
     /** The test JVM's classpath, which carries the Spring AI / Spring Web types (FR-005). */
     static String testClasspath() {
         return System.getProperty("java.class.path");
+    }
+
+    /**
+     * A {@code --classpath} carrying the ai-atlas annotations and nothing else. The caller's own
+     * sources compile against it, but the generated wrappers reference Spring AI / Spring Web, so
+     * generation fails on the <em>generated</em> files — the classpath mistake a real caller makes.
+     */
+    static String annotationsOnlyClasspath() {
+        try {
+            return Path.of(AgenticEntity.class.getProtectionDomain()
+                    .getCodeSource().getLocation().toURI()).toString();
+        } catch (URISyntaxException e) {
+            throw new IllegalStateException("Cannot locate the annotations classpath entry", e);
+        }
     }
 
     /**

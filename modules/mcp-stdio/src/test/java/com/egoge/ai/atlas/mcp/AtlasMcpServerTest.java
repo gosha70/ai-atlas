@@ -5,16 +5,12 @@ package com.egoge.ai.atlas.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.modelcontextprotocol.client.McpClient;
-import io.modelcontextprotocol.client.McpSyncClient;
-import io.modelcontextprotocol.client.transport.ServerParameters;
-import io.modelcontextprotocol.client.transport.StdioClientTransport;
-import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
@@ -23,12 +19,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -38,8 +34,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Spring Boot application running. Lists the tools and calls each of the three, asserting every
  * result carries the file manifest and summary an agent reviews before writing (FR-007).
  *
- * <p>One server process serves all the calls, exactly as a harness session would.
+ * <p>One server process serves all the calls, exactly as a harness session would. That sharing is
+ * what {@link #session} guards: everything here goes through it, so a server that stops answering
+ * is reported once, with its stderr, instead of timing out again for every test that follows.
  */
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AtlasMcpServerTest {
 
     /** System property carrying the built {@code atlas-mcp.jar}; set by this module's build. */
@@ -52,7 +51,12 @@ class AtlasMcpServerTest {
      */
     private static final String CHILD_JVM_ARG_PROPERTY = "ai.atlas.mcp.childJvmArg";
 
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(300);
+    /**
+     * Per-request budget. Every call in this class answers in well under a second, so this is a
+     * hang detector, not a work budget: one shared server serves all the tests, so an over-generous
+     * value does not make a wedged server pass — it only multiplies the wait by the tests left.
+     */
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(60);
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -96,7 +100,7 @@ class AtlasMcpServerTest {
 
     private static Path sources;
     private static Path plainSources;
-    private static McpSyncClient client;
+    private static McpServerSession server;
     private static McpSchema.InitializeResult initialized;
 
     @BeforeAll
@@ -116,37 +120,23 @@ class AtlasMcpServerTest {
         assertThat(jar).as("the mcp-stdio build must export the built atlas-mcp.jar to this test")
                 .isNotNull();
 
-        // The spec's .mcp.json launch, verbatim: {"command":"java","args":["-jar","atlas-mcp.jar"]}
-        // — plus the build's JaCoCo agent argument when present, so the child's coverage counts.
-        List<String> args = new ArrayList<>();
-        String childJvmArg = System.getProperty(CHILD_JVM_ARG_PROPERTY);
-        if (childJvmArg != null && !childJvmArg.isBlank()) {
-            args.add(childJvmArg);
-        }
-        args.add("-jar");
-        args.add(jar);
-        ServerParameters launch = ServerParameters.builder(javaExecutable())
-                .args(args.toArray(String[]::new))
-                .build();
-        client = McpClient.sync(new StdioClientTransport(launch,
-                        new JacksonMcpJsonMapper(new ObjectMapper())))
-                .requestTimeout(CALL_TIMEOUT)
-                .build();
-        initialized = client.initialize();
+        server = McpServerSession.start(jar, System.getProperty(CHILD_JVM_ARG_PROPERTY),
+                CALL_TIMEOUT);
+        initialized = server.initialize();
         assertThat(initialized.serverInfo().name()).isEqualTo(AtlasMcpServer.SERVER_NAME);
     }
 
     @AfterAll
     static void disconnect() {
-        if (client != null) {
-            client.closeGracefully();
+        if (server != null) {
+            server.close();
         }
     }
 
     @Test
     @DisplayName("FR-006: the server lists exactly the three atlas tools, each with a schema")
     void listsTheThreeTools() {
-        List<McpSchema.Tool> tools = client.listTools().tools();
+        List<McpSchema.Tool> tools = server.listTools().tools();
 
         assertThat(tools).extracting(McpSchema.Tool::name)
                 .containsExactlyInAnyOrder(AtlasMcpServer.TOOL_INSPECT,
@@ -295,10 +285,9 @@ class AtlasMcpServerTest {
     @DisplayName("atlas_openapi with no annotated types reports the missing document, not a "
             + "bogus zero-diagnostic compile failure")
     void openApiWithoutAnnotationsExplainsTheMissingDocument() throws IOException {
-        McpSchema.CallToolResult result = client.callTool(new McpSchema.CallToolRequest(
-                AtlasMcpServer.TOOL_OPENAPI, Map.of(
-                        AtlasMcpServer.ARG_SOURCES, List.of(plainSources.toString()),
-                        AtlasMcpServer.ARG_CLASSPATH, testClasspath())));
+        McpSchema.CallToolResult result = server.callTool(AtlasMcpServer.TOOL_OPENAPI, Map.of(
+                AtlasMcpServer.ARG_SOURCES, List.of(plainSources.toString()),
+                AtlasMcpServer.ARG_CLASSPATH, testClasspath()));
 
         assertThat(result.isError()).isTrue();
         JsonNode report = MAPPER.readTree(text(result));
@@ -323,11 +312,10 @@ class AtlasMcpServerTest {
         Path priorDto = out.resolve("sources/test/generated/CustomerDto.java");
         assertThat(priorDto).exists();
 
-        McpSchema.CallToolResult result = client.callTool(new McpSchema.CallToolRequest(
-                AtlasMcpServer.TOOL_GENERATE, Map.of(
-                        AtlasMcpServer.ARG_SOURCES, List.of(plainSources.toString()),
-                        AtlasMcpServer.ARG_CLASSPATH, testClasspath(),
-                        AtlasMcpServer.ARG_OUT, out.toString())));
+        McpSchema.CallToolResult result = server.callTool(AtlasMcpServer.TOOL_GENERATE, Map.of(
+                AtlasMcpServer.ARG_SOURCES, List.of(plainSources.toString()),
+                AtlasMcpServer.ARG_CLASSPATH, testClasspath(),
+                AtlasMcpServer.ARG_OUT, out.toString()));
 
         assertThat(result.isError()).isTrue();
         JsonNode report = MAPPER.readTree(text(result));
@@ -347,10 +335,9 @@ class AtlasMcpServerTest {
         Files.writeString(broken.resolve("Broken.java"), "public class Broken { int x = }",
                 StandardCharsets.UTF_8);
 
-        McpSchema.CallToolResult result = client.callTool(new McpSchema.CallToolRequest(
-                AtlasMcpServer.TOOL_INSPECT, Map.of(
-                        AtlasMcpServer.ARG_SOURCES, List.of(broken.toString()),
-                        AtlasMcpServer.ARG_CLASSPATH, testClasspath())));
+        McpSchema.CallToolResult result = server.callTool(AtlasMcpServer.TOOL_INSPECT, Map.of(
+                AtlasMcpServer.ARG_SOURCES, List.of(broken.toString()),
+                AtlasMcpServer.ARG_CLASSPATH, testClasspath()));
 
         assertThat(result.isError()).isTrue();
         JsonNode report = MAPPER.readTree(text(result));
@@ -389,8 +376,7 @@ class AtlasMcpServerTest {
      */
     private static JsonNode assertRejected(String tool, Map<String, Object> arguments)
             throws IOException {
-        McpSchema.CallToolResult result =
-                client.callTool(new McpSchema.CallToolRequest(tool, arguments));
+        McpSchema.CallToolResult result = server.callTool(tool, arguments);
         assertThat(result.isError()).as(arguments.toString()).isTrue();
         JsonNode report = MAPPER.readTree(text(result));
         assertThat(report.get("status").asText()).isEqualTo(AtlasMcpServer.STATUS_ERROR);
@@ -404,8 +390,7 @@ class AtlasMcpServerTest {
 
     /** Calls the tool, asserts the MCP result is not an error, and parses its JSON document. */
     private static JsonNode callOk(String tool, Map<String, Object> arguments) throws IOException {
-        McpSchema.CallToolResult result =
-                client.callTool(new McpSchema.CallToolRequest(tool, arguments));
+        McpSchema.CallToolResult result = server.callTool(tool, arguments);
         String text = text(result);
         assertThat(result.isError()).as(text).isFalse();
         JsonNode report = MAPPER.readTree(text);
