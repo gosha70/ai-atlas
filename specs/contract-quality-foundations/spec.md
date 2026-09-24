@@ -28,7 +28,8 @@ The owner chose the canonical parameter representation (query parameters), the t
 default (SSE; Streamable HTTP opt-in) and the strict-mode switch (one `ai.atlas.strict`
 option) on 2026-09-24; see the origin transcript. Owner review of the first draft (same day)
 added the `void` fix, path-item merging with coverage in both directions, and a two-JDK
-verifier.
+verifier; a second review made `operationId` assignment collision-free against the whole
+document.
 
 ## User Scenarios
 
@@ -67,22 +68,27 @@ verifier.
   arguments and `POST` when it takes any. Operations that share a path MUST be merged into that
   path's single path item, each under its own HTTP method, so no operation replaces another. The
   document MUST contain no operation without a corresponding controller mapping.
-- **FR-002**: Two methods of one service that are exposed on the API channel, active at the
-  configured major, and map to the same HTTP method and path (for example two overloads that both
-  take arguments) MUST be a compile ERROR, reported on each such method element and naming the
-  path, the HTTP method and the other declaration as `fully.qualified.ServiceClass#method`. The
-  generated controller would otherwise fail at application startup with an ambiguous mapping.
+- **FR-002**: Two methods exposed on the API channel and active at the configured major, anywhere in
+  the compilation, that map to the same HTTP method and path MUST be a compile ERROR, reported on
+  each such method element and naming the path, the HTTP method and the other declaration(s) as
+  `fully.qualified.ServiceClass#method`. This covers two overloads of one service that both take
+  arguments, and two services with the same simple name in different packages (paths use the
+  simple name). The generated controllers would otherwise fail at application startup with an
+  ambiguous mapping.
 - **FR-003**: Query parameters are the canonical representation of method arguments. The generated
   controller MUST keep binding each argument with `@RequestParam` (unchanged), and the OpenAPI
   operation MUST describe each argument as a `parameters` entry with `in: query`, the argument's
   name, its schema (the existing Java-type mapping), its description when one is declared, and
   `required: true` (matching `@RequestParam`'s default). The operation MUST NOT declare a
   `requestBody`.
-- **FR-004**: Every `operationId` in the generated OpenAPI document MUST be unique. An operation
-  whose method name is used by no other operation in the document keeps the method name as its
-  `operationId` (unchanged); every operation whose method name is shared with another operation
-  gets `{ServiceSimpleName}_{methodName}_{httpMethod}` in lower-case HTTP method form (for example
-  `OrderService_find_get` and `OrderService_find_post`).
+- **FR-004**: Every `operationId` in the generated OpenAPI document MUST be unique, assigned in
+  two passes. First, every operation whose method name is used by no other operation in the
+  document keeps the method name as its `operationId` (unchanged), and these IDs are reserved.
+  Then the remaining operations, taken in ascending order of (path, lower-case HTTP method), each
+  get the candidate `{ServiceSimpleName}_{methodName}_{httpMethod}` (lower-case HTTP method, for
+  example `OrderService_find_get`); if that candidate is already reserved or assigned, it gets the
+  candidate followed by `_2`, `_3`, … — the smallest suffix not yet taken. Each assigned ID is then
+  reserved. The same input MUST always yield the same IDs.
 - **FR-005**: Every generated OpenAPI operation MUST declare response status `200`, with content
   matching what the generated controller returns: for a generated DTO, `application/json` with the
   DTO schema reference (an array of it for collection, iterable and array returns); for `void`, no
@@ -100,7 +106,12 @@ verifier.
   several arguments; a DTO return; a collection return; a non-DTO return; a `void` method on the
   API channel and on the default channels (the fixture compiles); and an API-only service
   declaring `find()` and `find(Long id)`, whose document holds both the `GET` and `POST`
-  operations under the one shared path with distinct `operationId`s. It MUST also assert that the
+  operations under the one shared path with distinct `operationId`s; that same `find()` /
+  `find(Long id)` service beside another API-only service declaring a uniquely named
+  `OrderService_find_get()`, which keeps `OrderService_find_get` while the overloaded `GET` gets
+  `OrderService_find_get_2`, with every `operationId` in the document distinct; two overloads on
+  one POST path, and two same-named services in different packages, each a compile ERROR at every
+  site (FR-002). It MUST also assert that the
   set of (HTTP method, path) pairs mapped by the generated controllers equals the set of
   operations in the document. (b) A demo integration test MUST read the generated
   `openapi-v{major}.json` from the demo's classpath, assert that every request mapping of every

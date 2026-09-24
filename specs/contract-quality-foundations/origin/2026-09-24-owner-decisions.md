@@ -64,3 +64,29 @@ How the revision answers each:
    overloads on one POST path, which Spring rejects at startup (FR-002, a compile error).
 3. FR-019's verifier is `scripts/build-on-jdk-matrix.sh`, which runs the build with Gradle on JDK 17
    and on JDK 21 and fails when either JDK is missing.
+
+## Owner's second review (same day)
+
+> The revision addresses the original three findings. Both added scope items are justified, but
+> one correctness gap remains before approval:
+>
+> * [P1] The `operationId` naming rule can still produce duplicates. FR-004, lines 81–85 assigns
+> `OrderService_find_get` to an overloaded `OrderService.find()`. Another service can legitimately
+> declare a uniquely named method `OrderService_find_get()`, which must retain that same ID under
+> the rule. Thus the prescribed algorithm contradicts the uniqueness requirement.
+> Reserve all unchanged IDs first, then deterministically disambiguate qualified IDs against the
+> entire document. Add this collision fixture to the required tests.
+>
+> The `void` fixes, path merging, bidirectional coverage, and compile-time rejection of ambiguous
+> mappings are appropriate.
+> The matrix script now invokes both JDK environments, but the reported builds excluding Javadoc
+> do not establish that the full verifier passes. Keep that validation outstanding.
+
+How the revision answers it: FR-004 now assigns IDs in two passes — unchanged (unique) method
+names reserved first, then shared ones in (path, HTTP method) order with the smallest free `_2`,
+`_3`, … suffix whenever the qualified candidate is taken anywhere in the document — and FR-007
+requires the `OrderService_find_get()` fixture. Applying the same reasoning to FR-002 widened the
+ambiguous-mapping check from one service to the whole compilation: paths use the service's simple
+name, so same-named services in different packages collide too. FR-019's full verifier run stays
+outstanding; it could not complete in the authoring sandbox, whose network policy blocks the
+Javadoc link to docs.oracle.com.

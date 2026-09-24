@@ -105,18 +105,23 @@ reads what the build produced, so it needs no second model of the contract.
 **Context**: Three kinds of name clash reach consumers today. Two AI methods with one effective tool
 name (possibly on different services): `McpToolGenerator` runs per service, so no generator call
 sees them all, and Spring AI finds duplicates only at runtime, if at all. Two API methods of one
-service on the same HTTP method and path (overloads that both take arguments): Spring fails at
-startup with an ambiguous mapping. Two operations with one method name: the document gets
-duplicate `operationId`s, which OpenAPI forbids.
+methods on the same HTTP method and path — overloads of one service that both take arguments, or
+two services with the same simple name in different packages, since paths use the simple name:
+Spring fails at startup with an ambiguous mapping. Two operations with one method name: the
+document gets duplicate `operationId`s, which OpenAPI forbids.
 **Decision**: `AgenticProcessor` collects effective tool names and (HTTP method, path) pairs while
 building the service models and reports tool-name collisions (FR-009, FR-010) and duplicate
-mappings (FR-002) as ERRORs on each method element, before generating. `OpenApiGenerator` keeps
-the method name as `operationId` when it is unique in the document and qualifies every shared one
-as `{ServiceSimpleName}_{methodName}_{httpMethod}` (FR-004).
+mappings (FR-002) as ERRORs on each method element, before generating. `OpenApiGenerator` assigns
+`operationId`s in two passes (FR-004): method names used by one operation only are kept and
+reserved first; then the shared ones, in (path, HTTP method) order, get
+`{ServiceSimpleName}_{methodName}_{httpMethod}`, or that plus the smallest free `_2`, `_3`, … when
+the candidate is already taken. Owner review showed why the second pass must check the whole
+document: a service may legitimately declare a method literally named `OrderService_find_get`,
+whose unchanged ID would otherwise equal a qualified one.
 **Consequences**: Collisions across services compiled in *separate* compilations (different modules)
 are not detected; that needs the Contract IR (Phase 2). Documents whose `operationId`s were
-duplicated (already invalid OpenAPI) get qualified IDs; unique IDs are unchanged. The changelog
-says so.
+duplicated (already invalid OpenAPI) get qualified IDs, deterministically; unique IDs are
+unchanged. The changelog says so.
 
 ### ADR-4: One strict-mode option, validated once
 
