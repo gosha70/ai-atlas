@@ -128,6 +128,13 @@ public final class AtlasMcpServer {
                 // tools(false): the tool list is static, so listChanged notifications are
                 // neither supported nor advertised.
                 .capabilities(McpSchema.ServerCapabilities.builder().tools(false).build())
+                // Run each tool call on the transport's own stdin-reading thread instead of
+                // offloading it to a boundedElastic worker. The stdio transport enqueues every
+                // response into a single-producer sink with tryEmitNext and silently drops it
+                // when two threads emit at once — which offloading makes possible whenever a
+                // fast call's worker races the previous call's still-returning worker. One
+                // emitting thread makes that impossible; calls are handled in arrival order.
+                .immediateExecution(true)
                 .tools(inspectTool(), generateTool(), openApiTool())
                 .build();
         Runtime.getRuntime().addShutdownHook(new Thread(server::closeGracefully, "atlas-mcp-shutdown"));
