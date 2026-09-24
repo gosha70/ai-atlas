@@ -32,3 +32,35 @@ directly, the owner chose:
 | What should the first feature cover? | **Phase 0 + all three Phase 1 items** — REST/OpenAPI consistency, tool-name collision detection, missing-description diagnostics, Streamable HTTP. |
 | Streamable HTTP: which transport is the runtime default? | **SSE stays the default; Streamable HTTP is opt-in.** |
 | How is "strict mode" switched on? | **One `ai.atlas.strict` processor option**, reused by later epic items. |
+
+## Owner review of the first draft (same day)
+
+The owner reviewed the draft bundle against the current generators and asked for these
+revisions before approving an unattended build, verbatim:
+
+> 1. [P1] `void` support conflicts with the prohibition on controller changes. plan.md (line 72)
+> leaves `RestControllerGenerator` unchanged, while FR-003 requires `void` responses. The generator
+> currently emits `return service.method(...)` even for `void`, which does not compile. Allow a
+> targeted generator fix and require a compile-testing fixture for a void-returning API method.
+> 2. [P1] The consistency tasks miss dropped operations on shared paths. tasks.md (line 14) should
+> include an API-only service with `find()` and `find(Long id)`. Its controller has valid GET and
+> POST mappings at the same path, but `OpenApiGenerator.addServicePaths` replaces the entire
+> `PathItem`, losing one operation. Calling every documented operation cannot detect the omission.
+> Add a task to merge verbs into existing path items and assert controller-to-document coverage
+> as well.
+> 3. [P2] The JDK matrix requirement has only a single-environment verifier. verification.yaml
+> (line 110) requires builds on JDK 17 and 21, but maps that requirement to one `./gradlew build`.
+> Require evidence from both CI matrix legs, or an executable verifier that explicitly runs both
+> environments.
+
+How the revision answers each:
+
+1. FR-006 allows exactly one generated-code change — `void` methods — in both
+   `RestControllerGenerator` and `McpToolGenerator`, which share the defect; FR-007 requires the
+   compile-testing fixture, on the API channel and on the default channels.
+2. FR-001 requires merging into the existing path item; FR-007 requires the `find()` /
+   `find(Long id)` fixture and two-way coverage at compile time and at runtime. Merging surfaces
+   two consequences the fixture would otherwise hit: duplicate `operationId`s (FR-004) and two
+   overloads on one POST path, which Spring rejects at startup (FR-002, a compile error).
+3. FR-019's verifier is `scripts/build-on-jdk-matrix.sh`, which runs the build with Gradle on JDK 17
+   and on JDK 21 and fails when either JDK is missing.

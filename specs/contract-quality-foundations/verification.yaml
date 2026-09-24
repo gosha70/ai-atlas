@@ -18,98 +18,116 @@ status: draft
 feature_id: contract-quality-foundations
 
 FR-001:
-  statement: "For every method the processor exposes on the API channel and that is active at the configured `ai.atlas.api.major`, the generated OpenAPI document MUST contain exactly one operation, under the same path and HTTP method as the generated controller's mapping: path `{apiBasePath}/v{major}/{kebab-case service}/{kebab-case method}`, `GET` when the method takes no arguments and `POST` when it takes any. The document MUST contain no operation without a corresponding controller mapping."
-  statement_sha: "sha256:3aaf52d8859183d4130343441c2fb4feaddd38b4023d4eb4a61e436bd199fa5a"
+  statement: "For every method the processor exposes on the API channel and that is active at the configured `ai.atlas.api.major`, the generated OpenAPI document MUST contain exactly one operation, under the same path and HTTP method as the generated controller's mapping: path `{apiBasePath}/v{major}/{kebab-case service}/{kebab-case method}`, `GET` when the method takes no arguments and `POST` when it takes any. Operations that share a path MUST be merged into that path's single path item, each under its own HTTP method, so no operation replaces another. The document MUST contain no operation without a corresponding controller mapping."
+  statement_sha: "sha256:21920d61d5a3c6ae66715fa7e967d8d5656e6763ab59ed32f690ed3047c67095"
   verifiers:
     - kind: deterministic
       test: "./gradlew :modules:processor:test --tests '*RestOpenApiConsistencyTest'"
 FR-002:
-  statement: "Query parameters are the canonical representation of method arguments. The generated controller MUST keep binding each argument with `@RequestParam` (unchanged), and the OpenAPI operation MUST describe each argument as a `parameters` entry with `in: query`, the argument's name, its schema (the existing Java-type mapping), its description when one is declared, and `required: true` (matching `@RequestParam`'s default). The operation MUST NOT declare a `requestBody`."
-  statement_sha: "sha256:6b5f11724832725edb56b0cd195f3c0ba2b45562da2e0a4c0f20b3ce05613d13"
-  verifiers:
-    - kind: deterministic
-      test: "./gradlew :modules:processor:test --tests '*RestOpenApiConsistencyTest' --tests '*OpenApiGeneratorTest'"
-FR-003:
-  statement: "Every generated OpenAPI operation MUST declare response status `200`, with content matching what the generated controller returns: for a generated DTO, `application/json` with the DTO schema reference (an array of it for collection, iterable and array returns); for `void`, no content; for `String`, `text/plain` with a string schema; for a boxed or primitive number or boolean, `application/json` with the mapped scalar schema; for a collection or array of those, `application/json` with an array of the mapped scalar schema; for any other type, `application/json` with an object schema."
-  statement_sha: "sha256:766c663e323cc8c668eb4c8ecb48c6bb0001ca571ef007605a4984390aa86f11"
+  statement: "Two methods of one service that are exposed on the API channel, active at the configured major, and map to the same HTTP method and path (for example two overloads that both take arguments) MUST be a compile ERROR, reported on each such method element and naming the path, the HTTP method and the other declaration as `fully.qualified.ServiceClass#method`. The generated controller would otherwise fail at application startup with an ambiguous mapping."
+  statement_sha: "sha256:4d6937625b81d0ab995b85a328011f36d0c5191cb888384afea6ce4ecb3674de"
   verifiers:
     - kind: deterministic
       test: "./gradlew :modules:processor:test --tests '*RestOpenApiConsistencyTest'"
+FR-003:
+  statement: "Query parameters are the canonical representation of method arguments. The generated controller MUST keep binding each argument with `@RequestParam` (unchanged), and the OpenAPI operation MUST describe each argument as a `parameters` entry with `in: query`, the argument's name, its schema (the existing Java-type mapping), its description when one is declared, and `required: true` (matching `@RequestParam`'s default). The operation MUST NOT declare a `requestBody`."
+  statement_sha: "sha256:0fc9bda7dd74d1f6f0d5dd8ec68a428d28d15097a0664747178e3b6955d93924"
+  verifiers:
+    - kind: deterministic
+      test: "./gradlew :modules:processor:test --tests '*RestOpenApiConsistencyTest' --tests '*OpenApiGeneratorTest'"
 FR-004:
-  statement: "A demo integration test MUST read the generated `openapi-v{major}.json` from the demo's classpath and call every operation it describes against the running demo controllers (MockMvc), placing each argument where the document says (query parameters with representative values), and MUST assert that each call is answered with the documented status and a response `Content-Type` compatible with the documented media type. A processor golden test MUST pin the generated controller and OpenAPI operation for representative methods: no arguments, one scalar argument, several arguments, a DTO return, a collection return and a non-DTO return."
-  statement_sha: "sha256:ad018b7cf42ea72780d1ce66b415d4663b2c910221749e68883332774abe6c72"
+  statement: "Every `operationId` in the generated OpenAPI document MUST be unique. An operation whose method name is used by no other operation in the document keeps the method name as its `operationId` (unchanged); every operation whose method name is shared with another operation gets `{ServiceSimpleName}_{methodName}_{httpMethod}` in lower-case HTTP method form (for example `OrderService_find_get` and `OrderService_find_post`)."
+  statement_sha: "sha256:2562859c2cc7d18cbeddc75a0be22ae76a4432dd093d006942153eec83244118"
+  verifiers:
+    - kind: deterministic
+      test: "./gradlew :modules:processor:test --tests '*RestOpenApiConsistencyTest'"
+FR-005:
+  statement: "Every generated OpenAPI operation MUST declare response status `200`, with content matching what the generated controller returns: for a generated DTO, `application/json` with the DTO schema reference (an array of it for collection, iterable and array returns); for `void`, no content; for `String`, `text/plain` with a string schema; for a boxed or primitive number or boolean, `application/json` with the mapped scalar schema; for a collection or array of those, `application/json` with an array of the mapped scalar schema; for any other type, `application/json` with an object schema."
+  statement_sha: "sha256:ac0e507be68d45ac735c3ebc6ce53ab0ecab5c705af876589b5f48db4e49587b"
+  verifiers:
+    - kind: deterministic
+      test: "./gradlew :modules:processor:test --tests '*RestOpenApiConsistencyTest'"
+FR-006:
+  statement: "A `void` service method exposed on any channel MUST produce generated code that compiles: the generated REST controller method and the generated MCP tool method MUST be `void` and call the service without returning its result. This is the only change to the generated controllers and tools in Phase 0; non-`void` methods are generated byte-identically to before."
+  statement_sha: "sha256:be0cec264a19be6b5e12add6ee1844a0f9d2cd15db4afa1ee69e1325a608ac85"
+  verifiers:
+    - kind: deterministic
+      test: "./gradlew :modules:processor:test --tests '*RestOpenApiConsistencyTest' --tests '*AtlasGeneratorGoldenTest' --tests '*RestControllerGeneratorTest' --tests '*McpToolGeneratorTest'"
+FR-007:
+  statement: "Consistency MUST be tested in both directions and at both levels. (a) A processor compile-testing golden test MUST compile representative services and pin each generated controller mapping beside its OpenAPI operation, covering: no arguments; one scalar argument; several arguments; a DTO return; a collection return; a non-DTO return; a `void` method on the API channel and on the default channels (the fixture compiles); and an API-only service declaring `find()` and `find(Long id)`, whose document holds both the `GET` and `POST` operations under the one shared path with distinct `operationId`s. It MUST also assert that the set of (HTTP method, path) pairs mapped by the generated controllers equals the set of operations in the document. (b) A demo integration test MUST read the generated `openapi-v{major}.json` from the demo's classpath, assert that every request mapping of every generated controller in the running demo has a documented operation and every documented operation has a mapping, and call every documented operation (MockMvc) with each argument placed where the document says, asserting the documented status and a response `Content-Type` compatible with the documented media type."
+  statement_sha: "sha256:8448de24a7973021ff9b956952b8272d725195df36ad6a762d392ca52ef83caf"
   verifiers:
     - kind: deterministic
       test: "./gradlew :demo:test --tests '*OpenApiRuntimeConsistencyTest' && ./gradlew :modules:processor:test --tests '*RestOpenApiConsistencyTest'"
-FR-005:
-  statement: "The correction MUST be declared, not silent: `CHANGELOG.md` MUST gain, under `[Unreleased]`, an entry whose heading contains the text `REST parameters are query parameters`, stating that query parameters are canonical, that the REST wire format of running controllers is unchanged, and that clients generated from an earlier OpenAPI document (which described a JSON request body) must be regenerated. `docs/annotation-guide.md` and `docs/processor-internals.md`, where they describe the generated REST controller, MUST state that method arguments are query parameters in both the controller and the OpenAPI document."
-  statement_sha: "sha256:0e18d59f2ec7410328bb4528f1cf343e8f201f2f1a8be5eefca1140deb1baf63"
+FR-008:
+  statement: "The correction MUST be declared, not silent: `CHANGELOG.md` MUST gain, under `[Unreleased]`, an entry whose heading contains the text `REST parameters are query parameters`, stating that query parameters are canonical, that the REST wire format of running controllers is unchanged, that clients generated from an earlier OpenAPI document (which described a JSON request body) must be regenerated, that operations previously lost on shared paths now appear, and that duplicate method names now yield qualified `operationId`s. `docs/annotation-guide.md` and `docs/processor-internals.md`, where they describe the generated REST controller, MUST state that method arguments are query parameters in both the controller and the OpenAPI document."
+  statement_sha: "sha256:893385c33335d91d5d9a742923d91a6e667c55e912382b30565702aab2838505"
   verifiers:
     - kind: deterministic
       test: "grep -q 'REST parameters are query parameters' CHANGELOG.md && grep -qi 'query parameter' docs/annotation-guide.md && grep -qi 'query parameter' docs/processor-internals.md"
-FR-006:
-  statement: "The processor MUST compute the effective MCP tool name (the method's explicit `toolName` when non-empty, else the method name) of every method exposed on the AI channel and active at the configured `ai.atlas.api.major`, across all services in the compilation, and MUST report a compile ERROR when two or more such methods share an effective name. Overloads of one method in one class count as a collision."
-  statement_sha: "sha256:d5523a1a127f539210c105d017ae718759080738e3e15f467e27cec465775b8b"
-  verifiers:
-    - kind: deterministic
-      test: "./gradlew :modules:processor:test --tests '*ToolNameCollisionTest'"
-FR-007:
-  statement: "The collision ERROR MUST be reported on each conflicting method element, and each message MUST name the colliding tool name, list the other declaration(s) as `fully.qualified.ServiceClass#method`, and state that an explicit `toolName` on `@AgenticExposed` resolves it."
-  statement_sha: "sha256:8880d79ea95c7fa85e3f9712c07f848bedee92dca9a0b606ea53203334f618ca"
-  verifiers:
-    - kind: deterministic
-      test: "./gradlew :modules:processor:test --tests '*ToolNameCollisionTest'"
-FR-008:
-  statement: "Non-colliding effective tool names MUST be unchanged: the generated `@Tool(name = …)` of a method that does not collide is byte-identical to the output before this feature. Methods that are not on the AI channel, or not active at the configured major, MUST NOT take part in the collision check."
-  statement_sha: "sha256:bca32798b3279b1d9d03e393d42f9283060acea3c31ab326ba3d0f84f7f13864"
-  verifiers:
-    - kind: deterministic
-      test: "./gradlew :modules:processor:test --tests '*ToolNameCollisionTest' && ./gradlew :modules:processor:test --tests '*AtlasGeneratorGoldenTest'"
 FR-009:
+  statement: "The processor MUST compute the effective MCP tool name (the method's explicit `toolName` when non-empty, else the method name) of every method exposed on the AI channel and active at the configured `ai.atlas.api.major`, across all services in the compilation, and MUST report a compile ERROR when two or more such methods share an effective name. Overloads of one method in one class count as a collision."
+  statement_sha: "sha256:d0d3336754304e8df27240cadc74bc3182c9b885da225e70f2f079101aa02b7d"
+  verifiers:
+    - kind: deterministic
+      test: "./gradlew :modules:processor:test --tests '*ToolNameCollisionTest'"
+FR-010:
+  statement: "The collision ERROR MUST be reported on each conflicting method element, and each message MUST name the colliding tool name, list the other declaration(s) as `fully.qualified.ServiceClass#method`, and state that an explicit `toolName` on `@AgenticExposed` resolves it."
+  statement_sha: "sha256:f927de2901dcf0943f3a1ace7a38bdf16bbb6d5d021ea1a1874841482f1e0216"
+  verifiers:
+    - kind: deterministic
+      test: "./gradlew :modules:processor:test --tests '*ToolNameCollisionTest'"
+FR-011:
+  statement: "Non-colliding effective tool names MUST be unchanged: the generated `@Tool(name = …)` of a method that does not collide is byte-identical to the output before this feature. Methods that are not on the AI channel, or not active at the configured major, MUST NOT take part in the collision check."
+  statement_sha: "sha256:36fbbdda7a9c40c139843008d890550584880a33aae314a45bc788c4678093a0"
+  verifiers:
+    - kind: deterministic
+      test: "./gradlew :modules:processor:test --tests '*ToolNameCollisionTest' --tests '*AtlasGeneratorGoldenTest'"
+FR-012:
   statement: "For every method exposed on the AI channel and active at the configured major whose own `@AgenticExposed` has no non-empty `description`, the processor MUST emit a WARNING on the method that names it as `fully.qualified.ServiceClass#method`, gives its effective tool name, and says which fallback was used (the class-level description, or `Invokes <method>`)."
-  statement_sha: "sha256:1067e86b2f6b366fc06b55a3ae949af76999dbb0449d90fe40a0a751608edb21"
+  statement_sha: "sha256:cf4463461d5f0fc7b5f88f29ba61ad7fdd7c0e61d6ae2e7dd11804c363b876bb"
   verifiers:
     - kind: deterministic
       test: "./gradlew :modules:processor:test --tests '*ToolDescriptionDiagnosticTest'"
-FR-010:
-  statement: "The processor MUST accept a new option `ai.atlas.strict` (`true` or `false`, case insensitive, default `false`), declared in `@SupportedOptions` and exposed by the Gradle plugin's `agentic { }` extension. When it is `true`, the FR-009 diagnostic MUST be reported as an ERROR instead of a WARNING. Any other value MUST be a compile ERROR that names the option and the value."
-  statement_sha: "sha256:7a67e9202ea3a090d75bf810c0eea268fc955764142097e8683fddee48eb5a8d"
+FR-013:
+  statement: "The processor MUST accept a new option `ai.atlas.strict` (`true` or `false`, case insensitive, default `false`), declared in `@SupportedOptions` and exposed by the Gradle plugin's `agentic { }` extension. When it is `true`, the FR-012 diagnostic MUST be reported as an ERROR instead of a WARNING. Any other value MUST be a compile ERROR that names the option and the value."
+  statement_sha: "sha256:61cc45f0126225457e92e4da6344deb687f4ca0ad89f529db3a8cfaed65a8080"
   verifiers:
     - kind: deterministic
       test: "./gradlew :modules:processor:test --tests '*ToolDescriptionDiagnosticTest' && ./gradlew :modules:gradle-plugin:test"
-FR-011:
-  statement: "Methods exposed only on the API channel MUST NOT produce the FR-009 diagnostic, and the generated MCP tool descriptions MUST keep carrying their version and deprecation guidance unchanged."
-  statement_sha: "sha256:ee64b23d25a48d75a8de3a0bce5b4380957d2aa747a57510be685451aeae17e2"
+FR-014:
+  statement: "Methods exposed only on the API channel MUST NOT produce the FR-012 diagnostic, and the generated MCP tool descriptions MUST keep carrying their version and deprecation guidance unchanged."
+  statement_sha: "sha256:31c80da0a09b9f3d53538167057b2e174ab19c4b9943c925883775660b9d7f76"
   verifiers:
     - kind: deterministic
-      test: "./gradlew :modules:processor:test --tests '*ToolDescriptionDiagnosticTest' && ./gradlew :modules:processor:test --tests '*McpToolGeneratorTest'"
-FR-012:
+      test: "./gradlew :modules:processor:test --tests '*ToolDescriptionDiagnosticTest' --tests '*McpToolGeneratorTest'"
+FR-015:
   statement: "The demo module MUST compile with no ai-atlas WARNING: every AI-exposed demo method that lacks a method-level description (e.g. `OrderService.findByStatus`) gains one."
-  statement_sha: "sha256:76ab4a41ebe1340091bee2c281ee3c8a075eeb203243de2e4b5362efcd587995"
+  statement_sha: "sha256:0e16a383f8acf2075423ba2a691522b90e648ac12848c87523e51552fa1369ef"
   verifiers:
     - kind: deterministic
       test: "scripts/check-demo-no-atlas-warnings.sh"
-FR-013:
+FR-016:
   statement: "With `spring.ai.mcp.server.protocol=STREAMABLE`, an application using the ai-atlas runtime MUST serve the Atlas-generated tools over MCP Streamable HTTP at Spring AI's streamable endpoint (default `/mcp`), and an MCP `tools/list` over that transport MUST return the same tool names as the SSE transport returns for the same application."
-  statement_sha: "sha256:1e50623ae5f4741bb6736f94de7b1cd6beceb16d8a37b810a3ed18aefe7ae43b"
+  statement_sha: "sha256:798caf3a4d88828545673f6216014c663185015c5884e201bae979e64937f679"
   verifiers:
     - kind: deterministic
       test: "./gradlew :modules:runtime:test --tests '*StreamableHttpTransportTest'"
-FR-014:
+FR-017:
   statement: "With no `spring.ai.mcp.server.protocol` set, the runtime MUST keep serving over SSE (`GET /sse`, `POST /mcp/message`) exactly as before; `SseUnchangedTest` MUST pass unmodified."
-  statement_sha: "sha256:9d455d316403974e3c8893772f14ee0aa682cb18ad8f145b319b6c75f7bc194f"
+  statement_sha: "sha256:b1a64b2584969dfd6b6619aa35d62c9453ff594914b5438a494c005612e5ab5a"
   verifiers:
     - kind: deterministic
       test: "./gradlew :modules:runtime:test --tests '*SseUnchangedTest'"
-FR-015:
+FR-018:
   statement: "`docs/harness-integration.md` MUST describe both HTTP transports, the property that selects one, that SSE is the default, and the Streamable HTTP endpoint; the demo's `application.yml` MUST show the property, commented out. The standalone STDIO server (`modules/mcp-stdio`) MUST be unchanged, with its tests passing."
-  statement_sha: "sha256:706a817dddd8bd8127ff2a22466f9609d0791e82ebc5a421fca299984678fb7a"
+  statement_sha: "sha256:828031622d31065cd8edd344a01807f9187efbaf52d56ab573753a65ba220de1"
   verifiers:
     - kind: deterministic
       test: "grep -q 'STREAMABLE' docs/harness-integration.md && grep -q 'protocol: STREAMABLE' demo/src/main/resources/application.yml && ./gradlew :modules:mcp-stdio:test"
-FR-016:
-  statement: "`./gradlew build` MUST pass on JDK 17 and JDK 21, the same matrix CI runs."
-  statement_sha: "sha256:0761fe9d990168a956666c657d9561b2b23ace46933ef48f81ecdadad81c72cc"
+FR-019:
+  statement: "`./gradlew build` MUST pass with Gradle run on JDK 17 and, separately, on JDK 21 — the two legs of the CI matrix. The verifier MUST run both builds itself, each with `JAVA_HOME` set to that JDK, and MUST fail (not skip) when either JDK cannot be found."
+  statement_sha: "sha256:e62a78e68a0c18d673c080aa27c21e14df79b77024796cd88a543d68121d9dcc"
   verifiers:
     - kind: deterministic
-      test: "./gradlew build"
+      test: "scripts/build-on-jdk-matrix.sh"
