@@ -58,6 +58,11 @@ class AtlasMcpServerTest {
      */
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(60);
 
+    /** Calls in the back-to-back burst; each rejection answers in about a millisecond. */
+    private static final int RAPID_CALLS = 300;
+    /** One real compile per this many calls in the burst, so the burst is not only rejections. */
+    private static final int RAPID_CALLS_PER_COMPILE = 50;
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static final String ENTITY_SOURCE = """
@@ -344,6 +349,27 @@ class AtlasMcpServerTest {
         assertThat(report.get("summary").asText())
                 .matches("Generation failed with [1-9]\\d* error diagnostic\\(s\\).*");
         assertThat(report.get("diagnostics")).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("back-to-back calls are all answered — no response is dropped between them")
+    void rapidSequentialCallsAreAllAnswered() throws IOException {
+        // The stdio transport drops a response when two threads emit into it at once. With tool
+        // calls offloaded to worker threads, a fast rejection could race the previous call's
+        // worker and lose its reply, wedging the session; that is what timed this class out on
+        // macOS CI. A race cannot be forced from here, but a burst of instant rejections, with a
+        // real compile in the mix, hits that window far more often than the tests above do — on
+        // a contended runner the unfixed server lost a reply within a few hundred such calls.
+        Map<String, Object> missingOut = Map.of(
+                AtlasMcpServer.ARG_SOURCES, List.of(sources.toString()),
+                AtlasMcpServer.ARG_CLASSPATH, testClasspath());
+        for (int call = 0; call < RAPID_CALLS; call++) {
+            if (call % RAPID_CALLS_PER_COMPILE == 0) {
+                callOk(AtlasMcpServer.TOOL_INSPECT, missingOut);
+            } else {
+                assertRejected(AtlasMcpServer.TOOL_GENERATE, missingOut);
+            }
+        }
     }
 
     @Test
