@@ -94,7 +94,7 @@ FR-013:
   statement_sha: "sha256:61cc45f0126225457e92e4da6344deb687f4ca0ad89f529db3a8cfaed65a8080"
   verifiers:
     - kind: deterministic
-      test: "./gradlew :modules:processor:test --tests '*ToolDescriptionDiagnosticTest' && ./gradlew :modules:gradle-plugin:test"
+      test: "./gradlew :modules:processor:test --tests '*ToolDescriptionDiagnosticTest' && ./gradlew :modules:gradle-plugin:functionalTest"
 FR-014:
   statement: "Methods exposed only on the API channel MUST NOT produce the FR-012 diagnostic, and the generated MCP tool descriptions MUST keep carrying their version and deprecation guidance unchanged."
   statement_sha: "sha256:31c80da0a09b9f3d53538167057b2e174ab19c4b9943c925883775660b9d7f76"

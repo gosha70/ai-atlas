@@ -42,6 +42,7 @@ public class AgenticPlugin implements Plugin<Project> {
         extension.getApiMajorVersion().convention(1);
         extension.getOpenApiInfoVersion().convention(
                 extension.getApiMajorVersion().map(major -> major + ".0.0"));
+        extension.getStrict().convention(false);
 
         // Add dependencies and processor options after evaluation (so extension values are resolved)
         project.afterEvaluate(p -> {
@@ -86,6 +87,7 @@ public class AgenticPlugin implements Plugin<Project> {
             args.add("-Aai.atlas.api.basePath=" + extension.getApiBasePath().get());
             args.add("-Aai.atlas.api.major=" + extension.getApiMajorVersion().get());
             args.add("-Aai.atlas.openapi.infoVersion=" + extension.getOpenApiInfoVersion().get());
+            args.add("-Aai.atlas.strict=" + extension.getStrict().get());
         });
     }
 

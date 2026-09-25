@@ -4,14 +4,17 @@
 package com.egoge.ai.atlas.processor.util;
 
 import com.egoge.ai.atlas.annotations.AgenticExposed;
+import com.egoge.ai.atlas.processor.model.ServiceModel;
 
 import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.MirroredTypeException;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.type.WildcardType;
+import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 
 /**
@@ -22,6 +25,27 @@ import javax.lang.model.util.Types;
 public final class ReturnTypeValidator {
 
     private ReturnTypeValidator() {
+    }
+
+    /** Classifies the method's return type shape for mapping-code generation. */
+    public static ServiceModel.ReturnKind resolveReturnKind(ExecutableElement method,
+                                                            Types typeUtils, Elements elementUtils) {
+        TypeMirror returnType = method.getReturnType();
+        if (returnType.getKind() == TypeKind.ARRAY) {
+            return ServiceModel.ReturnKind.ARRAY;
+        }
+        TypeMirror erasedReturn = typeUtils.erasure(returnType);
+        TypeElement collectionEl = elementUtils.getTypeElement("java.util.Collection");
+        if (collectionEl != null
+                && typeUtils.isAssignable(erasedReturn, typeUtils.erasure(collectionEl.asType()))) {
+            return ServiceModel.ReturnKind.COLLECTION;
+        }
+        TypeElement iterableEl = elementUtils.getTypeElement("java.lang.Iterable");
+        if (iterableEl != null
+                && typeUtils.isAssignable(erasedReturn, typeUtils.erasure(iterableEl.asType()))) {
+            return ServiceModel.ReturnKind.ITERABLE;
+        }
+        return ServiceModel.ReturnKind.NONE;
     }
 
     /**

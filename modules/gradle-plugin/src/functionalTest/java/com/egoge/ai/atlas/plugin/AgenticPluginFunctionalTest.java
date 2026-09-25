@@ -20,6 +20,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class AgenticPluginFunctionalTest {
 
+    private static final String MISSING_DESCRIPTION_PREFIX = "[ai-atlas] test.OrderService#findAll";
+    private static final String MISSING_DESCRIPTION = "has no description of its own";
+
     @TempDir
     File projectDir;
 
@@ -106,6 +109,65 @@ class AgenticPluginFunctionalTest {
         assertThat(result.getOutput()).contains("impl: com.egoge:ai-atlas-annotations:0.1.0");
         assertThat(result.getOutput()).contains("apt: com.egoge:ai-atlas-processor:0.1.0");
         assertThat(result.getOutput()).contains("impl: com.egoge:ai-atlas-runtime:0.1.0");
+    }
+
+    @Test
+    void strictModeFailsBuildOnMissingToolDescription() throws IOException {
+        writeServiceProject("strict.set(true)");
+
+        BuildResult result = createRunner("compileJava").buildAndFail();
+        assertThat(result.getOutput()).contains("error: " + MISSING_DESCRIPTION_PREFIX);
+        assertThat(result.getOutput()).contains(MISSING_DESCRIPTION);
+        assertThat(result.getOutput()).contains("BUILD FAILED");
+    }
+
+    @Test
+    void defaultModeWarnsOnMissingToolDescription() throws IOException {
+        writeServiceProject("");
+
+        BuildResult result = createRunner("compileJava").build();
+        assertThat(result.getOutput()).contains("warning: " + MISSING_DESCRIPTION_PREFIX);
+        assertThat(result.getOutput()).contains(MISSING_DESCRIPTION);
+        assertThat(result.getOutput()).contains("BUILD SUCCESSFUL");
+    }
+
+    /**
+     * Writes a consumer project whose AI-exposed method has no description of its own, resolving
+     * the AI-ATLAS modules from the build-local repository this build published them to.
+     */
+    private void writeServiceProject(String agenticSettings) throws IOException {
+        String repo = System.getProperty("ai.atlas.functionalTest.repo").replace('\\', '/');
+        String version = System.getProperty("ai.atlas.functionalTest.version");
+        writeFile("build.gradle.kts", """
+                plugins {
+                    id("com.egoge.ai-atlas")
+                }
+
+                repositories {
+                    maven { url = uri("%s") }
+                    mavenCentral()
+                }
+
+                agentic {
+                    version.set("%s")
+                    %s
+                }
+                """.formatted(repo, version, agenticSettings));
+
+        File serviceDir = new File(projectDir, "src/main/java/test");
+        Files.createDirectories(serviceDir.toPath());
+        Files.writeString(new File(serviceDir, "OrderService.java").toPath(), """
+                package test;
+
+                import com.egoge.ai.atlas.annotations.AgenticExposed;
+
+                public class OrderService {
+                    @AgenticExposed
+                    public String findAll() {
+                        return null;
+                    }
+                }
+                """);
     }
 
     private GradleRunner createRunner(String... tasks) {

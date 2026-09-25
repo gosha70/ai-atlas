@@ -138,15 +138,20 @@ Produces a Spring `@Service` class with:
 Produces a Spring `@RestController` with:
 - `@RequestMapping("/api/v1/{service-kebab-case}")`
 - Methods with no parameters use `@GetMapping`, with parameters use `@PostMapping`
-- Parameters annotated with `@RequestParam`
+- Parameters annotated with `@RequestParam`: method arguments are query parameters, in the controller and in the OpenAPI document alike
 - Same DTO mapping logic as MCP tools
+- `void` methods generate `void` endpoints that call the service as a statement
 - Only methods with `channels` containing `API` are included; AI-only methods are skipped
+- `AgenticProcessor` reports a compile error on every method whose (HTTP method, path) another method in the compilation also maps to
 
 ### OpenApiGenerator
 
 Produces `META-INF/openapi/openapi.json` (OpenAPI 3.0.3) using swagger-models:
 - Schema definitions from entity DTOs with property types and enum constraints
-- Path definitions from service methods with request/response bodies (only methods with `API` channel)
+- One operation per controller mapping (only methods with `API` channel); operations sharing a path are merged into one path item
+- Method arguments as query parameters (`in: query`, `required: true`), matching the controller's `@RequestParam`; no `requestBody`
+- `operationId` is the method name when unique in the document; otherwise `{Service}_{method}_{httpMethod}`, plus the smallest free `_2`, `_3`, … if taken
+- Response `200` content per return type: DTO (or array of DTO) as `application/json`, `String` as `text/plain`, numbers/booleans (or arrays of them) as `application/json`, `void` with no content, anything else as a JSON object
 - Java-to-OpenAPI type mapping (Long→int64, Integer→int32, etc.)
 
 ## Key Implementation Details

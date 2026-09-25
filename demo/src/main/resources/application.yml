@@ -9,6 +9,9 @@ spring:
       server:
         name: ai-atlas-demo
         version: 0.1.0
+        # MCP HTTP transport: SSE (GET /sse) by default. Uncomment to serve over
+        # Streamable HTTP at /mcp instead.
+        # protocol: STREAMABLE
 
 ai:
   atlas:

@@ -42,6 +42,22 @@ public final class AttributeResolver {
         return "Invokes " + methodName;
     }
 
+    /**
+     * Names the fallback {@link #resolveDescription} applied — {@code "the class-level description"}
+     * or {@code "\"Invokes {methodName}\""} — or returns null when the method has its own description.
+     */
+    public static String describeDescriptionFallback(AgenticExposed methodAnn,
+                                                     AgenticExposed typeAnn,
+                                                     String methodName) {
+        if (methodAnn != null && !methodAnn.description().isEmpty()) {
+            return null;
+        }
+        if (typeAnn != null && !typeAnn.description().isEmpty()) {
+            return "the class-level description";
+        }
+        return "\"Invokes " + methodName + "\"";
+    }
+
     /** Resolves returnType: method non-void → class non-void → null. */
     public static ClassName resolveReturnEntityType(AgenticExposed methodAnn,
                                                      AgenticExposed typeAnn,

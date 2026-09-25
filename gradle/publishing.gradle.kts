@@ -48,6 +48,12 @@ configure<PublishingExtension> {
     repositories {
         mavenLocal()
 
+        // Build-local repository the Gradle plugin's functional tests resolve these modules from
+        maven {
+            name = "functionalTest"
+            url = uri(rootProject.layout.buildDirectory.dir("functional-test-repo"))
+        }
+
         // Maven Central (Sonatype OSSRH)
         val ossrhUsername: String? = providers.environmentVariable("OSSRH_USERNAME").orNull
         val ossrhPassword: String? = providers.environmentVariable("OSSRH_PASSWORD").orNull

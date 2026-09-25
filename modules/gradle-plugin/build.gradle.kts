@@ -27,10 +27,21 @@ val functionalTest by sourceSets.creating
 configurations[functionalTest.implementationConfigurationName].extendsFrom(configurations.testImplementation.get())
 configurations[functionalTest.runtimeOnlyConfigurationName].extendsFrom(configurations.testRuntimeOnly.get())
 
+// Modules the plugin adds as dependencies, published to a build-local repository so the
+// functional tests can compile a consumer project against this build's processor.
+val functionalTestRepo = rootProject.layout.buildDirectory.dir("functional-test-repo")
+val publishedModules = listOf(":modules:annotations", ":modules:processor", ":modules:runtime")
+
 val functionalTestTask = tasks.register<Test>("functionalTest") {
     testClassesDirs = functionalTest.output.classesDirs
     classpath = functionalTest.runtimeClasspath
     useJUnitPlatform()
+
+    dependsOn(publishedModules.map { "$it:publishMavenJavaPublicationToFunctionalTestRepository" })
+    inputs.dir(functionalTestRepo).withPropertyName("functionalTestRepo")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty("ai.atlas.functionalTest.repo", functionalTestRepo.get().asFile.absolutePath)
+    systemProperty("ai.atlas.functionalTest.version", project.version.toString())
 }
 
 tasks.check {

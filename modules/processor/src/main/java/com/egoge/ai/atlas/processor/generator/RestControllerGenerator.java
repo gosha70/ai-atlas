@@ -15,6 +15,7 @@ import com.palantir.javapoet.JavaFile;
 import com.palantir.javapoet.MethodSpec;
 import com.palantir.javapoet.ParameterSpec;
 import com.palantir.javapoet.ParameterizedTypeName;
+import com.palantir.javapoet.TypeName;
 import com.palantir.javapoet.TypeSpec;
 
 import javax.annotation.processing.Filer;
@@ -162,7 +163,9 @@ public final class RestControllerGenerator {
         // Method body: delegate to service, map to DTO
         String callArgs = buildCallArgs(method);
 
-        if (method.returnDtoType() != null && method.returnEntityType() != null) {
+        if (method.returnType().equals(TypeName.VOID)) {
+            methodBuilder.addStatement("service.$L($L)", method.methodName(), callArgs);
+        } else if (method.returnDtoType() != null && method.returnEntityType() != null) {
             addMappingStatement(methodBuilder, method, callArgs);
         } else {
             methodBuilder.addStatement("return service.$L($L)", method.methodName(), callArgs);

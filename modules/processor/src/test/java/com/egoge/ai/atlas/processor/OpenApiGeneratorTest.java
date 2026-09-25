@@ -138,9 +138,12 @@ class OpenApiGeneratorTest {
 
         // findAll (no params) → GET
         assertThat(json).contains("\"get\"");
-        // findById (has params) → POST with requestBody
+        // findById (has params) → POST with a required query parameter, no request body
         assertThat(json).contains("\"post\"");
-        assertThat(json).contains("\"requestBody\"");
+        assertThat(json).doesNotContain("\"requestBody\"");
+        assertThat(json).contains("\"name\" : \"id\"");
+        assertThat(json).contains("\"in\" : \"query\"");
+        assertThat(json).contains("\"required\" : true");
     }
 
     @Test
@@ -173,7 +176,7 @@ class OpenApiGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.AgenticExposed;
-                @AgenticExposed(description = "Cat ops", returnType = Cat.class)
+                @AgenticExposed(description = "Cat ops", returnType = Cat.class, channels = { AgenticExposed.Channel.API })
                 public class CatService {
                     public Cat findById(Long id) { return null; }
                 }
@@ -183,7 +186,7 @@ class OpenApiGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.AgenticExposed;
-                @AgenticExposed(description = "Dog ops", returnType = Dog.class)
+                @AgenticExposed(description = "Dog ops", returnType = Dog.class, channels = { AgenticExposed.Channel.API })
                 public class DogService {
                     public Dog findById(Long id) { return null; }
                 }

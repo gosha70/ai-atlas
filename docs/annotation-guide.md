@@ -219,6 +219,31 @@ For each `@AgenticExposed` service, the processor generates:
 - Method path: method name in kebab-case (`findById` → `/find-by-id`)
 - Methods with no parameters → `@GetMapping`
 - Methods with parameters → `@PostMapping` with `@RequestParam`
+- Method arguments are **query parameters** in both the controller (`@RequestParam`, required) and the OpenAPI document (`in: query`, `required: true`); there is no JSON request body
+- A GET and a POST that share a path (e.g. `find()` and `find(Long id)`) both appear under that path in the document; two methods mapping to the same HTTP method and path (overloads that both take arguments, or same-named services in different packages) are a compile error
+- `void` methods produce `void` controller and MCP tool methods
+
+### Tool Descriptions and Strict Mode
+
+A model chooses an MCP tool by its description, so every AI-channel method should carry its own `description`. When a method active at the configured `ai.atlas.api.major` and exposed on the `AI` channel has none, its tool falls back to the class-level description (as for `findById` and `findByStatus` in the type-level example above) or to `"Invokes {methodName}"`, and the processor emits a WARNING on the method naming it (`fully.qualified.Service#method`), its MCP tool name, and the fallback used. API-only methods are not checked. Version and deprecation prefixes (`[Since v2]`, `[DEPRECATED since v1, use …]`) are still added to the tool description as before.
+
+Set the `ai.atlas.strict` option to `true` to make this warning a compile error:
+
+```kotlin
+// With the Gradle plugin:
+agentic {
+    strict.set(true)
+}
+
+// Or without the plugin:
+tasks.withType<JavaCompile> {
+    options.compilerArgs.add("-Aai.atlas.strict=true")
+}
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `ai.atlas.strict` | `false` | `true` or `false` (case-insensitive). When `true`, ai-atlas quality diagnostics that are warnings by default are errors. Any other value is a compile error naming the option and the value. |
 
 ---
 
