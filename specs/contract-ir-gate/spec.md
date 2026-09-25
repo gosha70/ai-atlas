@@ -264,8 +264,17 @@ Owner decisions of 2026-09-25, recorded in the origin transcript:
   `classes` depends on, so `build`, `jar` and `test` all run it. The check MUST be loaded from
   the project's `annotationProcessor` classpath, for example through Gradle's Worker API with
   class-loader isolation, so it runs the same processor version as the compilation. It MUST stay
-  correct across incremental builds: when the last annotation is removed after an earlier
-  successful build, a stale `api.ir.json` from that build MUST NOT hide the empty contract.
+  correct across incremental builds. Gradle may preserve an aggregating processor's resources
+  across recompilations, so the check MUST NOT assume that an `api.ir.json` in the output is
+  fresh:
+  - when the last annotation is removed after an earlier successful build, a stale
+    `api.ir.json` from that build MUST NOT hide the empty contract;
+  - a build that fails the check MUST fail again when re-run with no change, so the task is
+    never up-to-date or cached as a success while the contract is empty.
+
+  This fallback is enforced through `classes` and the tasks that depend on it. Running
+  `compileJava` alone does not run it, while the gate for a non-empty contract still runs inside
+  `compileJava`.
 - **FR-017**: The `atlas` CLI (`-A`) and the STDIO MCP server (`options`) MUST pass
   `ai.atlas.contract.baseline` and `ai.atlas.contract.locked` through unchanged. A gate failure
   MUST surface as a failed generation carrying the gate's diagnostic: exit code 1 with
@@ -284,7 +293,8 @@ Owner decisions of 2026-09-25, recorded in the origin transcript:
   - a new `docs/contract-governance.md` describing the IR document (fields and `irVersion`),
     the gate's rules as tables of breaking and compatible changes per direction, the projection
     at the baseline's published major, `openEnum`, accept, lock mode, the baseline file's place
-    in version control, and the policy that each future `irVersion` ships a documented in-memory
+    in version control, the empty-contract check `atlasContractCheck` (enforced through
+    `classes` and its consumers, not by `compileJava` alone), and the policy that each future `irVersion` ships a documented in-memory
     migration from the previous one;
   - `docs/annotation-guide.md` documenting `openEnum`;
   - `CHANGELOG.md` gaining entries under `[Unreleased]` for the IR, the gate, `openEnum`,

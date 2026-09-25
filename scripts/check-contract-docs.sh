@@ -26,7 +26,7 @@ require_file docs/contract-governance.md || true
 require_file docs/annotation-guide.md || true
 require_file CHANGELOG.md || true
 
-for text in irVersion openEnum atlasAccept ai.atlas.contract.baseline ai.atlas.contract.locked apiMajor; do
+for text in irVersion openEnum atlasAccept atlasContractCheck ai.atlas.contract.baseline ai.atlas.contract.locked apiMajor; do
     require_text docs/contract-governance.md "$text"
 done
 require_text docs/annotation-guide.md openEnum

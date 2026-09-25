@@ -208,9 +208,18 @@ Returning `false` from `process` does not help, because the annotations are stil
     It does nothing when the IR exists, because the processor has already gated it.
   - CLI and MCP server: after a successful generation, with a baseline or lock option set.
 - `atlasAccept` writes `EmptyContract`'s document when the sources declare nothing.
-- Stale output: Gradle deletes the resources an aggregating processor generated whenever it
-  recompiles, so removing the last annotation leaves no stale IR behind. The TestKit fixture
-  exercises exactly that incremental path, so the builder does not rely on this unproven.
+- Stale output: Gradle does not delete an aggregating processor's resources on every
+  recompilation. It deletes only the resources it invalidates, and unrelated edits can preserve
+  them; Gradle 8.14.4's `AggregatingIncrementalAnnotationProcessingIntegrationTest` covers both.
+  So the design must not assume that an `api.ir.json` in the output is fresh. The acceptance test
+  is mandatory: build with annotations, remove the last one, and build again without `clean`.
+  That must fail, and a further unchanged build must fail again, so retrying cannot bypass the
+  check. The check task must therefore never be up-to-date or cached as a success while the
+  condition holds.
+- Enforcement point: the fallback is enforced through `classes` and everything that depends on
+  it (`jar`, `test`, `build`, `assemble`). Running `compileJava` on its own does not run
+  `atlasContractCheck`. The gate for non-empty contracts still runs inside `compileJava`.
+  `docs/contract-governance.md` states this.
 - The TestKit suite also includes ordinary sources carrying `SOURCE`-retention annotations
   (`@Override`, `@SuppressWarnings`, and a custom `@Retention(SOURCE)` annotation). Editing one
   of them after a successful build must compile incrementally, with no "Full recompilation is
