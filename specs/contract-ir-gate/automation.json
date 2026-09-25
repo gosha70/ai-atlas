@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "profile": "unattended",
+  "branch": {
+    "name": "feature/contract-ir-gate",
+    "base": "master",
+    "remote": "origin"
+  },
+  "phases": {
+    "source": "tasks.md",
+    "milestone_every": 0,
+    "max_phases": 5
+  },
+  "build": {
+    "max_turns": 80,
+    "permission_mode": "acceptEdits",
+    "max_fix_sessions_per_phase": 3,
+    "session_timeout_sec": 2700
+  },
+  "test": {
+    "command": "./gradlew build",
+    "timeout_sec": 1800
+  },
+  "review": {
+    "reviewers": [
+      {
+        "provider": "deepseek",
+        "specialization": "correctness",
+        "scope": "both",
+        "gating": true
+      }
+    ],
+    "max_rounds": 5,
+    "round_timeout_sec": 900,
+    "loop_timeout_sec": 3600
+  },
+  "caps": {
+    "wall_clock_sec": 28800,
+    "cost_usd": 150
+  },
+  "unattended": {
+    "on_review_breaker": "terminate",
+    "on_stale_finding": "terminate",
+    "on_origin_gate": "terminate",
+    "budget": {
+      "meter_all_invocations": true,
+      "estimate_unmetered": true,
+      "estimate_usd_per_invocation": 2.0
+    }
+  },
+  "notify": {
+    "command": ""
+  },
+  "pr": {
+    "closes": [
+      30
+    ],
+    "title": ""
+  },
+  "merge": {
+    "enabled": false,
+    "require_green_ci": true,
+    "require_branch_protection": true,
+    "method": "squash"
+  }
+}
