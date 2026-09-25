@@ -17,6 +17,11 @@ All notable changes to this project will be documented in this file.
 - Two AI-channel methods active at the configured `ai.atlas.api.major` that share an effective MCP tool name (explicit `toolName`, else the method name) — on different services, or overloads of one method — are now reported as an ERROR at each method, naming the tool and the other `fully.qualified.Service#method` declarations. Set an explicit `toolName` on `@AgenticExposed` to resolve it.
 - Tool names that were already unique are unchanged. API-only methods and methods inactive at the configured major are not checked. Collisions between services compiled in separate modules are not detected.
 
+### AI tools without a description of their own warn; `ai.atlas.strict`
+- An AI-channel method active at the configured `ai.atlas.api.major` whose own `@AgenticExposed` has no `description` now produces a WARNING at the method, naming it as `fully.qualified.Service#method`, giving its MCP tool name and the fallback used (the class-level description, or `"Invokes <method>"`). API-only methods are not checked; generated tool descriptions, including their version and deprecation prefixes, are unchanged.
+- New processor option `ai.atlas.strict` (`true`/`false`, case-insensitive, default `false`): when `true`, this warning is a compile ERROR. Any other value is a compile ERROR naming the option and the value. The Gradle plugin exposes it as `agentic { strict.set(true) }`.
+- Demo: `OrderService.findByStatus` has its own description, so the demo compiles with no ai-atlas warning.
+
 ---
 
 ## [1.1.0] — 2026-03-05

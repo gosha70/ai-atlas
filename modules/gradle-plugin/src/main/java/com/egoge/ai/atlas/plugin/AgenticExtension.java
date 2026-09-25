@@ -72,4 +72,10 @@ public abstract class AgenticExtension {
      * This is the API document version, not the URL path version.
      */
     public abstract Property<String> getOpenApiInfoVersion();
+
+    /**
+     * Strict mode. Defaults to false. When true, ai-atlas quality diagnostics that are
+     * warnings by default (e.g. an AI tool without a description of its own) fail the build.
+     */
+    public abstract Property<Boolean> getStrict();
 }

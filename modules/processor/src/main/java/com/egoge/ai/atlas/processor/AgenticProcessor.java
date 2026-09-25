@@ -21,6 +21,7 @@ import com.egoge.ai.atlas.processor.util.AttributeResolver;
 import com.egoge.ai.atlas.processor.util.EntityRefResolver;
 import com.egoge.ai.atlas.processor.util.FieldScanner;
 import com.egoge.ai.atlas.processor.util.PiiDetector;
+import com.egoge.ai.atlas.processor.util.QualityDiagnostics;
 import com.egoge.ai.atlas.processor.util.RestMappingRegistry;
 import com.egoge.ai.atlas.processor.util.ReturnTypeValidator;
 import com.egoge.ai.atlas.processor.util.ToolNameRegistry;
@@ -58,13 +59,15 @@ import java.util.Set;
 })
 @SupportedOptions({
         "ai.atlas.pii.patterns", "ai.atlas.pii.patterns.file",
-        "ai.atlas.api.basePath", "ai.atlas.api.major", "ai.atlas.openapi.infoVersion"
+        "ai.atlas.api.basePath", "ai.atlas.api.major", "ai.atlas.openapi.infoVersion",
+        "ai.atlas.strict"
 })
 public class AgenticProcessor extends AbstractProcessor {
 
     public static final String OPT_API_BASE_PATH = "ai.atlas.api.basePath";
     public static final String OPT_API_MAJOR = "ai.atlas.api.major";
     public static final String OPT_OPENAPI_INFO_VERSION = "ai.atlas.openapi.infoVersion";
+    public static final String OPT_STRICT = "ai.atlas.strict";
     private final Map<String, EntityModel> entityRegistry = new HashMap<>();
     private final Set<String> dtoSkippedKeys = new HashSet<>();
     private final List<ServiceModel> serviceRegistry = new ArrayList<>();
@@ -78,12 +81,17 @@ public class AgenticProcessor extends AbstractProcessor {
     private int apiMajor;
     private String openApiInfoVersion;
     private boolean versionConfigValid;
+    /** Kind of the quality diagnostics that are warnings by default and errors under {@code ai.atlas.strict}. */
+    private Diagnostic.Kind qualityKind;
 
     @Override public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
         super.init(processingEnv);
         resolveVersionConfig();
+        qualityKind = QualityDiagnostics.resolveKind(OPT_STRICT,
+                processingEnv.getOptions().get(OPT_STRICT), processingEnv.getMessager());
+        versionConfigValid &= qualityKind != null;
     }
 
     private void resolveVersionConfig() {
@@ -350,6 +358,8 @@ public class AgenticProcessor extends AbstractProcessor {
                 methodModels.add(methodModel);
                 restMappings.record(serviceType, method, methodModel, apiBasePath, apiMajor);
                 toolNames.record(serviceType, method, methodModel, apiMajor);
+                QualityDiagnostics.reportMissingDescription(qualityKind, processingEnv.getMessager(),
+                        serviceType, method, methodModel, typeAnnotation, apiMajor);
             }
         }
         if (methodModels.isEmpty()) {

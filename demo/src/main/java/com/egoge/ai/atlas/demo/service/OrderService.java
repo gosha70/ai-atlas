@@ -34,6 +34,7 @@ public class OrderService {
         return buildStubOrder(id);
     }
 
+    @AgenticExposed(description = "Find orders by status (e.g. PENDING, CONFIRMED)")
     public List<Order> findByStatus(String status) {
         Order.OrderStatus requested;
         try {
