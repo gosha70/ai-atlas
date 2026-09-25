@@ -21,6 +21,7 @@ import com.egoge.ai.atlas.processor.util.AttributeResolver;
 import com.egoge.ai.atlas.processor.util.EntityRefResolver;
 import com.egoge.ai.atlas.processor.util.FieldScanner;
 import com.egoge.ai.atlas.processor.util.PiiDetector;
+import com.egoge.ai.atlas.processor.util.RestMappingRegistry;
 import com.egoge.ai.atlas.processor.util.ReturnTypeValidator;
 import com.google.auto.service.AutoService;
 import com.palantir.javapoet.ClassName;
@@ -67,6 +68,7 @@ public class AgenticProcessor extends AbstractProcessor {
     private final Set<String> dtoSkippedKeys = new HashSet<>();
     private final List<ServiceModel> serviceRegistry = new ArrayList<>();
     private final Set<String> discoveredServiceNames = new LinkedHashSet<>();
+    private final RestMappingRegistry restMappings = new RestMappingRegistry();
     private boolean openApiGenerated = false;
     private boolean apiVersionPropertiesGenerated = false;
     private boolean deprecationManifestGenerated = false;
@@ -310,6 +312,7 @@ public class AgenticProcessor extends AbstractProcessor {
                 processServiceWithMethods(entry.getValue(), methodsByType.get(qName));
             }
         }
+        restMappings.reportDuplicates(processingEnv.getMessager());
     }
 
     /** Every discovered {@code @AgenticExposed} service (qualified, processing order) — recorded before method processing, so fully-filtered and no-public-method services are included. Read by the driver; never emitted to the class output. */
@@ -342,6 +345,7 @@ public class AgenticProcessor extends AbstractProcessor {
             MethodModel methodModel = buildMethodModel(method, typeAnnotation);
             if (methodModel != null) {
                 methodModels.add(methodModel);
+                restMappings.record(serviceType, method, methodModel, apiBasePath, apiMajor);
             }
         }
         if (methodModels.isEmpty()) {
@@ -371,7 +375,8 @@ public class AgenticProcessor extends AbstractProcessor {
                 methodAnnotation, typeAnnotation, processingEnv.getTypeUtils());
         ClassName returnDtoType = null;
         TypeName returnType = TypeName.get(method.getReturnType());
-        ServiceModel.ReturnKind returnKind = resolveReturnKind(method);
+        ServiceModel.ReturnKind returnKind = ReturnTypeValidator.resolveReturnKind(
+                method, processingEnv.getTypeUtils(), processingEnv.getElementUtils());
         if (returnEntityType != null) {
             TypeMirror returnEntityMirror = AttributeResolver.resolveReturnEntityTypeMirror(
                     methodAnnotation, typeAnnotation);
@@ -463,27 +468,6 @@ public class AgenticProcessor extends AbstractProcessor {
 
         return new MethodModel(methodName, toolName, description, returnType, returnEntityType,
                 returnDtoType, returnKind, params, channels, apiSince, apiUntil, apiDeprecatedSince, apiReplacement);
-    }
-
-    private ServiceModel.ReturnKind resolveReturnKind(ExecutableElement method) {
-        TypeMirror returnType = method.getReturnType();
-        var typeUtils = processingEnv.getTypeUtils();
-        var elementUtils = processingEnv.getElementUtils();
-        if (returnType.getKind() == javax.lang.model.type.TypeKind.ARRAY) {
-            return ServiceModel.ReturnKind.ARRAY;
-        }
-        TypeMirror erasedReturn = typeUtils.erasure(returnType);
-        TypeElement collectionEl = elementUtils.getTypeElement("java.util.Collection");
-        if (collectionEl != null
-                && typeUtils.isAssignable(erasedReturn, typeUtils.erasure(collectionEl.asType()))) {
-            return ServiceModel.ReturnKind.COLLECTION;
-        }
-        TypeElement iterableEl = elementUtils.getTypeElement("java.lang.Iterable");
-        if (iterableEl != null
-                && typeUtils.isAssignable(erasedReturn, typeUtils.erasure(iterableEl.asType()))) {
-            return ServiceModel.ReturnKind.ITERABLE;
-        }
-        return ServiceModel.ReturnKind.NONE;
     }
 
     private void emitPiiWarnings(TypeElement typeElement) {

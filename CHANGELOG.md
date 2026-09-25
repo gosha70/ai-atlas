@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### REST parameters are query parameters (OpenAPI correction)
+- **Query parameters are canonical.** Generated REST controllers have always bound method arguments with `@RequestParam`; the generated OpenAPI document now describes them the same way (`in: query`, `required: true`) instead of as an `application/json` request body.
+- **The REST wire format of running controllers is unchanged.** Existing callers keep working. Clients generated from an earlier OpenAPI document (which described a JSON request body) must be regenerated.
+- **Operations previously lost on shared paths now appear.** A GET and a POST on the same path (e.g. `find()` and `find(Long id)`) are both documented under that path.
+- **Duplicate method names now yield qualified `operationId`s.** Unique method names keep their `operationId`; shared ones become `{Service}_{method}_{httpMethod}` (with a `_2`, `_3`, … suffix if that is taken), so every `operationId` is unique.
+- **Response content matches the controller:** `String` returns are `text/plain`, number/boolean returns carry their scalar schema, `void` returns have no content.
+- **Ambiguous REST mappings are a compile error.** Two methods mapping to the same HTTP method and path — overloads that both take arguments, or same-named services in different packages — are reported at each method instead of failing at application startup.
+- **`void` service methods now compile.** The generated controller and MCP tool methods are `void`; previously they did not compile.
+
 ---
 
 ## [1.1.0] — 2026-03-05

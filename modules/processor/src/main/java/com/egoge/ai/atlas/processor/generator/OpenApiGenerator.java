@@ -14,6 +14,10 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.palantir.javapoet.ArrayTypeName;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.ParameterizedTypeName;
+import com.palantir.javapoet.TypeName;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
@@ -24,7 +28,7 @@ import io.swagger.v3.oas.models.media.ArraySchema;
 import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.media.MediaType;
 import io.swagger.v3.oas.models.media.Schema;
-import io.swagger.v3.oas.models.parameters.RequestBody;
+import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 
@@ -34,9 +38,15 @@ import javax.tools.Diagnostic;
 import javax.tools.StandardLocation;
 import java.io.IOException;
 import java.io.Writer;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Generates an OpenAPI 3.0.3 specification (JSON) from entity and service models.
@@ -50,6 +60,9 @@ import java.util.Map;
 public final class OpenApiGenerator {
 
   private static final String OPENAPI_VERSION = "3.0.3";
+  private static final String APPLICATION_JSON = "application/json";
+  private static final String TEXT_PLAIN = "text/plain";
+  private static final ClassName STRING = ClassName.get(String.class);
   /** Class-output-relative directory the OpenAPI specs are written to. */
   public static final String RESOURCE_DIR = "META-INF/openapi/";
   /** Unversioned alias emitted alongside the versioned spec. */
@@ -129,9 +142,21 @@ public final class OpenApiGenerator {
     openAPI.components(components);
 
     // Paths from service methods
-    Paths paths = new Paths();
+    List<OperationEntry> entries = new ArrayList<>();
     for (ServiceModel service : services) {
-      addServicePaths(paths, service, apiBasePath, apiMajor);
+      collectServiceOperations(entries, service, apiBasePath, apiMajor);
+    }
+    List<String> operationIds = assignOperationIds(entries);
+    Paths paths = new Paths();
+    for (int i = 0; i < entries.size(); i++) {
+      OperationEntry entry = entries.get(i);
+      PathItem pathItem = paths.get(entry.path());
+      if (pathItem == null) {
+        pathItem = new PathItem();
+        paths.addPathItem(entry.path(), pathItem);
+      }
+      pathItem.operation(entry.httpMethod(),
+          buildOperation(entry.method(), operationIds.get(i), apiMajor));
     }
     openAPI.paths(paths);
 
@@ -193,8 +218,17 @@ public final class OpenApiGenerator {
     };
   }
 
-  private static void addServicePaths(Paths paths, ServiceModel service,
-                                      String apiBasePath, int apiMajor) {
+  /** One operation of the document, in the order the controllers declare their mappings. */
+  private record OperationEntry(String path, PathItem.HttpMethod httpMethod,
+                                String serviceSimpleName, MethodModel method) {
+
+    String httpMethodName() {
+      return httpMethod.name().toLowerCase(Locale.ROOT);
+    }
+  }
+
+  private static void collectServiceOperations(List<OperationEntry> entries, ServiceModel service,
+                                               String apiBasePath, int apiMajor) {
     String serviceName = service.serviceClassName().simpleName();
     String basePath = apiBasePath + "/v" + apiMajor + "/" + toKebabCase(serviceName);
 
@@ -203,66 +237,126 @@ public final class OpenApiGenerator {
         continue;
       }
       String path = basePath + "/" + toKebabCase(method.methodName());
-      PathItem pathItem = new PathItem();
-      Operation operation = buildOperation(method, apiMajor);
-
-      if (method.parameters().isEmpty()) {
-        pathItem.get(operation);
-      } else {
-        pathItem.post(operation);
-      }
-
-      paths.addPathItem(path, pathItem);
+      PathItem.HttpMethod httpMethod = method.parameters().isEmpty()
+          ? PathItem.HttpMethod.GET : PathItem.HttpMethod.POST;
+      entries.add(new OperationEntry(path, httpMethod, serviceName, method));
     }
   }
 
-  @SuppressWarnings({"rawtypes", "unchecked"}) // swagger-models properties() accepts raw Map<String, Schema>
-  private static Operation buildOperation(MethodModel method, int apiMajor) {
+  /**
+   * Assigns a unique operationId to every entry (same index): a method name used by one
+   * operation only is kept; shared ones, in (path, HTTP method) order, get
+   * {@code {Service}_{method}_{httpMethod}} plus the smallest free {@code _N} suffix if taken.
+   */
+  private static List<String> assignOperationIds(List<OperationEntry> entries) {
+    Map<String, Long> nameCounts = entries.stream()
+        .collect(Collectors.groupingBy(e -> e.method().methodName(), Collectors.counting()));
+    String[] ids = new String[entries.size()];
+    Set<String> taken = new HashSet<>();
+    List<Integer> shared = new ArrayList<>();
+    for (int i = 0; i < entries.size(); i++) {
+      String methodName = entries.get(i).method().methodName();
+      if (nameCounts.get(methodName) == 1) {
+        ids[i] = methodName;
+        taken.add(methodName);
+      } else {
+        shared.add(i);
+      }
+    }
+    shared.sort(Comparator.<Integer, String>comparing(i -> entries.get(i).path())
+        .thenComparing(i -> entries.get(i).httpMethodName()));
+    for (int i : shared) {
+      OperationEntry entry = entries.get(i);
+      String candidate = entry.serviceSimpleName() + "_" + entry.method().methodName()
+          + "_" + entry.httpMethodName();
+      String id = candidate;
+      for (int suffix = 2; taken.contains(id); suffix++) {
+        id = candidate + "_" + suffix;
+      }
+      taken.add(id);
+      ids[i] = id;
+    }
+    return List.of(ids);
+  }
+
+  private static Operation buildOperation(MethodModel method, String operationId, int apiMajor) {
     Operation operation = new Operation();
-    operation.operationId(method.methodName());
+    operation.operationId(operationId);
     operation.summary(method.description());
     if (VersionSelector.isDeprecated(method, apiMajor)) {
       operation.deprecated(true);
     }
 
-    // Request body for methods with parameters
-    if (!method.parameters().isEmpty()) {
-      Schema<?> requestSchema = new Schema<>().type("object");
-      Map<String, Schema<?>> props = new LinkedHashMap<>();
-      for (ParameterModel param : method.parameters()) {
-        Schema<?> paramSchema = mapJavaTypeToSchema(param.typeName().toString());
-        if (!param.description().isEmpty()) {
-          paramSchema.description(param.description());
-        }
-        props.put(param.name(), paramSchema);
-      }
-      requestSchema.properties((Map) props);
-
-      RequestBody requestBody = new RequestBody()
+    // Arguments are query parameters, matching the controller's @RequestParam binding
+    for (ParameterModel param : method.parameters()) {
+      Parameter parameter = new Parameter()
+          .in("query")
+          .name(param.name())
           .required(true)
-          .content(new Content().addMediaType("application/json",
-              new MediaType().schema(requestSchema)));
-      operation.requestBody(requestBody);
+          .schema(mapJavaTypeToSchema(param.typeName().toString()));
+      if (!param.description().isEmpty()) {
+        parameter.description(param.description());
+      }
+      operation.addParametersItem(parameter);
     }
 
     // Response
     ApiResponse response200 = new ApiResponse().description("Success");
-    if (method.returnDtoType() != null) {
-      Schema<?> responseSchema;
-      String dtoRef = "#/components/schemas/" + method.returnDtoType().simpleName();
-      if (method.returnKind() != ReturnKind.NONE) {
-        responseSchema = new ArraySchema().items(new Schema<>().$ref(dtoRef));
-      } else {
-        responseSchema = new Schema<>().$ref(dtoRef);
-      }
-      response200.content(new Content().addMediaType("application/json",
-          new MediaType().schema(responseSchema)));
+    Content content = buildResponseContent(method);
+    if (content != null) {
+      response200.content(content);
     }
     ApiResponses responses = new ApiResponses();
     responses.addApiResponse("200", response200);
     operation.responses(responses);
 
     return operation;
+  }
+
+  /** Response content matching what the generated controller returns; {@code null} for void. */
+  private static Content buildResponseContent(MethodModel method) {
+    if (method.returnDtoType() != null) {
+      String dtoRef = "#/components/schemas/" + method.returnDtoType().simpleName();
+      Schema<?> dtoSchema = new Schema<>().$ref(dtoRef);
+      return jsonContent(method.returnKind() != ReturnKind.NONE
+          ? new ArraySchema().items(dtoSchema) : dtoSchema);
+    }
+    TypeName returnType = method.returnType();
+    if (returnType.equals(TypeName.VOID)) {
+      return null;
+    }
+    if (returnType.equals(STRING)) {
+      return new Content().addMediaType(TEXT_PLAIN,
+          new MediaType().schema(new Schema<>().type("string")));
+    }
+    if (isScalar(returnType)) {
+      return jsonContent(mapJavaTypeToSchema(returnType.toString()));
+    }
+    TypeName elementType = elementType(returnType, method.returnKind());
+    if (elementType != null && isScalar(elementType)) {
+      return jsonContent(new ArraySchema().items(mapJavaTypeToSchema(elementType.toString())));
+    }
+    return jsonContent(new Schema<>().type("object"));
+  }
+
+  private static Content jsonContent(Schema<?> schema) {
+    return new Content().addMediaType(APPLICATION_JSON, new MediaType().schema(schema));
+  }
+
+  /** A boxed or primitive number or boolean with a dedicated schema mapping. */
+  private static boolean isScalar(TypeName type) {
+    return !"string".equals(mapJavaTypeToSchema(type.toString()).getType());
+  }
+
+  private static TypeName elementType(TypeName type, ReturnKind returnKind) {
+    if (returnKind == ReturnKind.ARRAY && type instanceof ArrayTypeName array) {
+      return array.componentType();
+    }
+    if (returnKind != ReturnKind.NONE && type instanceof ParameterizedTypeName parameterized
+        && parameterized.typeArguments().size() == 1) {
+      return parameterized.typeArguments().get(0);
+    }
+    return null;
   }
 
   static String serializeToJson(OpenAPI openAPI) throws IOException {

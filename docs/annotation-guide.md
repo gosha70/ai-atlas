@@ -219,6 +219,9 @@ For each `@AgenticExposed` service, the processor generates:
 - Method path: method name in kebab-case (`findById` → `/find-by-id`)
 - Methods with no parameters → `@GetMapping`
 - Methods with parameters → `@PostMapping` with `@RequestParam`
+- Method arguments are **query parameters** in both the controller (`@RequestParam`, required) and the OpenAPI document (`in: query`, `required: true`); there is no JSON request body
+- A GET and a POST that share a path (e.g. `find()` and `find(Long id)`) both appear under that path in the document; two methods mapping to the same HTTP method and path (overloads that both take arguments, or same-named services in different packages) are a compile error
+- `void` methods produce `void` controller and MCP tool methods
 
 ---
 

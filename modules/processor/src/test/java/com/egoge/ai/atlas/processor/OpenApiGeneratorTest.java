@@ -138,9 +138,12 @@ class OpenApiGeneratorTest {
 
         // findAll (no params) → GET
         assertThat(json).contains("\"get\"");
-        // findById (has params) → POST with requestBody
+        // findById (has params) → POST with a required query parameter, no request body
         assertThat(json).contains("\"post\"");
-        assertThat(json).contains("\"requestBody\"");
+        assertThat(json).doesNotContain("\"requestBody\"");
+        assertThat(json).contains("\"name\" : \"id\"");
+        assertThat(json).contains("\"in\" : \"query\"");
+        assertThat(json).contains("\"required\" : true");
     }
 
     @Test
