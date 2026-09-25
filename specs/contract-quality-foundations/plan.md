@@ -3,7 +3,7 @@ spec_mode: full
 feature_id: contract-quality-foundations
 risk_category: integration
 justification: "Changes the generated OpenAPI contract, adds compile-time errors that can fail consumers' builds, and adds a runtime transport option across processor, annotations-adjacent plugin config, runtime and demo — multi-module and consumer-visible, so full SDD with review gating."
-status: draft
+status: approved
 date: 2026-09-24
 collaboration_mode: single
 origin:
