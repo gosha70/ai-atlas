@@ -143,19 +143,24 @@ Owner decisions of 2026-09-25, recorded in the origin transcript:
 
   The gate MUST also run when the compilation declares no `@AgenticEntity` or `@AgenticExposed`
   at all (an empty contract), because removing a module's last ai-atlas annotation removes its
-  whole published contract:
-  - the processor MUST declare `*` as its supported annotation types, so that javac invokes it
-    for every compilation it is on the processor path of, and `process` MUST return `false` so
-    that it never claims annotations from other processors;
-  - it MUST remain registered with Gradle as `aggregating`, and a change to an ordinary source
-    file MUST NOT cause Gradle to report a full recompilation because of it;
-  - when a baseline is configured and the compilation declares nothing, the fresh IR is an empty
-    document carrying the configured `apiBasePath` and `apiMajor`. The processor MUST write it as
-    `api.ir.json` and compare it, so every element active at M in the baseline is reported as
-    removed (FR-009, FR-010, FR-012). Apart from `api.ir.json` and `contract-diff.json` it MUST
-    generate nothing, as before this feature;
-  - when no baseline is configured, the lock option is false, and the compilation declares
-    nothing, the processor MUST write no file and emit no diagnostic.
+  whole published contract. javac does not invoke the processor at all for such a compilation,
+  so this check runs in the tools that run the processor, not inside it:
+  - the processor MUST keep `AgenticEntity` and `AgenticExposed` as its only supported
+    annotation types. It MUST NOT declare `*`: Gradle's aggregating-processor strategy forces a
+    full recompilation whenever an annotation presented to the processor has `SOURCE` retention,
+    and ordinary code is full of them (`@Override`, `@SuppressWarnings`);
+  - the processor module MUST provide one public empty-contract check. Given the baseline path,
+    the lock flag, and the configured `apiBasePath` and `apiMajor`, it compares an empty fresh IR
+    with the baseline using the same rules and messages as the gate (FR-009, FR-010, FR-012,
+    FR-014). It MUST also produce that empty IR document in the canonical form of FR-003, for
+    `atlasAccept` (FR-015);
+  - every tool that runs the processor with a baseline or lock option set MUST run the check
+    when compilation succeeded without emitting `META-INF/ai-atlas/api.ir.json`, and treat its
+    failure as a failed build or generation:
+    - the Gradle plugin (FR-016);
+    - the CLI and the MCP server (FR-017);
+  - when no baseline is configured and the lock option is false, a compilation that declares
+    nothing MUST produce no file and no diagnostic, as before this feature.
 - **FR-009**: Output differences (entity fields and operation returns) MUST be classified as
   follows. A field's **effective schema** is its Java type, collection kind, element type, type
   hint, and referenced entity and DTO. An operation's **effective return schema** is its return
@@ -240,7 +245,8 @@ Owner decisions of 2026-09-25, recorded in the origin transcript:
   - a missing baseline MUST be a compile ERROR naming the expected path and `atlasAccept`.
 - **FR-015**: The Gradle plugin MUST provide a task `atlasAccept` that writes the IR of the
   current sources to the baseline path, creating the directory. The written file MUST be
-  byte-identical to the `api.ir.json` the processor emits for the same sources and options. The
+  byte-identical to the `api.ir.json` the processor emits for the same sources and options. When
+  the sources declare nothing, the task MUST write the empty IR document from FR-008's check. The
   task MUST succeed when the gate or lock mode would currently fail the build, and it MUST print
   the accepted differences grouped by classification. A subsequent `build` MUST then pass the
   gate and lock mode.
@@ -253,10 +259,19 @@ Owner decisions of 2026-09-25, recorded in the origin transcript:
   compilation receives them, so a test compilation that declares no ai-atlas annotation is never
   compared against the main baseline (FR-008). It MUST declare the baseline file as an optional
   input of that task, so that creating, editing or accepting the baseline re-runs the gate.
+
+  The plugin MUST run FR-008's empty-contract check after `compileJava`, in a task that
+  `classes` depends on, so `build`, `jar` and `test` all run it. The check MUST be loaded from
+  the project's `annotationProcessor` classpath, for example through Gradle's Worker API with
+  class-loader isolation, so it runs the same processor version as the compilation. It MUST stay
+  correct across incremental builds: when the last annotation is removed after an earlier
+  successful build, a stale `api.ir.json` from that build MUST NOT hide the empty contract.
 - **FR-017**: The `atlas` CLI (`-A`) and the STDIO MCP server (`options`) MUST pass
   `ai.atlas.contract.baseline` and `ai.atlas.contract.locked` through unchanged. A gate failure
   MUST surface as a failed generation carrying the gate's diagnostic: exit code 1 with
-  `status: error` for the CLI's `--json`, and an `isError` result for MCP.
+  `status: error` for the CLI's `--json`, and an `isError` result for MCP. Both MUST run FR-008's
+  empty-contract check when a baseline or lock option is passed and the compilation emitted no IR,
+  and report its failure the same way.
 
 ### Demo and documentation (US5)
 

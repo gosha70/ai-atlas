@@ -141,6 +141,19 @@ method name and parameter Java types. Any parameter-list change is therefore a r
 addition, and is breaking; its declared form is a new method with `apiSince = M+1`.
 **Consequences**: Conservative by default. Teams opt into tolerant enums per field.
 
+### ADR-6: Only `atlasAccept` writes the baseline; the gate runs inside compilation
+
+**Context**: The gate must fail the ordinary build, but acceptance must work while the build is
+failing.
+**Decision**: The gate runs in the processor, reporting compile errors on the offending
+elements. `atlasAccept` obtains the fresh IR without the gate failing the build. For example, it
+can run the compilation with the baseline and lock options unset into a separate output, then
+copy `META-INF/ai-atlas/api.ir.json` to the baseline path. The mechanism is the builder's choice
+within FR-015. The plugin declares the baseline file as a compile input, so accepting it
+re-triggers the gate.
+**Consequences**: The build never writes to source control. Every contract change reaches review
+as a diff of one committed file.
+
 ### ADR-7: Derived identifiers and effective schemas are compared, not just declarations
 
 **Context**: Review of PR #31 found two changes a declaration-by-declaration comparison misses.
@@ -167,60 +180,59 @@ identifier. The error names the new operation that caused the rename. Identifier
 with one algorithm on both sides, so a future change to that algorithm in ai-atlas itself is
 not seen by the gate; the golden snapshot guards that instead.
 
-### ADR-8: The processor sees every compilation, so an empty contract is still compared
+### ADR-8: An empty contract is checked by the tools that run the processor
 
 **Context**: `AgenticProcessor` declares only `AgenticEntity` and `AgenticExposed`. javac
 discovers and calls a processor only when one of its supported annotations is present. If a
 module removes its last ai-atlas annotation, the processor never runs, and the published
 contract disappears without a comparison.
 
+**Rejected: declaring `*`.** It would make javac call the processor on every compilation, but
+Gradle 8.14.4's `AggregatingProcessingStrategy` forces a full recompilation whenever an
+annotation presented to an aggregating processor has `SOURCE` retention. With `*`, that means
+`@Override` and `@SuppressWarnings`, so nearly every edit would recompile the whole module.
+Returning `false` from `process` does not help, because the annotations are still presented.
+
 **Decision**:
-- The processor declares `*` as its supported annotation types, and `process` returns `false`,
-  so it runs on every compilation it is on the path of but never claims another processor's
-  annotations. It stays registered with Gradle as `aggregating`.
-- The comparison runs in the final round (`processingOver`), after all declarations are known.
-  If nothing was declared and a baseline is configured, the fresh IR is an empty document with
-  the configured `apiBasePath` and `apiMajor`, and the gate reports every element active at M as
-  removed.
-- With nothing declared and no baseline or lock, the processor generates nothing and says
-  nothing, exactly as before. This matters for other compilations the processor is on the
-  path of, such as test sources. In particular the API-version properties file is still written
-  only when something is declared.
-- The Gradle TestKit suite removes every ai-atlas annotation from a fixture that keeps ordinary
-  Java sources, and asserts that the build fails with the removals. It also asserts that editing
-  an ordinary source compiles incrementally, with no "Full recompilation is required" line
-  caused by the processor.
+- The processor keeps its two supported annotation types and stays `aggregating`.
+- The processor module exposes one public empty-contract check (`contract/EmptyContract`). It
+  builds the empty IR document for the configured `apiBasePath` and `apiMajor` and runs the
+  gate's own comparison and lock logic against the baseline, so its rules and messages are the
+  gate's. An empty baseline, or one with nothing active at M, passes unless lock mode sees a
+  document difference.
+- A missing `META-INF/ai-atlas/api.ir.json` after a successful compilation means the processor
+  was not invoked. Each tool that runs the processor detects that and calls the check:
+  - Gradle plugin: an `atlasContractCheck` task after `compileJava`, which `classes` depends
+    on. It runs `EmptyContract` through the Worker API with class-loader isolation on the
+    `annotationProcessor` classpath, so the check matches the processor version that compiled.
+    It does nothing when the IR exists, because the processor has already gated it.
+  - CLI and MCP server: after a successful generation, with a baseline or lock option set.
+- `atlasAccept` writes `EmptyContract`'s document when the sources declare nothing.
+- Stale output: Gradle deletes the resources an aggregating processor generated whenever it
+  recompiles, so removing the last annotation leaves no stale IR behind. The TestKit fixture
+  exercises exactly that incremental path, so the builder does not rely on this unproven.
+- The TestKit suite also includes ordinary sources carrying `SOURCE`-retention annotations
+  (`@Override`, `@SuppressWarnings`, and a custom `@Retention(SOURCE)` annotation). Editing one
+  of them after a successful build must compile incrementally, with no "Full recompilation is
+  required" line in `--info` output. That guards against this regression.
 
-**Consequences**: The processor becomes a no-op participant in compilations with no ai-atlas
-declarations. The CLI and MCP server pass explicit processor instances to javac, which then
-behaves the same way. If Gradle turns out to force full recompilation for a `*` aggregating
-processor, the build must stop and escalate rather than weaken the requirement.
-
-### ADR-6: Only `atlasAccept` writes the baseline; the gate runs inside compilation
-
-**Context**: The gate must fail the ordinary build, but acceptance must work while the build is
-failing.
-**Decision**: The gate runs in the processor, reporting compile errors on the offending
-elements. `atlasAccept` obtains the fresh IR without the gate failing the build. For example, it
-can run the compilation with the baseline and lock options unset into a separate output, then
-copy `META-INF/ai-atlas/api.ir.json` to the baseline path. The mechanism is the builder's choice
-within FR-015. The plugin declares the baseline file as a compile input, so accepting it
-re-triggers the gate.
-**Consequences**: The build never writes to source control. Every contract change reaches review
-as a diff of one committed file.
+**Consequences**: The check runs outside javac, so it cannot place a diagnostic on a source
+element. It names the baseline and the removed element paths instead, as FR-012 already allows
+for elements that no longer exist.
 
 ## Project Structure
 
 ```
 modules/annotations/src/main/java/com/egoge/ai/atlas/annotations/AgenticField.java        — openEnum (FR-011)
 modules/processor/src/main/java/com/egoge/ai/atlas/processor/contract/                    — new: IR records, IrBuilder, IrJson (writer/reader, irVersion), ContractProjection, ContractGate (diff, classification, report)
-modules/processor/src/main/java/com/egoge/ai/atlas/processor/AgenticProcessor.java        — `*` supported types, never claims; collect IR, project, gate in the final round, options ai.atlas.contract.baseline / .locked
+modules/processor/src/main/java/com/egoge/ai/atlas/processor/AgenticProcessor.java        — collect IR, project, gate, options ai.atlas.contract.baseline / .locked (supported annotation types unchanged)
+modules/processor/src/main/java/com/egoge/ai/atlas/processor/contract/EmptyContract.java  — public empty-contract check and empty IR document (ADR-8)
 modules/processor/src/main/java/com/egoge/ai/atlas/processor/util/FieldScanner.java       — no apiMajor filter; filtering moves to the projection
 modules/processor/src/main/java/com/egoge/ai/atlas/processor/generator/*.java             — models from the projection; OpenApiGenerator takes operation IDs from it (no output change)
 modules/processor/src/test/resources/golden/ir-rewire/                                    — new: pre-rewire snapshot (FR-007)
 modules/processor/src/test/java/com/egoge/ai/atlas/processor/contract/                    — new: ContractIrTest, IrRewireGoldenTest, ContractGateTest, ContractLockTest
 modules/gradle-plugin/src/main/java/com/egoge/ai/atlas/plugin/AgenticExtension.java      — contractBaseline, contractLocked
-modules/gradle-plugin/src/main/java/com/egoge/ai/atlas/plugin/AgenticPlugin.java         — options, compile input, atlasAccept task
+modules/gradle-plugin/src/main/java/com/egoge/ai/atlas/plugin/AgenticPlugin.java         — options, compile input, atlasAccept and atlasContractCheck tasks
 modules/gradle-plugin/src/functionalTest/java/com/egoge/ai/atlas/plugin/AgenticPluginFunctionalTest.java — gate, accept, lock cases
 modules/cli/src/test/java/…, modules/mcp-stdio/src/test/java/…                            — gate-failure pass-through tests (FR-017)
 demo/.atlas/api.ir.json                                                                  — new: committed demo baseline
@@ -249,13 +261,13 @@ scripts/check-contract-docs.sh                                                  
 
 **Acceptance criteria**:
 - [ ] Projection comparison at M; output and input rules including effective schemas and derived operation IDs; `openEnum`; messages; `contract-diff.json`
-- [ ] Empty contracts compared: `*` supported types, final-round gate (ADR-8)
+- [ ] `EmptyContract` check and empty IR document (ADR-8)
 
 ### Task 4: Accept, lock, pass-through (US4, FR-014..017)
 
 **Acceptance criteria**:
 - [ ] Lock mode; `atlasAccept`; plugin properties and compile input; CLI/MCP pass-through
-- [ ] TestKit: removing every annotation fails the build; ordinary edits stay incremental
+- [ ] `atlasContractCheck`; CLI/MCP empty-contract check; TestKit: removing every annotation fails the build incrementally, and edits to sources with `SOURCE`-retention annotations stay incremental
 
 ### Task 5: Demo baseline and documentation (US5, FR-018..020)
 
