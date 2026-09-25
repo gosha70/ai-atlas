@@ -141,6 +141,61 @@ method name and parameter Java types. Any parameter-list change is therefore a r
 addition, and is breaking; its declared form is a new method with `apiSince = M+1`.
 **Consequences**: Conservative by default. Teams opt into tolerant enums per field.
 
+### ADR-7: Derived identifiers and effective schemas are compared, not just declarations
+
+**Context**: Review of PR #31 found two changes a declaration-by-declaration comparison misses.
+- `operationId` is not a property of one operation. `OpenApiGenerator.assignOperationIds` keeps
+  a method name used once and qualifies names shared by several operations. So adding a second
+  API-exposed `find()` renames the existing `find` without touching its declaration.
+- The DTO a response uses can change while the Java signature stays the same. A `List<?>`
+  method can move from `returnType = Order.class` to `returnType = Customer.class`, and a field
+  can change only its type hint. If both entities remain declared, no field removal is seen.
+
+**Decision**:
+- `ContractProjection` assigns operation IDs over the whole projection, with the rule moved
+  unchanged out of `OpenApiGenerator`, which then consumes them. The golden snapshot (ADR-3)
+  proves the move changed nothing.
+- The gate compares, per operation present in both projections at M, every client-facing
+  identifier: `operationId`, REST path and method, and MCP tool name.
+- The IR records each field's type hint and each return's effective `returnType`, plus the
+  referenced entity and DTO. The gate compares the whole effective schema of every field and
+  return, and the DTO name and package of every active entity. `apiBasePath` is compared too,
+  because it is part of every path.
+
+**Consequences**: Adding an operation is compatible only when it disturbs no existing
+identifier. The error names the new operation that caused the rename. Identifiers are derived
+with one algorithm on both sides, so a future change to that algorithm in ai-atlas itself is
+not seen by the gate; the golden snapshot guards that instead.
+
+### ADR-8: The processor sees every compilation, so an empty contract is still compared
+
+**Context**: `AgenticProcessor` declares only `AgenticEntity` and `AgenticExposed`. javac
+discovers and calls a processor only when one of its supported annotations is present. If a
+module removes its last ai-atlas annotation, the processor never runs, and the published
+contract disappears without a comparison.
+
+**Decision**:
+- The processor declares `*` as its supported annotation types, and `process` returns `false`,
+  so it runs on every compilation it is on the path of but never claims another processor's
+  annotations. It stays registered with Gradle as `aggregating`.
+- The comparison runs in the final round (`processingOver`), after all declarations are known.
+  If nothing was declared and a baseline is configured, the fresh IR is an empty document with
+  the configured `apiBasePath` and `apiMajor`, and the gate reports every element active at M as
+  removed.
+- With nothing declared and no baseline or lock, the processor generates nothing and says
+  nothing, exactly as before. This matters for other compilations the processor is on the
+  path of, such as test sources. In particular the API-version properties file is still written
+  only when something is declared.
+- The Gradle TestKit suite removes every ai-atlas annotation from a fixture that keeps ordinary
+  Java sources, and asserts that the build fails with the removals. It also asserts that editing
+  an ordinary source compiles incrementally, with no "Full recompilation is required" line
+  caused by the processor.
+
+**Consequences**: The processor becomes a no-op participant in compilations with no ai-atlas
+declarations. The CLI and MCP server pass explicit processor instances to javac, which then
+behaves the same way. If Gradle turns out to force full recompilation for a `*` aggregating
+processor, the build must stop and escalate rather than weaken the requirement.
+
 ### ADR-6: Only `atlasAccept` writes the baseline; the gate runs inside compilation
 
 **Context**: The gate must fail the ordinary build, but acceptance must work while the build is
@@ -159,9 +214,9 @@ as a diff of one committed file.
 ```
 modules/annotations/src/main/java/com/egoge/ai/atlas/annotations/AgenticField.java        — openEnum (FR-011)
 modules/processor/src/main/java/com/egoge/ai/atlas/processor/contract/                    — new: IR records, IrBuilder, IrJson (writer/reader, irVersion), ContractProjection, ContractGate (diff, classification, report)
-modules/processor/src/main/java/com/egoge/ai/atlas/processor/AgenticProcessor.java        — collect IR, project, gate, options ai.atlas.contract.baseline / .locked
+modules/processor/src/main/java/com/egoge/ai/atlas/processor/AgenticProcessor.java        — `*` supported types, never claims; collect IR, project, gate in the final round, options ai.atlas.contract.baseline / .locked
 modules/processor/src/main/java/com/egoge/ai/atlas/processor/util/FieldScanner.java       — no apiMajor filter; filtering moves to the projection
-modules/processor/src/main/java/com/egoge/ai/atlas/processor/generator/*.java             — models from the projection (no output change)
+modules/processor/src/main/java/com/egoge/ai/atlas/processor/generator/*.java             — models from the projection; OpenApiGenerator takes operation IDs from it (no output change)
 modules/processor/src/test/resources/golden/ir-rewire/                                    — new: pre-rewire snapshot (FR-007)
 modules/processor/src/test/java/com/egoge/ai/atlas/processor/contract/                    — new: ContractIrTest, IrRewireGoldenTest, ContractGateTest, ContractLockTest
 modules/gradle-plugin/src/main/java/com/egoge/ai/atlas/plugin/AgenticExtension.java      — contractBaseline, contractLocked
@@ -193,12 +248,14 @@ scripts/check-contract-docs.sh                                                  
 ### Task 3: The gate (US3, FR-008..013)
 
 **Acceptance criteria**:
-- [ ] Projection comparison at M; output and input rules; `openEnum`; messages; `contract-diff.json`
+- [ ] Projection comparison at M; output and input rules including effective schemas and derived operation IDs; `openEnum`; messages; `contract-diff.json`
+- [ ] Empty contracts compared: `*` supported types, final-round gate (ADR-8)
 
 ### Task 4: Accept, lock, pass-through (US4, FR-014..017)
 
 **Acceptance criteria**:
 - [ ] Lock mode; `atlasAccept`; plugin properties and compile input; CLI/MCP pass-through
+- [ ] TestKit: removing every annotation fails the build; ordinary edits stay incremental
 
 ### Task 5: Demo baseline and documentation (US5, FR-018..020)
 
