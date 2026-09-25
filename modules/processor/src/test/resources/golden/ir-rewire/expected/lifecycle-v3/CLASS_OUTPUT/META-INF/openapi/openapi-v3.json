@@ -1,0 +1,348 @@
+{
+  "openapi" : "3.0.3",
+  "info" : {
+    "title" : "AI-ATLAS Generated API",
+    "description" : "Auto-generated API from @AgenticExposed services",
+    "version" : "3.0.0"
+  },
+  "paths" : {
+    "/shop-api/v3/admin-service/refresh" : {
+      "get" : {
+        "summary" : "Refresh caches",
+        "operationId" : "refresh",
+        "responses" : {
+          "200" : {
+            "description" : "Success"
+          }
+        }
+      }
+    },
+    "/shop-api/v3/admin-service/count" : {
+      "post" : {
+        "summary" : "Count products",
+        "operationId" : "count",
+        "parameters" : [ {
+          "name" : "status",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int64"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shop-api/v3/admin-service/customers" : {
+      "get" : {
+        "summary" : "All customers",
+        "operationId" : "customers",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/CustomerDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shop-api/v3/admin-service/label" : {
+      "post" : {
+        "summary" : "Product label",
+        "operationId" : "label",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }, {
+          "name" : "upper",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "boolean"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shop-api/v3/catalog-service/find" : {
+      "get" : {
+        "summary" : "The featured product",
+        "operationId" : "CatalogService_find_get",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProductView"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "summary" : "Browse the catalog",
+        "operationId" : "CatalogService_find_post",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProductView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shop-api/v3/catalog-service/find-all" : {
+      "get" : {
+        "summary" : "Browse the catalog",
+        "operationId" : "findAll",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/ProductView"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shop-api/v3/catalog-service/top" : {
+      "post" : {
+        "summary" : "Browse the catalog",
+        "operationId" : "top",
+        "parameters" : [ {
+          "name" : "n",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/ProductView"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shop-api/v3/catalog-service/lookup-v3" : {
+      "post" : {
+        "summary" : "Look a product up by its v3 code",
+        "operationId" : "lookupV3",
+        "parameters" : [ {
+          "name" : "code",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProductView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shop-api/v3/catalog-service/list-all" : {
+      "get" : {
+        "summary" : "Browse the catalog",
+        "operationId" : "listAll",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/ProductView"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : true
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "OrderLineDto" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "Line identifier",
+            "format" : "int64"
+          },
+          "note" : {
+            "type" : "string",
+            "description" : "Free-text note"
+          }
+        },
+        "description" : "A line on an order"
+      },
+      "LegacyDto" : {
+        "type" : "object",
+        "properties" : { },
+        "description" : "Only exists in v1"
+      },
+      "ProductView" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "Unique identifier",
+            "format" : "int64"
+          },
+          "name" : {
+            "type" : "string",
+            "description" : "Product name"
+          },
+          "cost" : {
+            "type" : "number",
+            "description" : "Internal cost",
+            "format" : "double"
+          },
+          "newCode" : {
+            "type" : "string",
+            "description" : "New code"
+          },
+          "status" : {
+            "type" : "string",
+            "description" : "[DEPRECATED since v2: Use statuses] Lifecycle status",
+            "deprecated" : true,
+            "enum" : [ "ACTIVE", "RETIRED" ]
+          },
+          "size" : {
+            "type" : "string",
+            "description" : "Size",
+            "enum" : [ "S", "M", "L" ]
+          },
+          "tags" : {
+            "type" : "string",
+            "description" : "Tags"
+          },
+          "statuses" : {
+            "type" : "string",
+            "description" : "All statuses"
+          },
+          "lines" : {
+            "type" : "string",
+            "description" : "Order lines"
+          },
+          "lineArray" : {
+            "type" : "string",
+            "description" : "Order lines as an array"
+          },
+          "looseLines" : {
+            "type" : "string",
+            "description" : "Loosely typed lines"
+          },
+          "iterableLines" : {
+            "type" : "string",
+            "description" : "Iterable lines"
+          },
+          "primaryLine" : {
+            "type" : "string",
+            "description" : "Primary line"
+          },
+          "stock" : {
+            "type" : "integer",
+            "description" : "Stock count",
+            "format" : "int32"
+          }
+        },
+        "description" : "A catalog product"
+      },
+      "CustomerDto" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "Customer identifier",
+            "format" : "int64"
+          }
+        },
+        "description" : "A customer"
+      }
+    }
+  }
+}

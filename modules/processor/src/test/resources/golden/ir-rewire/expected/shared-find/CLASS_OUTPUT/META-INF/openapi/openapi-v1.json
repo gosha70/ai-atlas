@@ -1,0 +1,49 @@
+{
+  "openapi" : "3.0.3",
+  "info" : {
+    "title" : "AI-ATLAS Generated API",
+    "description" : "Auto-generated API from @AgenticExposed services",
+    "version" : "1.0.0"
+  },
+  "paths" : {
+    "/api/v1/inventory-service/find" : {
+      "get" : {
+        "summary" : "Find inventory",
+        "operationId" : "InventoryService_find_get",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pricing-service/find" : {
+      "get" : {
+        "summary" : "Find prices",
+        "operationId" : "PricingService_find_get",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : { }
+  }
+}

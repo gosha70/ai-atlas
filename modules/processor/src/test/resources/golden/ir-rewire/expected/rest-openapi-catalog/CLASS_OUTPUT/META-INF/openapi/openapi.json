@@ -1,0 +1,231 @@
+{
+  "openapi" : "3.0.3",
+  "info" : {
+    "title" : "AI-ATLAS Generated API",
+    "description" : "Auto-generated API from @AgenticExposed services",
+    "version" : "1.0.0"
+  },
+  "paths" : {
+    "/api/v1/catalog-service/current" : {
+      "get" : {
+        "summary" : "Current item",
+        "operationId" : "current",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ItemDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/catalog-service/find-by-id" : {
+      "post" : {
+        "summary" : "Item by id",
+        "operationId" : "findById",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ItemDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/catalog-service/search" : {
+      "post" : {
+        "summary" : "Search items",
+        "operationId" : "search",
+        "parameters" : [ {
+          "name" : "name",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "active",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "boolean"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/ItemDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/catalog-service/label" : {
+      "post" : {
+        "summary" : "Item label",
+        "operationId" : "label",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/catalog-service/count" : {
+      "get" : {
+        "summary" : "Item count",
+        "operationId" : "count",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int64"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/catalog-service/ids" : {
+      "get" : {
+        "summary" : "Item ids",
+        "operationId" : "ids",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "type" : "integer",
+                    "format" : "int64"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/catalog-service/stats" : {
+      "get" : {
+        "summary" : "Item stats",
+        "operationId" : "stats",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/catalog-service/touch" : {
+      "post" : {
+        "summary" : "Touch item",
+        "operationId" : "touch",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success"
+          }
+        }
+      }
+    },
+    "/api/v1/catalog-service/reset" : {
+      "get" : {
+        "summary" : "Reset catalog",
+        "operationId" : "reset",
+        "responses" : {
+          "200" : {
+            "description" : "Success"
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "ItemDto" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "ID",
+            "format" : "int64"
+          }
+        },
+        "description" : "ItemDto — PII-safe projection of Item"
+      }
+    }
+  }
+}

@@ -3,8 +3,13 @@
  */
 package com.egoge.ai.atlas.processor.util;
 
+import com.egoge.ai.atlas.annotations.AgenticField;
+
 import javax.annotation.processing.Messager;
+import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.ElementKind;
+import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -43,6 +48,25 @@ public final class PiiDetector {
   private static final Map<String, Pattern> PATTERN_CACHE = new HashMap<>();
 
   private PiiDetector() {
+  }
+
+  /**
+   * Runs {@link #check} on every field declared by {@code typeElement} that is not annotated
+   * with {@code @AgenticField}, using the {@code ai.atlas.pii.patterns} options.
+   *
+   * @param typeElement   the entity class whose fields to check
+   * @param processingEnv the processing environment (options and messager)
+   */
+  public static void checkUnannotatedFields(TypeElement typeElement, ProcessingEnvironment processingEnv) {
+    String customPatterns = processingEnv.getOptions().get("ai.atlas.pii.patterns");
+    String patternsFile = processingEnv.getOptions().get("ai.atlas.pii.patterns.file");
+    for (var enclosed : typeElement.getEnclosedElements()) {
+      if (enclosed.getKind() == ElementKind.FIELD
+          && enclosed.getAnnotation(AgenticField.class) == null) {
+        check(enclosed.getSimpleName().toString(), enclosed,
+            processingEnv.getMessager(), customPatterns, patternsFile);
+      }
+    }
   }
 
   /**

@@ -1,0 +1,8 @@
+{
+  "apiMajor":1,
+  "basePath":"/api",
+  "endpoints":[
+    {"method":"POST","path":"/api/v1/order-service/find","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/api/v1/order-service/find","deprecated":false,"deprecatedSince":0,"replacement":""}
+  ]
+}
