@@ -176,7 +176,7 @@ class OpenApiGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.AgenticExposed;
-                @AgenticExposed(description = "Cat ops", returnType = Cat.class)
+                @AgenticExposed(description = "Cat ops", returnType = Cat.class, channels = { AgenticExposed.Channel.API })
                 public class CatService {
                     public Cat findById(Long id) { return null; }
                 }
@@ -186,7 +186,7 @@ class OpenApiGeneratorTest {
                 """
                 package test;
                 import com.egoge.ai.atlas.annotations.AgenticExposed;
-                @AgenticExposed(description = "Dog ops", returnType = Dog.class)
+                @AgenticExposed(description = "Dog ops", returnType = Dog.class, channels = { AgenticExposed.Channel.API })
                 public class DogService {
                     public Dog findById(Long id) { return null; }
                 }

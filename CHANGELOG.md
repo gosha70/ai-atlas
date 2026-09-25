@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.
 - **Ambiguous REST mappings are a compile error.** Two methods mapping to the same HTTP method and path — overloads that both take arguments, or same-named services in different packages — are reported at each method instead of failing at application startup.
 - **`void` service methods now compile.** The generated controller and MCP tool methods are `void`; previously they did not compile.
 
+### MCP tool-name collisions are a compile error
+- Two AI-channel methods active at the configured `ai.atlas.api.major` that share an effective MCP tool name (explicit `toolName`, else the method name) — on different services, or overloads of one method — are now reported as an ERROR at each method, naming the tool and the other `fully.qualified.Service#method` declarations. Set an explicit `toolName` on `@AgenticExposed` to resolve it.
+- Tool names that were already unique are unchanged. API-only methods and methods inactive at the configured major are not checked. Collisions between services compiled in separate modules are not detected.
+
 ---
 
 ## [1.1.0] — 2026-03-05

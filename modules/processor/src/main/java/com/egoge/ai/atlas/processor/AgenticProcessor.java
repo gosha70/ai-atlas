@@ -23,6 +23,7 @@ import com.egoge.ai.atlas.processor.util.FieldScanner;
 import com.egoge.ai.atlas.processor.util.PiiDetector;
 import com.egoge.ai.atlas.processor.util.RestMappingRegistry;
 import com.egoge.ai.atlas.processor.util.ReturnTypeValidator;
+import com.egoge.ai.atlas.processor.util.ToolNameRegistry;
 import com.google.auto.service.AutoService;
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.TypeName;
@@ -69,6 +70,7 @@ public class AgenticProcessor extends AbstractProcessor {
     private final List<ServiceModel> serviceRegistry = new ArrayList<>();
     private final Set<String> discoveredServiceNames = new LinkedHashSet<>();
     private final RestMappingRegistry restMappings = new RestMappingRegistry();
+    private final ToolNameRegistry toolNames = new ToolNameRegistry();
     private boolean openApiGenerated = false;
     private boolean apiVersionPropertiesGenerated = false;
     private boolean deprecationManifestGenerated = false;
@@ -313,6 +315,7 @@ public class AgenticProcessor extends AbstractProcessor {
             }
         }
         restMappings.reportDuplicates(processingEnv.getMessager());
+        toolNames.reportCollisions(processingEnv.getMessager());
     }
 
     /** Every discovered {@code @AgenticExposed} service (qualified, processing order) — recorded before method processing, so fully-filtered and no-public-method services are included. Read by the driver; never emitted to the class output. */
@@ -346,6 +349,7 @@ public class AgenticProcessor extends AbstractProcessor {
             if (methodModel != null) {
                 methodModels.add(methodModel);
                 restMappings.record(serviceType, method, methodModel, apiBasePath, apiMajor);
+                toolNames.record(serviceType, method, methodModel, apiMajor);
             }
         }
         if (methodModels.isEmpty()) {
