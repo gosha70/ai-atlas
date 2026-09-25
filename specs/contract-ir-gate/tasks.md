@@ -2,27 +2,30 @@
 
 <!-- One owner per file. [P] = parallelizable within the story group. [US#] traces to spec.md. -->
 <!-- Each `## US<n>:` group is one auto-build phase (fresh session). -->
+<!-- Spec US1 was built by the first run and merged in PR #32. The remaining groups are numbered
+     US1..US4 so the auto-build driver runs them as phases 1..4; each heading names the spec user
+     story it implements. Task numbers and FR references are unchanged. -->
 <!-- Build sessions: tick a task's Done box in the same commit that completes it. -->
 
-## US1: Every build writes the contract IR
+## Done (PR #32) — spec US1: Every build writes the contract IR
 
 | # | [P] | Task | File(s) | Owner | Done |
 |---|-----|------|---------|-------|------|
-| 1 | | FIRST, before touching any generator: capture the golden snapshot. Record every generated source and resource (excluding `META-INF/ai-atlas/`) for the demo sources at the demo's options and for a fixture set covering inactive fields and methods, deprecation, enums, collections, nested entities, type hints, `void`, overloads, two services each exposing `find()`, a compilation with no ai-atlas annotation (expected: no generated file) and the #25 `RestOpenApiConsistencyTest` fixtures. Add a comparison test (file set and bytes) (FR-007) | `modules/processor/src/test/resources/golden/ir-rewire/**`, `modules/processor/src/test/java/com/egoge/ai/atlas/processor/contract/IrRewireGoldenTest.java` | Annotation Processor Engineer | [ ] |
-| 2 | | IR records: document (`irVersion`, `apiBasePath`, `apiMajor`), entity, field (including type hint, referenced entity and DTO), operation, parameter, return (including the effective `returnType` after method-then-class resolution, referenced entity and DTO), lifecycle (FR-002, FR-005) | `modules/processor/src/main/java/com/egoge/ai/atlas/processor/contract/*.java` | Annotation Processor Engineer | [ ] |
-| 3 | | `IrBuilder`: build the IR from elements without version filtering, reusing `FieldScanner`'s hierarchy walk and validation; resolve class-level inheritance for methods (FR-001) | `modules/processor/src/main/java/com/egoge/ai/atlas/processor/contract/IrBuilder.java`, `modules/processor/src/main/java/com/egoge/ai/atlas/processor/util/FieldScanner.java` | Annotation Processor Engineer | [ ] |
-| 4 | | Canonical JSON writer and reader with fixed ordering and formatting, `irVersion` checks, malformed-file errors (FR-003, FR-004) | `modules/processor/src/main/java/com/egoge/ai/atlas/processor/contract/IrJson.java` | Annotation Processor Engineer | [ ] |
-| 5 | | Collect the IR across rounds in `AgenticProcessor` and write `META-INF/ai-atlas/api.ir.json` in the round that writes the OpenAPI document (FR-003) | `modules/processor/src/main/java/com/egoge/ai/atlas/processor/AgenticProcessor.java` | Annotation Processor Engineer | [ ] |
-| 6 | | Tests: IR completeness including inactive elements; a field's type hint and a return's method-level and class-level `returnType` are recorded; byte-identical across two compilations; `irVersion` above supported is an error; malformed baseline is an error; no absolute paths or timestamps (FR-001..005) | `modules/processor/src/test/java/com/egoge/ai/atlas/processor/contract/ContractIrTest.java` | Annotation Processor Engineer | [ ] |
+| 1 | | FIRST, before touching any generator: capture the golden snapshot. Record every generated source and resource (excluding `META-INF/ai-atlas/`) for the demo sources at the demo's options and for a fixture set covering inactive fields and methods, deprecation, enums, collections, nested entities, type hints, `void`, overloads, two services each exposing `find()`, a compilation with no ai-atlas annotation (expected: no generated file) and the #25 `RestOpenApiConsistencyTest` fixtures. Add a comparison test (file set and bytes) (FR-007) | `modules/processor/src/test/resources/golden/ir-rewire/**`, `modules/processor/src/test/java/com/egoge/ai/atlas/processor/contract/IrRewireGoldenTest.java` | Annotation Processor Engineer | [x] |
+| 2 | | IR records: document (`irVersion`, `apiBasePath`, `apiMajor`), entity, field (including type hint, referenced entity and DTO), operation, parameter, return (including the effective `returnType` after method-then-class resolution, referenced entity and DTO), lifecycle (FR-002, FR-005) | `modules/processor/src/main/java/com/egoge/ai/atlas/processor/contract/*.java` | Annotation Processor Engineer | [x] |
+| 3 | | `IrBuilder`: build the IR from elements without version filtering, reusing `FieldScanner`'s hierarchy walk and validation; resolve class-level inheritance for methods (FR-001) | `modules/processor/src/main/java/com/egoge/ai/atlas/processor/contract/IrBuilder.java`, `modules/processor/src/main/java/com/egoge/ai/atlas/processor/util/FieldScanner.java` | Annotation Processor Engineer | [x] |
+| 4 | | Canonical JSON writer and reader with fixed ordering and formatting, `irVersion` checks, malformed-file errors (FR-003, FR-004) | `modules/processor/src/main/java/com/egoge/ai/atlas/processor/contract/IrJson.java` | Annotation Processor Engineer | [x] |
+| 5 | | Collect the IR across rounds in `AgenticProcessor` and write `META-INF/ai-atlas/api.ir.json` in the round that writes the OpenAPI document (FR-003) | `modules/processor/src/main/java/com/egoge/ai/atlas/processor/AgenticProcessor.java` | Annotation Processor Engineer | [x] |
+| 6 | | Tests: IR completeness including inactive elements; a field's type hint and a return's method-level and class-level `returnType` are recorded; byte-identical across two compilations; `irVersion` above supported is an error; malformed baseline is an error; no absolute paths or timestamps (FR-001..005) | `modules/processor/src/test/java/com/egoge/ai/atlas/processor/contract/ContractIrTest.java` | Annotation Processor Engineer | [x] |
 
 **Checkpoint US1** — verify before continuing:
-- [ ] `./gradlew :modules:processor:test --tests '*ContractIrTest' --tests '*IrRewireGoldenTest'` green
-- [ ] No file under `modules/processor/src/main/java/com/egoge/ai/atlas/processor/generator/` changed in this phase
-- [ ] `./gradlew build` green
+- [x] `./gradlew :modules:processor:test --tests '*ContractIrTest' --tests '*IrRewireGoldenTest'` green
+- [x] No file under `modules/processor/src/main/java/com/egoge/ai/atlas/processor/generator/` changed in this phase
+- [x] `./gradlew build` green
 
 ---
 
-## US2: Generated code comes from the IR, unchanged
+## US1: Generated code comes from the IR, unchanged (spec US2)
 
 | # | [P] | Task | File(s) | Owner | Done |
 |---|-----|------|---------|-------|------|
@@ -36,7 +39,7 @@
 
 ---
 
-## US3: A silent breaking change fails the build
+## US2: A silent breaking change fails the build (spec US3)
 
 | # | [P] | Task | File(s) | Owner | Done |
 |---|-----|------|---------|-------|------|
@@ -52,7 +55,7 @@
 
 ---
 
-## US4: Changes are accepted explicitly; lock mode governs every change
+## US3: Changes are accepted explicitly; lock mode governs every change (spec US4)
 
 | # | [P] | Task | File(s) | Owner | Done |
 |---|-----|------|---------|-------|------|
@@ -70,7 +73,7 @@
 
 ---
 
-## US5: The demo is governed and the rules are documented
+## US4: The demo is governed and the rules are documented (spec US5)
 
 | # | [P] | Task | File(s) | Owner | Done |
 |---|-----|------|---------|-------|------|

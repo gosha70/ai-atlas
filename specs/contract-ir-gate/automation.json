@@ -9,7 +9,7 @@
   "phases": {
     "source": "tasks.md",
     "milestone_every": 0,
-    "max_phases": 5
+    "max_phases": 4
   },
   "build": {
     "max_turns": 80,
@@ -35,7 +35,7 @@
     "loop_timeout_sec": 3600
   },
   "caps": {
-    "wall_clock_sec": 28800,
+    "wall_clock_sec": 172800,
     "cost_usd": 150
   },
   "unattended": {
