@@ -1,0 +1,260 @@
+{
+  "openapi" : "3.0.3",
+  "info" : {
+    "title" : "AI-ATLAS Generated API",
+    "description" : "Auto-generated API from @AgenticExposed services",
+    "version" : "2.0.0"
+  },
+  "paths" : {
+    "/api/v2/customer-service/get-customers" : {
+      "get" : {
+        "summary" : "Retrieve all customers (deprecated — use getCustomersV2)",
+        "operationId" : "getCustomers",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/CustomerDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : true
+      }
+    },
+    "/api/v2/customer-service/get-customers-v2" : {
+      "get" : {
+        "summary" : "Retrieve all customers with their addresses",
+        "operationId" : "getCustomersV2",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/CustomerDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/order-service/find-by-id" : {
+      "post" : {
+        "summary" : "Find order by ID (legacy)",
+        "operationId" : "findById",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OrderDto"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : true
+      }
+    },
+    "/api/v2/order-service/find-by-id-v2" : {
+      "post" : {
+        "summary" : "Find order by ID",
+        "operationId" : "findByIdV2",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OrderDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/order-service/find-by-status" : {
+      "post" : {
+        "summary" : "Find orders by status (e.g. PENDING, CONFIRMED)",
+        "operationId" : "findByStatus",
+        "parameters" : [ {
+          "name" : "status",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/OrderDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "AddressDto" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "Unique address identifier",
+            "format" : "int64"
+          },
+          "street" : {
+            "type" : "string",
+            "description" : "Street line"
+          },
+          "city" : {
+            "type" : "string",
+            "description" : "City name"
+          },
+          "state" : {
+            "type" : "string",
+            "description" : "State or province code"
+          },
+          "zipCode" : {
+            "type" : "string",
+            "description" : "Postal / ZIP code"
+          },
+          "country" : {
+            "type" : "string",
+            "description" : "ISO 3166-1 country code"
+          }
+        },
+        "description" : "A customer mailing address"
+      },
+      "CustomerDto" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "Unique customer identifier",
+            "format" : "int64"
+          },
+          "name" : {
+            "type" : "string",
+            "description" : "Customer display name"
+          },
+          "addresses" : {
+            "type" : "string",
+            "description" : "Customer mailing addresses"
+          }
+        },
+        "description" : "A customer with addresses and contact info"
+      },
+      "OrderActionDto" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "Unique action identifier",
+            "format" : "int64"
+          },
+          "actionType" : {
+            "type" : "string",
+            "description" : "Type of action performed",
+            "enum" : [ "CREATED", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED", "NOTE" ]
+          },
+          "description" : {
+            "type" : "string",
+            "description" : "Human-readable action description"
+          },
+          "timestamp" : {
+            "type" : "string",
+            "description" : "When the action occurred (ISO-8601)"
+          },
+          "order" : {
+            "type" : "string",
+            "description" : "Parent order this action belongs to"
+          }
+        },
+        "description" : "An action or status change performed on an order"
+      },
+      "OrderDto" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "Unique order identifier",
+            "format" : "int64"
+          },
+          "status" : {
+            "type" : "string",
+            "description" : "Current order status",
+            "enum" : [ "PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED" ]
+          },
+          "totalAmountCents" : {
+            "type" : "integer",
+            "description" : "[DEPRECATED since v2: Use totalMajorUnits and totalMinorUnits instead] Total order amount in cents",
+            "format" : "int64",
+            "deprecated" : true
+          },
+          "totalMajorUnits" : {
+            "type" : "integer",
+            "description" : "Total amount — whole currency units (e.g. dollars)",
+            "format" : "int32"
+          },
+          "totalMinorUnits" : {
+            "type" : "integer",
+            "description" : "Total amount — fractional currency units (e.g. cents)",
+            "format" : "int32"
+          },
+          "itemCount" : {
+            "type" : "integer",
+            "description" : "Number of items in the order",
+            "format" : "int32"
+          },
+          "actions" : {
+            "type" : "string",
+            "description" : "Actions performed on this order"
+          }
+        },
+        "description" : "A customer order with status tracking and item summary"
+      }
+    }
+  }
+}

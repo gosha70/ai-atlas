@@ -1,0 +1,16 @@
+{
+  "apiMajor":1,
+  "basePath":"/api",
+  "endpoints":[
+    {"method":"GET","path":"/api/v1/admin-service/refresh","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/api/v1/admin-service/count","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"GET","path":"/api/v1/admin-service/customers","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/api/v1/admin-service/label","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/api/v1/catalog-service/find","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"GET","path":"/api/v1/catalog-service/find","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"GET","path":"/api/v1/catalog-service/find-all","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/api/v1/catalog-service/top","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/api/v1/catalog-service/legacy-lookup","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"GET","path":"/api/v1/catalog-service/list-all","deprecated":false,"deprecatedSince":0,"replacement":""}
+  ]
+}

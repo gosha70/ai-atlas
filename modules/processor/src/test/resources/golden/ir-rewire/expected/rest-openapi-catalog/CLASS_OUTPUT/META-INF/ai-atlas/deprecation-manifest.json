@@ -1,0 +1,15 @@
+{
+  "apiMajor":1,
+  "basePath":"/api",
+  "endpoints":[
+    {"method":"GET","path":"/api/v1/catalog-service/current","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/api/v1/catalog-service/find-by-id","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/api/v1/catalog-service/search","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/api/v1/catalog-service/label","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"GET","path":"/api/v1/catalog-service/count","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"GET","path":"/api/v1/catalog-service/ids","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"GET","path":"/api/v1/catalog-service/stats","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/api/v1/catalog-service/touch","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"GET","path":"/api/v1/catalog-service/reset","deprecated":false,"deprecatedSince":0,"replacement":""}
+  ]
+}

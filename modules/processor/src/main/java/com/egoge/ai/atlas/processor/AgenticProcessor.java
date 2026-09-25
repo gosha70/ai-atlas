@@ -3,9 +3,9 @@
  */
 package com.egoge.ai.atlas.processor;
 
-import com.egoge.ai.atlas.annotations.AgenticField;
 import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.egoge.ai.atlas.annotations.AgenticExposed;
+import com.egoge.ai.atlas.processor.contract.IrBuilder;
 import com.egoge.ai.atlas.processor.generator.ApiVersionPropertiesGenerator;
 import com.egoge.ai.atlas.processor.generator.DeprecationManifestGenerator;
 import com.egoge.ai.atlas.processor.generator.DtoGenerator;
@@ -74,6 +74,7 @@ public class AgenticProcessor extends AbstractProcessor {
     private final Set<String> discoveredServiceNames = new LinkedHashSet<>();
     private final RestMappingRegistry restMappings = new RestMappingRegistry();
     private final ToolNameRegistry toolNames = new ToolNameRegistry();
+    private IrBuilder contractIr;
     private boolean openApiGenerated = false;
     private boolean apiVersionPropertiesGenerated = false;
     private boolean deprecationManifestGenerated = false;
@@ -88,6 +89,7 @@ public class AgenticProcessor extends AbstractProcessor {
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
         super.init(processingEnv);
+        contractIr = new IrBuilder(processingEnv);
         resolveVersionConfig();
         qualityKind = QualityDiagnostics.resolveKind(OPT_STRICT,
                 processingEnv.getOptions().get(OPT_STRICT), processingEnv.getMessager());
@@ -147,6 +149,7 @@ public class AgenticProcessor extends AbstractProcessor {
             return false;
         }
         if (roundEnv.processingOver()) {
+            contractIr.write(apiBasePath, apiMajor); // declarations that yielded no OpenAPI document
             return false;
         }
 
@@ -162,6 +165,7 @@ public class AgenticProcessor extends AbstractProcessor {
                     serviceRegistry, apiBasePath, apiMajor, openApiInfoVersion,
                     processingEnv.getFiler(), processingEnv.getMessager());
             openApiGenerated = true;
+            contractIr.write(apiBasePath, apiMajor);
         }
         if (!apiVersionPropertiesGenerated) {
             ApiVersionPropertiesGenerator.generate(apiBasePath, apiMajor,
@@ -245,9 +249,10 @@ public class AgenticProcessor extends AbstractProcessor {
 
     private void processEntity(TypeElement typeElement) {
         var annotation = typeElement.getAnnotation(AgenticEntity.class);
-        var fields = FieldScanner.scan(typeElement, processingEnv, apiMajor);
+        var scanned = FieldScanner.scanAll(typeElement, processingEnv);
+        var fields = FieldScanner.selectActive(scanned, typeElement, apiMajor, processingEnv.getMessager());
 
-        emitPiiWarnings(typeElement);
+        PiiDetector.checkUnannotatedFields(typeElement, processingEnv);
 
         String simpleName = typeElement.getSimpleName().toString();
         String dtoName = annotation.dtoName().isEmpty() ? simpleName + "Dto" : annotation.dtoName();
@@ -259,6 +264,7 @@ public class AgenticProcessor extends AbstractProcessor {
         ClassName sourceClassName = ClassName.get(typeElement);
         EntityModel model = new EntityModel(sourceClassName, dtoName, dtoPackage,
                 displayName, annotation.description(), annotation.includeTypeInfo(), fields);
+        contractIr.addEntity(model, scanned);
 
         if (fields.isEmpty()) {
             // Register with empty fields so references can be detected in pass 2,
@@ -353,6 +359,7 @@ public class AgenticProcessor extends AbstractProcessor {
 
         List<MethodModel> methodModels = new ArrayList<>();
         for (ExecutableElement method : methods) {
+            contractIr.addOperation(serviceType, method, typeAnnotation);
             MethodModel methodModel = buildMethodModel(method, typeAnnotation);
             if (methodModel != null) {
                 methodModels.add(methodModel);
@@ -482,17 +489,5 @@ public class AgenticProcessor extends AbstractProcessor {
 
         return new MethodModel(methodName, toolName, description, returnType, returnEntityType,
                 returnDtoType, returnKind, params, channels, apiSince, apiUntil, apiDeprecatedSince, apiReplacement);
-    }
-
-    private void emitPiiWarnings(TypeElement typeElement) {
-        String customPatterns = processingEnv.getOptions().get("ai.atlas.pii.patterns");
-        String patternsFile = processingEnv.getOptions().get("ai.atlas.pii.patterns.file");
-        for (var enclosed : typeElement.getEnclosedElements()) {
-            if (enclosed.getKind() == ElementKind.FIELD
-                    && enclosed.getAnnotation(AgenticField.class) == null) {
-                PiiDetector.check(enclosed.getSimpleName().toString(), enclosed,
-                        processingEnv.getMessager(), customPatterns, patternsFile);
-            }
-        }
     }
 }

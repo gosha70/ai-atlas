@@ -1,0 +1,11 @@
+{
+  "apiMajor":2,
+  "basePath":"/api",
+  "endpoints":[
+    {"method":"GET","path":"/api/v2/customer-service/get-customers","deprecated":true,"deprecatedSince":2,"replacement":"getCustomersV2"},
+    {"method":"GET","path":"/api/v2/customer-service/get-customers-v2","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/api/v2/order-service/find-by-id","deprecated":true,"deprecatedSince":1,"replacement":"findByIdV2"},
+    {"method":"POST","path":"/api/v2/order-service/find-by-id-v2","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/api/v2/order-service/find-by-status","deprecated":false,"deprecatedSince":0,"replacement":""}
+  ]
+}

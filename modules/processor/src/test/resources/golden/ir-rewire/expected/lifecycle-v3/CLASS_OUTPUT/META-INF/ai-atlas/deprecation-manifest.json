@@ -1,0 +1,16 @@
+{
+  "apiMajor":3,
+  "basePath":"/shop-api",
+  "endpoints":[
+    {"method":"GET","path":"/shop-api/v3/admin-service/refresh","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/shop-api/v3/admin-service/count","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"GET","path":"/shop-api/v3/admin-service/customers","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/shop-api/v3/admin-service/label","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/shop-api/v3/catalog-service/find","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"GET","path":"/shop-api/v3/catalog-service/find","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"GET","path":"/shop-api/v3/catalog-service/find-all","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/shop-api/v3/catalog-service/top","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"POST","path":"/shop-api/v3/catalog-service/lookup-v3","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"GET","path":"/shop-api/v3/catalog-service/list-all","deprecated":true,"deprecatedSince":2,"replacement":"findAll"}
+  ]
+}

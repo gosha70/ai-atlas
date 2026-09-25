@@ -1,0 +1,8 @@
+{
+  "apiMajor":1,
+  "basePath":"/api",
+  "endpoints":[
+    {"method":"GET","path":"/api/v1/inventory-service/find","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"GET","path":"/api/v1/pricing-service/find","deprecated":false,"deprecatedSince":0,"replacement":""}
+  ]
+}

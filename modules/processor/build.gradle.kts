@@ -69,4 +69,8 @@ tasks.withType<Test> {
     systemProperty("ai.atlas.demo.generatedSources", demoGeneratedSources.get().asFile.absolutePath)
     systemProperty("ai.atlas.demo.generationInputs", demoGenerationInputs.get().asFile.absolutePath)
     systemProperty("ai.atlas.demo.classesDir", demoClasses.get().asFile.absolutePath)
+
+    // IrRewireGoldenTest rewrites its snapshot only when asked: -Pai.atlas.golden.capture=true
+    systemProperty("ai.atlas.golden.capture",
+        providers.gradleProperty("ai.atlas.golden.capture").getOrElse("false"))
 }

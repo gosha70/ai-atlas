@@ -42,6 +42,10 @@ public final class FieldScanner {
   private FieldScanner() {
   }
 
+  /** A validated {@code @AgenticField} and the field element it was read from. */
+  public record ScannedField(FieldModel model, VariableElement element) {
+  }
+
   /**
    * Scans the given type element and its entire superclass chain
    * for {@code @AgenticField} fields. Fields from supertypes appear
@@ -55,6 +59,49 @@ public final class FieldScanner {
    */
   public static List<FieldModel> scan(TypeElement typeElement, ProcessingEnvironment processingEnv,
                                       int apiMajor) {
+    return selectActive(scanAll(typeElement, processingEnv), typeElement, apiMajor,
+        processingEnv.getMessager());
+  }
+
+  /**
+   * Returns the models of the fields active at {@code apiMajor}, in order, and reports a NOTE on
+   * each excluded field.
+   *
+   * @param fields      the result of {@link #scanAll} for {@code typeElement}
+   * @param typeElement the scanned entity class, named in the note
+   * @param apiMajor    the configured API major version used for field filtering
+   * @param messager    receives the exclusion notes
+   * @return list of FieldModel for each annotated field active at apiMajor
+   */
+  public static List<FieldModel> selectActive(List<ScannedField> fields, TypeElement typeElement,
+                                              int apiMajor, Messager messager) {
+    List<FieldModel> active = new ArrayList<>();
+    for (ScannedField scanned : fields) {
+      FieldModel field = scanned.model();
+      if (!VersionSelector.isFieldActive(field, apiMajor)) {
+        messager.printMessage(Diagnostic.Kind.NOTE,
+            "[ai-atlas] Field '" + field.name() + "' excluded from "
+                + typeElement.getSimpleName() + " DTO — not active for apiMajor="
+                + apiMajor + " (sinceVersion=" + field.sinceVersion()
+                + ", removedInVersion=" + field.removedInVersion() + ")", scanned.element());
+        continue;
+      }
+      active.add(field);
+    }
+    return active;
+  }
+
+  /**
+   * Scans the given type element and its entire superclass chain for {@code @AgenticField}
+   * fields, whatever their lifecycle, reporting validation diagnostics. Fields from supertypes
+   * appear before subtype fields; duplicate field names are skipped (subtype wins); fields failing
+   * version-range validation are left out.
+   *
+   * @param typeElement   the entity class to scan
+   * @param processingEnv the annotation processing environment (for type hierarchy checks)
+   * @return every valid annotated field, in DTO declaration order
+   */
+  public static List<ScannedField> scanAll(TypeElement typeElement, ProcessingEnvironment processingEnv) {
     if (typeElement == null) {
       return Collections.emptyList();
     }
@@ -63,7 +110,7 @@ public final class FieldScanner {
     Elements elementUtils = processingEnv.getElementUtils();
 
     Set<String> seenFieldNames = new LinkedHashSet<>();
-    List<FieldModel> allFields = new ArrayList<>();
+    List<ScannedField> allFields = new ArrayList<>();
 
     // Walk superclass chain (top-down: collect supertypes first, then reverse)
     List<TypeElement> hierarchy = new ArrayList<>();
@@ -249,17 +296,7 @@ public final class FieldScanner {
               deprecatedMsg
           );
 
-          // Filter by version — only include fields active for the configured apiMajor
-          if (!VersionSelector.isFieldActive(fieldModel, apiMajor)) {
-            messager.printMessage(Diagnostic.Kind.NOTE,
-                "[ai-atlas] Field '" + fieldName + "' excluded from "
-                    + typeElement.getSimpleName() + " DTO — not active for apiMajor="
-                    + apiMajor + " (sinceVersion=" + sinceVer
-                    + ", removedInVersion=" + removedInVer + ")", field);
-            continue;
-          }
-
-          allFields.add(fieldModel);
+          allFields.add(new ScannedField(fieldModel, field));
         }
       }
     }
@@ -374,7 +411,7 @@ public final class FieldScanner {
    * @param enumElement the TypeElement representing an enum type
    * @return list of enum constant names in declaration order
    */
-  private static List<String> extractEnumConstants(TypeElement enumElement) {
+  public static List<String> extractEnumConstants(TypeElement enumElement) {
     List<String> constants = new ArrayList<>();
     for (var enclosed : enumElement.getEnclosedElements()) {
       if (enclosed.getKind() == ElementKind.ENUM_CONSTANT) {
