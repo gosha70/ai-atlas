@@ -11,5 +11,7 @@ Working claim:
 Mismatches:
   - none. Revised after the owner's review of PR #31 (head 4e2fc460): an empty contract is still compared, by a check the Gradle plugin, CLI and MCP server run when the processor emitted no IR, keeping the processor's two supported annotation types because `*` would force full recompilation under Gradle's aggregating strategy (FR-008, FR-016, FR-017, ADR-8; revised after the owner's review of 5e2e163; after review of fae7a1b the check assumes no IR freshness, must fail again on an unchanged re-run, and is documented as enforced through `classes`, not `compileJava` alone), effective field and return schemas are compared (FR-009, ADR-7), and derived operation IDs are compared so an addition cannot silently rename one (FR-010, ADR-7). All three tighten the epic's "fail with a precise diagnostic when a breaking delta is undeclared". Owner-chosen scoping within the epic's options: the gate protects the baseline's published major rather than all historical majors; response enums are closed by default with `openEnum` to opt out; the generators are rewired now. Constraint normalisation ("narrowing an input constraint") depends on Phase 3's constraint model and is out of scope; type narrowing is detected. Release snapshots are Phase 5.
 
+Re-recorded when the owner approved plan.md and finalized verification.yaml (2026-09-25); no content change.
+
 Verdict: aligned
 Confidence: high

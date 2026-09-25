@@ -3,7 +3,7 @@ spec_mode: full
 feature_id: contract-ir-gate
 risk_category: schema
 justification: "Introduces a persisted, versioned contract document and a compile-time gate that can fail consumers' builds, adds an annotation attribute, rewires every generator's input, and adds Gradle tasks — schema-level, multi-module, consumer-visible, so full SDD with review gating."
-status: draft
+status: approved
 date: 2026-09-25
 collaboration_mode: single
 origin:

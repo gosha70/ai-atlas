@@ -14,7 +14,7 @@
 #   concrete criterion if it is, otherwise REMOVE the verifier.
 #   Leaving it unresolved keeps the artifact inadmissible.
 # Contract: shared/schemas/verification.schema.json
-status: draft
+status: finalized
 feature_id: contract-ir-gate
 
 FR-001:
