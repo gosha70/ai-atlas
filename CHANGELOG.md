@@ -22,6 +22,11 @@ All notable changes to this project will be documented in this file.
 - New processor option `ai.atlas.strict` (`true`/`false`, case-insensitive, default `false`): when `true`, this warning is a compile ERROR. Any other value is a compile ERROR naming the option and the value. The Gradle plugin exposes it as `agentic { strict.set(true) }`.
 - Demo: `OrderService.findByStatus` has its own description, so the demo compiles with no ai-atlas warning.
 
+### Runtime MCP server: Streamable HTTP alongside SSE
+- Setting Spring AI's `spring.ai.mcp.server.protocol=STREAMABLE` serves the Atlas-generated tools over MCP Streamable HTTP at `/mcp`. No ai-atlas property is involved; the same tools are listed as over SSE.
+- SSE stays the default: with no property set, the server serves `GET /sse` / `POST /mcp/message` exactly as before. The standalone STDIO server is unchanged.
+- Documented in `docs/harness-integration.md`; the demo's `application.yml` shows the property, commented out.
+
 ---
 
 ## [1.1.0] — 2026-03-05

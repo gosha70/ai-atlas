@@ -6,7 +6,7 @@ standalone surface into an AI coding harness (Claude Code, PI.dev, Cursor, Intel
 | Surface | When to use | Transport | Requires |
 |---|---|---|---|
 | **Standalone CLI / STDIO MCP** (`atlas.jar`, `atlas-mcp.jar`) | Build-time / harness-time: a hook or copilot drives generation directly | Process spawn (CLI), stdio (MCP) | A JDK — no running application |
-| **Runtime SSE MCP server** (`modules/runtime`) | Live tool serving from a deployed Spring Boot app — the default | HTTP + SSE | The consumer's running Spring Boot app |
+| **Runtime MCP server** (`modules/runtime`) | Live tool serving from a deployed Spring Boot app — the default | HTTP: SSE (default) or Streamable HTTP (opt-in) | The consumer's running Spring Boot app |
 
 Both surfaces run the same generators through the same driver (`AtlasGenerator` in
 `modules/processor`), so their output is byte-identical to the annotation-processing build
@@ -263,22 +263,46 @@ make the script's missing-file guard exit silently instead of running the check.
 The same shape works for any harness that can shell out: run `atlas inspect --json` (or
 `generate --json`), branch on the exit code, and parse stdout.
 
-## Path 2: the runtime SSE MCP server (unchanged)
+## Path 2: the runtime MCP server (SSE or Streamable HTTP)
 
 The original integration path — unchanged by the standalone surfaces (spec FR-008) and still the
 default for live tool serving. When a Spring Boot app depends on `modules/runtime`,
 auto-configuration registers every `@Service` bean with `@Tool` methods (the shape of the
-generated MCP tool wrappers) with the Spring AI MCP server, which serves them over HTTP + SSE:
+generated MCP tool wrappers) with the Spring AI MCP server, which serves them over HTTP:
 
 ```bash
 ./gradlew :demo:bootRun     # demo: REST + MCP SSE on port 8080
 ```
 
-- MCP endpoint: `http://localhost:8080/sse` — connect with any MCP client, e.g. the MCP
-  Inspector.
+### HTTP transports
+
+The runtime MCP server speaks one of two HTTP transports. Spring AI's own
+`spring.ai.mcp.server.protocol` property selects it; ai-atlas has no transport property of its
+own, and the same Atlas tools are served either way.
+
+| Transport | `spring.ai.mcp.server.protocol` | Endpoints |
+|---|---|---|
+| **SSE** — the default | unset (or `SSE`) | `GET /sse` opens the event stream; clients post messages to `POST /mcp/message` |
+| **Streamable HTTP** — opt-in | `STREAMABLE` | a single endpoint, `/mcp` (Spring AI's default) |
+
+To opt in to Streamable HTTP:
+
+```yaml
+spring:
+  ai:
+    mcp:
+      server:
+        protocol: STREAMABLE
+```
+
+The demo's `application.yml` carries this line commented out. With no property set the server
+stays on SSE exactly as before.
+
+- MCP endpoint: `http://localhost:8080/sse` (SSE) or `http://localhost:8080/mcp` (Streamable
+  HTTP) — connect with any MCP client, e.g. the MCP Inspector.
 - Toggles: `ai.atlas.mcp.enabled` (default `true`) controls Atlas tool discovery only — set it
   to `false` and the generated tools are no longer registered, but Spring AI's MCP server and
-  the `/sse` endpoint stay up. To disable the server and its transport entirely, set
+  its endpoint stay up. To disable the server and its transport entirely, set
   `spring.ai.mcp.server.enabled=false`. Server identity via the standard
   `spring.ai.mcp.server.*` properties. See the demo's `application.yml`.
 - Use this path when tools must be served continuously from a deployed application; use the
@@ -288,4 +312,7 @@ The SSE path is guarded by a regression test,
 `modules/runtime/src/test/java/com/egoge/ai/atlas/runtime/mcp/SseUnchangedTest.java`, which pins
 the runtime MCP wiring end to end — it starts a context through the registered Boot
 auto-configurations and asserts the Atlas tool discovery, the MCP server consuming it, and the
-SSE transport routes together — so the standalone surfaces cannot drift it.
+SSE transport routes together — so the standalone surfaces cannot drift it. Its Streamable HTTP
+counterpart, `StreamableHttpTransportTest.java` in the same package, runs an MCP `tools/list`
+against `/mcp` with `protocol=STREAMABLE` and asserts it returns the same tool names the SSE
+transport serves.
