@@ -7,3 +7,6 @@ Review: PASS (see specs/contract-quality-foundations/collaboration/build-review.
 
 ### Phase 3 complete — US3: AI tools are described well enough for a model to choose them (2026-09-25T02:27:56Z)
 Review: PASS (see specs/contract-quality-foundations/collaboration/build-review.md).
+
+### Phase 4 complete — US4: The runtime MCP server can speak Streamable HTTP (2026-09-25T02:31:04Z)
+Review: PASS (see specs/contract-quality-foundations/collaboration/build-review.md).
