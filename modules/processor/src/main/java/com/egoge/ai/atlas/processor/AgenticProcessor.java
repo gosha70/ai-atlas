@@ -5,6 +5,7 @@ package com.egoge.ai.atlas.processor;
 
 import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.egoge.ai.atlas.annotations.AgenticExposed;
+import com.egoge.ai.atlas.processor.contract.ContractGate;
 import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.contract.IrBuilder;
 import com.egoge.ai.atlas.processor.generator.ApiVersionPropertiesGenerator;
@@ -61,7 +62,7 @@ import java.util.Set;
 @SupportedOptions({
         "ai.atlas.pii.patterns", "ai.atlas.pii.patterns.file",
         "ai.atlas.api.basePath", "ai.atlas.api.major", "ai.atlas.openapi.infoVersion",
-        "ai.atlas.strict"
+        "ai.atlas.strict", "ai.atlas.contract.baseline"
 })
 public class AgenticProcessor extends AbstractProcessor {
 
@@ -69,6 +70,7 @@ public class AgenticProcessor extends AbstractProcessor {
     public static final String OPT_API_MAJOR = "ai.atlas.api.major";
     public static final String OPT_OPENAPI_INFO_VERSION = "ai.atlas.openapi.infoVersion";
     public static final String OPT_STRICT = "ai.atlas.strict";
+    public static final String OPT_CONTRACT_BASELINE = "ai.atlas.contract.baseline";
     private final Map<String, EntityModel> entityRegistry = new HashMap<>();
     private final Set<String> dtoSkippedKeys = new HashSet<>();
     private final List<ServiceModel> serviceRegistry = new ArrayList<>();
@@ -101,7 +103,6 @@ public class AgenticProcessor extends AbstractProcessor {
         Messager msg = processingEnv.getMessager();
         Map<String, String> opts = processingEnv.getOptions();
         versionConfigValid = true;
-
         apiBasePath = opts.getOrDefault(OPT_API_BASE_PATH, "/api");
         if (!apiBasePath.startsWith("/")) {
             msg.printMessage(Diagnostic.Kind.ERROR,
@@ -118,7 +119,6 @@ public class AgenticProcessor extends AbstractProcessor {
             versionConfigValid = false;
             return;
         }
-
         String majorStr = opts.getOrDefault(OPT_API_MAJOR, "1");
         try {
             apiMajor = Integer.parseInt(majorStr);
@@ -134,7 +134,6 @@ public class AgenticProcessor extends AbstractProcessor {
             versionConfigValid = false;
             return;
         }
-
         String infoVersionRaw = opts.get(OPT_OPENAPI_INFO_VERSION);
         openApiInfoVersion = infoVersionRaw != null ? infoVersionRaw : (apiMajor + ".0.0");
         if (openApiInfoVersion.isBlank()) {
@@ -151,6 +150,7 @@ public class AgenticProcessor extends AbstractProcessor {
         }
         if (roundEnv.processingOver()) {
             contractIr.write(apiBasePath, apiMajor); // every round's declarations, including later rounds'
+            ContractGate.run(processingEnv, contractIr.build(apiBasePath, apiMajor)); // FR-008..013
             return false;
         }
 

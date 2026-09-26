@@ -113,6 +113,14 @@ public final class IrJson {
         doc.put(K_API_MAJOR, ir.apiMajor());
         doc.put(K_ENTITIES, ir.entities().stream().map(IrJson::entity).toList());
         doc.put(K_OPERATIONS, ir.operations().stream().map(IrJson::operation).toList());
+        return writeCanonical(doc);
+    }
+
+    /**
+     * Returns the canonical JSON text of a document of plain values: maps (in their iteration
+     * order), lists, strings, integers, booleans and {@code null}.
+     */
+    static String writeCanonical(Map<String, Object> doc) {
         StringBuilder out = new StringBuilder();
         writeValue(out, doc, 0);
         return out.append(NEWLINE).toString();

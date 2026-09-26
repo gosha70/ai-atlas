@@ -5,6 +5,7 @@ package com.egoge.ai.atlas.processor.contract;
 
 import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.egoge.ai.atlas.annotations.AgenticExposed;
+import com.egoge.ai.atlas.annotations.AgenticField;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Entity;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Field;
 import com.egoge.ai.atlas.processor.contract.ContractIr.FieldLifecycle;
@@ -41,6 +42,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -51,8 +53,8 @@ import java.util.TreeMap;
  * every valid field, whatever its lifecycle; operations are read from their elements with
  * method-then-class attribute resolution. Nothing is filtered by the configured major.
  *
- * <p>The builder reports no diagnostics: the scans and resolutions it shares with generation
- * report them there, once.
+ * <p>The builder reports only the diagnostics of attributes generation does not read
+ * ({@code openEnum}); the scans and resolutions it shares with generation report theirs there, once.
  */
 public final class IrBuilder {
 
@@ -83,6 +85,8 @@ public final class IrBuilder {
     private final ProcessingEnvironment env;
     private final Map<String, EntityModel> entities = new TreeMap<>();
     private final Map<String, Operation> operations = new TreeMap<>();
+    /** {@code entity#field} of every field declared {@code openEnum = true}. */
+    private final Set<String> openEnums = new HashSet<>();
     private boolean written = false;
 
     /**
@@ -100,14 +104,31 @@ public final class IrBuilder {
      */
     public void addEntity(TypeElement entity, List<FieldScanner.ScannedField> fields) {
         AgenticEntity annotation = entity.getAnnotation(AgenticEntity.class);
+        String className = entity.getQualifiedName().toString();
+        for (FieldScanner.ScannedField field : fields) {
+            if (field.element().getAnnotation(AgenticField.class).openEnum()) {
+                recordOpenEnum(className, field);
+            }
+        }
         String simpleName = entity.getSimpleName().toString();
         String dtoPackage = annotation.packageName().isEmpty()
                 ? env.getElementUtils().getPackageOf(entity).getQualifiedName() + ".generated"
                 : annotation.packageName();
-        entities.put(entity.getQualifiedName().toString(), new EntityModel(ClassName.get(entity),
+        entities.put(className, new EntityModel(ClassName.get(entity),
                 annotation.dtoName().isEmpty() ? simpleName + "Dto" : annotation.dtoName(), dtoPackage,
                 annotation.name().isEmpty() ? simpleName : annotation.name(), annotation.description(),
                 annotation.includeTypeInfo(), fields.stream().map(FieldScanner.ScannedField::model).toList()));
+    }
+
+    /** Records {@code openEnum = true}, warning when the field has no values it could apply to (FR-011). */
+    private void recordOpenEnum(String className, FieldScanner.ScannedField field) {
+        FieldModel model = field.model();
+        if (!model.enumType() && model.enumValues().isEmpty()) {
+            env.getMessager().printMessage(Diagnostic.Kind.WARNING, "[ai-atlas] @AgenticField(openEnum = true) on field '"
+                    + model.name() + "' has no effect — the field is neither an enum nor has allowedValues",
+                    field.element());
+        }
+        openEnums.add(className + "#" + model.name());
     }
 
     /**
@@ -216,10 +237,11 @@ public final class IrBuilder {
         List<Entity> irEntities = new ArrayList<>();
         for (EntityModel entity : entities.values()) {
             List<Field> fields = new ArrayList<>();
+            String className = entity.sourceClassName().canonicalName();
             for (FieldModel field : entity.fields()) {
-                fields.add(field(field));
+                fields.add(field(field, openEnums.contains(className + "#" + field.name())));
             }
-            irEntities.add(new Entity(entity.sourceClassName().canonicalName(), entity.dtoName(),
+            irEntities.add(new Entity(className, entity.dtoName(),
                     entity.dtoPackageName(), entity.displayName(), entity.classDescription(),
                     entity.includeTypeInfo(), fields));
         }
@@ -238,13 +260,13 @@ public final class IrBuilder {
         return new ContractIr(ContractIr.IR_VERSION, apiBasePath, apiMajor, irEntities, irOperations);
     }
 
-    private Field field(FieldModel field) {
+    private Field field(FieldModel field, boolean openEnum) {
         EntityRefResolver.EntityRef ref = EntityRefResolver.resolve(field, entities);
         return new Field(field.name(), field.displayName(), field.typeName().toString(),
                 field.collectionKind().name(), typeString(field.elementTypeName()),
                 typeString(field.hintTypeName()),
                 ref != null ? new TypeRef(ref.entityClass().canonicalName(), ref.dtoClass().canonicalName()) : null,
-                field.enumType(), field.enumValues(), false, field.sensitive(), field.checkCircularReference(),
+                field.enumType(), field.enumValues(), openEnum, field.sensitive(), field.checkCircularReference(),
                 field.description(), new FieldLifecycle(field.sinceVersion(), field.removedInVersion(),
                         field.deprecatedSinceVersion(), field.deprecatedMessage()));
     }
