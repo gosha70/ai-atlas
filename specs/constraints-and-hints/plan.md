@@ -114,14 +114,14 @@ annotations itself.
 **Decision**:
 - The IR keeps ai-atlas's own form: decimal bounds with boolean exclusivity, a set of `{regex, flags}` patterns, and `notBlank`.
 - Two renderers produce the dialects: one for OpenAPI 3.0 (boolean exclusives) and one for JSON Schema 2020-12 (numeric exclusives replace `minimum`/`maximum`).
-- Patterns are published anchored as `^(?:p)$`, and only when publishable (FR-004a). A pattern with flags or Java-only syntax stays enforced by Bean Validation, is left out of the schemas, and warns.
-- `@NotBlank` is its own key, published as the unanchored `\S` plus `minLength 1`, never as a Java regex. Several patterns are published as an `allOf` inside the property.
+- Patterns are published only when they are written in FR-004a's **portable subset**, an allow-list with an explicit translation. Shared syntax can still mean different things in the two engines: Java's `\s`, `\d`, `\w` and `.` differ from ECMAScript's on Unicode, and so does counting characters outside the BMP. So `\s`, `\d` and `\w` become explicit ASCII classes, `.` becomes Java's exact line-terminator exclusion, and negated classes gain a surrogate-pair alternative. The result is anchored as `^(?:t)$`. A pattern outside the subset stays enforced by Bean Validation, is left out of the schemas, and warns. (Refined after the second review of PR #44 at `b0b75f2`.)
+- `@NotBlank` is its own key with Hibernate Validator 8.0.3's semantics (`trim().length() > 0`: at least one code unit above U+0020). It is published as the unanchored `[^\u0000-\u0020]` plus `minLength 1`, never as a Java regex. Several patterns are published as an `allOf` inside the property.
 - Bean Validation constraints are **intersected** first, which is order-independent: the tightest endpoint and the union of patterns. `@AgenticConstraints` then replaces per key.
 - Bounds are compared as **endpoints** (value plus exclusivity), with integral exclusive bounds normalised to inclusive ones.
 
 **Consequences**:
 - Every published schema is valid in its dialect: tests validate MCP schemas against the 2020-12 metaschema and parse the OpenAPI document.
-- The FR-017a fixture proves that accept/reject results agree across Bean Validation, MCP and OpenAPI.
+- The FR-017a fixture proves that accept/reject results agree, for published constraints, across Bean Validation and an **ECMAScript** engine (GraalJS, with and without `u`), including Unicode cases. A Java-backed schema regex engine would hide the differences. For unpublished constraints the fixture asserts the documented one-sided result.
 - Some Java regexes cannot be published. They are still enforced at the MCP boundary, and the user is told why.
 - Two new **test-only** dependencies: a JSON-Schema validator that bundles the metaschemas, and a Bean Validation provider for the processor's consistency test. There is no production dependency.
 

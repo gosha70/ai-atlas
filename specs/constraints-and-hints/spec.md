@@ -143,22 +143,50 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
   - A **WARNING** on the element when a pattern cannot be published faithfully in a schema (FR-004a).
     It names the pattern and the reason. The pattern stays in the IR and stays enforced by Bean
     Validation, but it is left out of the OpenAPI and MCP schemas.
-- **FR-004a**: A pattern is *publishable* only when both of these hold:
-  - it has no `@Pattern.flags`;
-  - it contains none of these Java-only constructs, found by a documented token scan:
-    - inline flags `(?`*letters*`)` or `(?`*letters*`:`;
-    - possessive quantifiers `*+`, `++`, `?+`, `}+`;
-    - atomic groups `(?>`;
-    - `\A`, `\Z`, `\z`, `\G`, `\R`, `\h`, `\H`, `\X`;
-    - `\p{java`…`}`, `\p{Is`…`}`, `\p{In`…`}`;
-    - `\Q`…`\E`;
-    - character-class intersection `&&`.
+- **FR-004a**: A pattern is published into a schema only when every value's accept/reject result
+  is the same under Java whole-string matching and under ECMAScript (ECMA-262) matching of the
+  published form. That must hold with and without the `u` flag. A pattern qualifies only when it is
+  written entirely in the **portable subset** below, and each construct is emitted through the
+  **translation** below. A pattern outside the subset is *not publishable*: it stays in the IR, is
+  still enforced by Bean Validation, is left out of the OpenAPI and MCP schemas, and produces the
+  FR-004 WARNING naming the first unsupported construct.
+  - **Scope:** only patterns with no `@Pattern.flags`.
+  - **Portable subset, and how each construct is emitted:**
 
-  A publishable pattern `p` is written into schemas as the anchored `^(?:p)$`, so the schema accepts
-  exactly the values that Bean Validation's whole-string match accepts. `notBlank` is written as the
-  unanchored schema pattern `\S`, together with `minLength 1`. Several published patterns on one
-  property, including `notBlank`'s, are written as an `allOf` of single-`pattern` schemas inside
-  that property, never at the schema root.
+    | Construct in the Java pattern | Emitted as |
+    |---|---|
+    | A literal BMP character other than a metacharacter or a surrogate | itself (`\uXXXX` if it is not printable ASCII) |
+    | An escaped metacharacter: `\\` `\.` `\*` `\+` `\?` `\(` `\)` `\[` `\]` `\{` `\}` `\|` `\^` `\$` `\/` | itself |
+    | `\-` | itself inside a character class; a plain `-` outside one (ECMAScript `u` mode rejects `\-` outside a class) |
+    | `\t`, `\n`, `\r`, `\f`, `\xhh`, `\uhhhh` (BMP, non-surrogate) | itself |
+    | `\d` / `\D` (Java ASCII digits) | `[0-9]` / the negated form below |
+    | `\w` / `\W` (Java `[a-zA-Z_0-9]`) | `[a-zA-Z_0-9]` / the negated form below |
+    | `\s` / `\S` (Java `[ \t\n\x0B\f\r]`) | `[ \t\n\x0B\f\r]` / the negated form below |
+    | `.` (Java: any character except `\n`, `\r`, U+0085, U+2028, U+2029) | the negated form of `[\n\r\u0085  ]` |
+    | A character class `[...]` of literals, ranges between BMP non-surrogate characters, and the escapes above, optionally negated with `^` | a class with each member translated; a negated class uses the negated form |
+    | Groups `(...)`, non-capturing `(?:...)`, alternation `\|` | themselves |
+    | Quantifiers `*`, `+`, `?`, `{n}`, `{n,}`, `{n,m}`, and their lazy `?` variants | themselves |
+
+  - **Negated form:** a negated class `[^X]` is emitted as
+    `(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|[^X])`. A character outside the BMP is one Java code point but
+    two ECMAScript code units without `u`, so a surrogate pair counts as one character either way.
+  - **Not in the subset, so not publishable:**
+    - anything with flags;
+    - inline flags, possessive quantifiers, atomic groups, lookarounds, backreferences and named groups;
+    - `^` or `$` inside the pattern;
+    - `\b`, `\B`, `\A`, `\Z`, `\z`, `\G`, `\R`, `\h`, `\H`, `\v`, `\X`;
+    - any `\p{…}`/`\P{…}`, `\Q…\E`, octal and `\x{…}` escapes;
+    - class union or intersection (nested `[` or `&&`);
+    - literal characters outside the BMP, and surrogates.
+  - **Anchoring:** the published form of a translated pattern `t` is `^(?:t)$`.
+  - **`notBlank` is not a regex translation.** It is defined as Hibernate Validator 8.0.3's
+    `@NotBlank`, which the project tests with (`NotBlankValidator`: `toString().trim().length() > 0`).
+    The value must contain at least one UTF-16 code unit above U+0020. So U+00A0 and U+2003 count as
+    non-blank, and U+0000–U+0020 do not. It is published as the unanchored pattern `[^\u0000- ]`
+    together with `minLength 1`. The docs state that other Bean Validation providers may define
+    blankness differently.
+  - **Several published patterns** on one property, including `notBlank`'s, are written as an
+    `allOf` of single-`pattern` schemas inside that property, never at the schema root.
 - **FR-005**: The Contract IR MUST move to `irVersion` 2:
   - `Field` gains `constraints`.
   - `Parameter` gains `constraints` and `required` (boolean).
@@ -260,16 +288,30 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
   A test MUST validate every generated `inputSchema` against the JSON Schema 2020-12 metaschema,
   offline. The metaschema is bundled by a test-only validator library, never fetched over the
   network.
-- **FR-017a**: Regex semantics MUST be consistent across all three places a value is checked. A
-  shared fixture runs the same inputs through Bean Validation on the generated MCP tool class,
-  through a JSON Schema 2020-12 validator on `mcp-tools.json`, and through the OpenAPI parameter
-  schema, and asserts identical accept/reject results:
-  - `@Pattern("[A-Z]+")` accepts `"ABC"` and rejects `"xABCy"`;
-  - `@NotBlank` accepts `"a\nb"` and `" a "`, and rejects `""`, `" "` and `"\n\t"`;
-  - `@NotBlank @Pattern("[a-z ]+")` rejects `"   "` and accepts `" ab "`;
-  - `@Pattern(regexp = "[a-z]+", flags = CASE_INSENSITIVE)` and a pattern with a possessive
-    quantifier are enforced by Bean Validation, left out of both schemas, and produce the FR-004
-    WARNING.
+- **FR-017a**: Regex semantics MUST agree across the three places a value is checked, for every
+  **published** constraint:
+  - Bean Validation on the generated MCP tool class, using the Hibernate Validator the project tests with;
+  - the `mcp-tools.json` input schema;
+  - the OpenAPI parameter schema.
+
+  Published patterns MUST be evaluated by an **ECMAScript regex engine**, such as GraalJS through a
+  test-only dependency (for example networknt's `GraalJSRegularExpressionFactory`). They MUST be
+  evaluated both without and with the `u` flag. A Java-backed regex engine MUST NOT be used for the
+  schema side, because it would hide exactly these differences. A shared fixture asserts identical
+  accept/reject results for:
+  - `@Pattern("[A-Z]+")`: accepts `"ABC"`, rejects `"xABCy"`;
+  - `@Pattern("\\s+")`: accepts `" \t"`, rejects U+00A0, U+2003, U+0085 and U+FEFF;
+  - `@Pattern("\\S+")`: accepts U+00A0 and U+2003;
+  - `@Pattern(".")`: accepts `"a"`, U+00A0 and U+1F600 (one code point), rejects U+0085, U+2028 and `"\n"`;
+  - `@Pattern("[^a]")`: accepts U+1F600;
+  - `@Pattern("\\d+")` rejects `"٣"` (U+0663), and `@Pattern("\\w+")` rejects `"é"`;
+  - `@NotBlank`: accepts `"a\nb"`, `" a "`, U+00A0 and U+2003, rejects `""`, `" "`, `"\n\t"` and U+0000;
+  - `@NotBlank @Pattern("[a-z ]+")`: rejects `"   "`, accepts `" ab "`.
+
+  For constraints that are **not published**, the assertion is deliberately one-sided: Bean
+  Validation rejects, and both schemas accept because they omit the constraint. The cases are a
+  `@Pattern` with `CASE_INSENSITIVE`, a possessive quantifier, `\b`, `\p{L}`, and a literal
+  U+1F600 in the pattern. Each also produces the FR-004 WARNING.
 
 ### The runtime (US4)
 
@@ -299,6 +341,7 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
     - the constraint sources and the FR-002 mapping table;
     - precedence and requiredness;
     - the contradiction errors and the looser-override warning;
+    - the FR-004a portable regex subset and its translation, why unpublishable patterns are enforced but omitted, and `notBlank`'s Hibernate Validator semantics;
     - `@AgenticParam` and `@AgenticConstraints`;
     - hints, stating that they are client guidance, not authorization;
     - the `ai.atlas.constraints` flag;
@@ -324,7 +367,7 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
 - **Constraint keys (ai-atlas's normalised form):** `minimum`, `exclusiveMinimum`, `maximum`, `exclusiveMaximum`, `minLength`, `maxLength`, `minItems`, `maxItems`, `patterns`, `notBlank`.
 - **Endpoint:** a bound's value together with its exclusivity. It is compared as a whole (FR-008).
 - **Dialects:** OpenAPI 3.0 Schema Object (boolean exclusives) for the OpenAPI document; JSON Schema 2020-12 (numeric exclusives) for MCP `inputSchema`.
-- **Publishable pattern:** a pattern that FR-004a allows into schemas, written anchored as `^(?:p)$`.
+- **Publishable pattern:** a flag-free pattern written entirely in FR-004a's portable subset, emitted through its translation and anchored as `^(?:t)$`.
 - **Unknown:** the value of every constraint, requiredness and hint slot in a migrated `irVersion` 1 baseline.
 - **Tool specification:** an entry of `META-INF/ai-atlas/mcp-tools.json`, registered by the runtime as a `SyncToolSpecification`.
 
@@ -346,7 +389,7 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
    - the golden snapshot is unchanged with the flag off;
    - with the flag on, OpenAPI, REST, MCP classes and `mcp-tools.json` match fixtures, and hints appear only when declared;
    - `@Positive` is `exclusiveMinimum: 0` in MCP and `minimum: 0, exclusiveMinimum: true` in OpenAPI, and every `inputSchema` validates against the 2020-12 metaschema;
-   - the FR-017a regex fixture gives identical results in all three validators.
+   - the FR-017a fixture gives identical results for published constraints under an ECMAScript engine (with and without `u`), and the documented one-sided results for unpublished ones.
 4. **US4 / FR-018–FR-020:** over SSE and Streamable HTTP:
    - `tools/list` shows the constraints and declared hints;
    - a violating call returns a tool error without reaching the service;
