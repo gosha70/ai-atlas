@@ -4,10 +4,13 @@
 package com.egoge.ai.atlas.plugin;
 
 import org.gradle.api.Action;
+import org.gradle.api.GradleException;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
 import org.gradle.api.artifacts.Configuration;
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
+import org.gradle.api.artifacts.result.ResolvedArtifactResult;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.FileTree;
 import org.gradle.api.plugins.JavaPlugin;
@@ -21,12 +24,17 @@ import org.gradle.api.tasks.compile.ForkOptions;
 import org.gradle.api.tasks.compile.JavaCompile;
 import org.gradle.language.base.plugins.LifecycleBasePlugin;
 import org.gradle.process.CommandLineArgumentProvider;
+import org.gradle.workers.WorkerExecutionException;
+import org.gradle.workers.WorkerExecutor;
 
 import java.io.File;
+import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -56,6 +64,9 @@ public class AgenticPlugin implements Plugin<Project> {
     private static final String DEFAULT_CONTRACT_BASELINE = ".atlas/api.ir.json";
     private static final String ACCEPT_DIR = "atlas/accept";
     private static final String CONTRACT_OPTION_PREFIX = "-Aai.atlas.contract.";
+    private static final String PROCESSOR_MODULE = "ai-atlas-processor";
+    private static final Pattern PROCESSOR_JAR = Pattern.compile(PROCESSOR_MODULE + "-(.+)\\.jar");
+    private static final Pattern PLUGIN_JAR = Pattern.compile("-(\\d[^/]*)\\.jar$");
 
     @Override
     public void apply(Project project) {
@@ -109,6 +120,10 @@ public class AgenticPlugin implements Plugin<Project> {
         contractArguments.getLocked().set(extension.getContractLocked());
         compileJava.configure(task -> task.getOptions().getCompilerArgumentProviders().add(contractArguments));
 
+        // Named in the message a processor the plugin cannot run fails with
+        Provider<String> processorVersion = processorPath.getIncoming().getArtifacts().getResolvedArtifacts()
+                .map(AgenticPlugin::processorVersion);
+
         TaskProvider<AtlasContractCheck> check = tasks.register(CONTRACT_CHECK_TASK, AtlasContractCheck.class, task -> {
             task.setGroup(LifecycleBasePlugin.VERIFICATION_GROUP);
             task.setDescription("Checks a compilation that declares no ai-atlas contract against the contract"
@@ -119,6 +134,7 @@ public class AgenticPlugin implements Plugin<Project> {
             task.getLocked().set(extension.getContractLocked());
             task.getApiBasePath().set(extension.getApiBasePath());
             task.getApiMajor().set(extension.getApiMajorVersion());
+            task.getProcessorVersion().set(processorVersion);
         });
         tasks.named(JavaPlugin.CLASSES_TASK_NAME).configure(task -> task.dependsOn(check));
 
@@ -159,7 +175,58 @@ public class AgenticPlugin implements Plugin<Project> {
             task.getBaseline().set(extension.getContractBaseline());
             task.getApiBasePath().set(extension.getApiBasePath());
             task.getApiMajor().set(extension.getApiMajorVersion());
+            task.getProcessorVersion().set(processorVersion);
         });
+    }
+
+    /**
+     * Waits for the work submitted to the processor's classes. A linkage failure there means the
+     * {@code annotationProcessor} classpath holds a processor this plugin's version cannot call, so it
+     * fails with the two versions and the remedy instead of the raw error.
+     *
+     * @param workers          the executor the work was submitted to
+     * @param processorVersion the processor found on the {@code annotationProcessor} classpath
+     */
+    static void awaitProcessor(WorkerExecutor workers, Provider<String> processorVersion) {
+        try {
+            workers.await();
+        } catch (WorkerExecutionException e) {
+            Throwable linkage = e;
+            while (linkage != null && !(linkage instanceof LinkageError || linkage instanceof ClassNotFoundException)) {
+                linkage = linkage.getCause();
+            }
+            if (linkage == null) {
+                throw e;
+            }
+            throw new GradleException("The ai-atlas Gradle plugin " + pluginVersion() + " cannot run "
+                    + processorVersion.get() + " on the annotationProcessor classpath (" + linkage + ")."
+                    + " The plugin and processor versions must match: align agentic { version } with the"
+                    + " plugin's version, or remove the agentic { version } pin.");
+        }
+    }
+
+    private static String pluginVersion() {
+        String version = AgenticPlugin.class.getPackage().getImplementationVersion();
+        if (version == null) {
+            CodeSource source = AgenticPlugin.class.getProtectionDomain().getCodeSource();
+            Matcher jar = source == null ? null : PLUGIN_JAR.matcher(source.getLocation().getPath());
+            version = jar != null && jar.find() ? jar.group(1) : null;
+        }
+        return version != null ? version : "(development build)";
+    }
+
+    private static String processorVersion(Set<ResolvedArtifactResult> artifacts) {
+        for (ResolvedArtifactResult artifact : artifacts) {
+            if (artifact.getId().getComponentIdentifier() instanceof ModuleComponentIdentifier module
+                    && module.getModule().equals(PROCESSOR_MODULE)) {
+                return PROCESSOR_MODULE + " " + module.getVersion();
+            }
+            Matcher jar = PROCESSOR_JAR.matcher(artifact.getFile().getName());
+            if (jar.matches()) {
+                return PROCESSOR_MODULE + " " + jar.group(1);
+            }
+        }
+        return "an " + PROCESSOR_MODULE + " of unknown version";
     }
 
     /** compileJava's compiler arguments and argument providers, read when the accept compilation runs. */
