@@ -75,13 +75,26 @@ class IrRewireGoldenTest {
     /**
      * One compilation of a fixture at the given {@code -A} options. The two #25 fixtures that fail
      * with a mapping error still generate files before the error, and those are snapshotted too.
+     * With {@code laterRound}, {@link LaterRoundSourceProcessor} also runs, so an entity and a
+     * service reach ai-atlas only in the second round.
      */
-    record GoldenCase(String name, String fixture, Map<String, String> options, boolean expectSuccess) {
+    record GoldenCase(String name, String fixture, Map<String, String> options, boolean expectSuccess,
+                      boolean laterRound) {
+        GoldenCase(String name, String fixture, Map<String, String> options, boolean expectSuccess) {
+            this(name, fixture, options, expectSuccess, false);
+        }
+
         @Override
         public String toString() {
             return name;
         }
     }
+
+    /**
+     * The later-round case, captured after ADR-9: the aggregate resources are written from every
+     * round's declarations, so the later-round service is in them.
+     */
+    private static final GoldenCase LATER_ROUND = new GoldenCase("later-round", "later-round", Map.of(), true, true);
 
     static Stream<GoldenCase> fixtureCases() {
         return Stream.of(
@@ -94,22 +107,34 @@ class IrRewireGoldenTest {
                 new GoldenCase("rest-openapi-overloaded", "rest-openapi-overloaded", Map.of(), true),
                 new GoldenCase("rest-openapi-taken-id", "rest-openapi-taken-id", Map.of(), true),
                 new GoldenCase("rest-openapi-post-overloads", "rest-openapi-post-overloads", Map.of(), false),
-                new GoldenCase("rest-openapi-same-name", "rest-openapi-same-name", Map.of(), false));
+                new GoldenCase("rest-openapi-same-name", "rest-openapi-same-name", Map.of(), false),
+                LATER_ROUND);
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("fixtureCases")
     void fixtureOutputMatchesTheGoldenSnapshot(GoldenCase goldenCase) throws IOException {
-        Map<String, String> actual = compileFixture(goldenCase.fixture(), goldenCase.options(),
-                goldenCase.expectSuccess());
+        Map<String, String> actual = compileFixture(goldenCase);
 
         assertThat(actual).as("fixture %s generates output", goldenCase.name()).isNotEmpty();
         verifyOrCapture(goldenCase.name(), actual);
     }
 
     @Test
+    void laterRoundServiceIsInTheOpenApiDocumentAndTheDeprecationManifest() throws IOException {
+        Map<String, String> actual = compileFixture(LATER_ROUND);
+
+        assertThat(actual.get(CLASS_OUTPUT + "META-INF/openapi/openapi-v1.json"))
+                .contains("/api/v1/late-service/late").contains("/api/v1/catalog-service/list")
+                .contains("LateDto");
+        assertThat(actual.get(CLASS_OUTPUT + "META-INF/ai-atlas/deprecation-manifest.json"))
+                .contains("/api/v1/late-service/late").contains("/api/v1/catalog-service/lookup");
+    }
+
+    @Test
     void compilationWithoutAiAtlasAnnotationsGeneratesNothing() throws IOException {
-        Map<String, String> actual = compileFixture(NO_ANNOTATION_CASE, Map.of(), true);
+        Map<String, String> actual = compileFixture(new GoldenCase(NO_ANNOTATION_CASE, NO_ANNOTATION_CASE,
+                Map.of(), true));
 
         assertThat(actual).isEmpty();
         assertThat(EXPECTED.resolve(NO_ANNOTATION_CASE)).doesNotExist();
@@ -154,8 +179,8 @@ class IrRewireGoldenTest {
      * Runs javac directly into scratch directories, so that a compilation failing with an ai-atlas
      * error still yields what the generators wrote before it.
      */
-    private static Map<String, String> compileFixture(String fixture, Map<String, String> options,
-                                                      boolean expectSuccess) throws IOException {
+    private static Map<String, String> compileFixture(GoldenCase goldenCase) throws IOException {
+        String fixture = goldenCase.fixture();
         Path scratch = Files.createTempDirectory("ir-rewire-golden");
         try {
             Path sourceOut = Files.createDirectories(scratch.resolve(SOURCE_OUTPUT));
@@ -163,7 +188,7 @@ class IrRewireGoldenTest {
             JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
             DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
             List<String> compilerOptions = new ArrayList<>(List.of("-encoding", "UTF-8"));
-            options.entrySet().stream()
+            goldenCase.options().entrySet().stream()
                     .sorted(Map.Entry.comparingByKey())
                     .forEach(e -> compilerOptions.add("-A" + e.getKey() + "=" + e.getValue()));
             boolean success;
@@ -175,11 +200,13 @@ class IrRewireGoldenTest {
                 JavaCompiler.CompilationTask task = compiler.getTask(null, fileManager, diagnostics,
                         compilerOptions, null,
                         fileManager.getJavaFileObjectsFromPaths(listFiles(FIXTURES.resolve(fixture))));
-                task.setProcessors(List.of(new AgenticProcessor()));
+                task.setProcessors(goldenCase.laterRound()
+                        ? List.of(new AgenticProcessor(), new LaterRoundSourceProcessor())
+                        : List.of(new AgenticProcessor()));
                 success = Boolean.TRUE.equals(task.call());
             }
             assertThat(success).as("compilation of %s succeeds; diagnostics: %s", fixture,
-                    diagnostics.getDiagnostics()).isEqualTo(expectSuccess);
+                    diagnostics.getDiagnostics()).isEqualTo(goldenCase.expectSuccess());
 
             Map<String, String> generated = new TreeMap<>();
             for (Path file : listFiles(scratch)) {

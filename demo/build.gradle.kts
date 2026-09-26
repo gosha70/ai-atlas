@@ -44,6 +44,22 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(processorOptions.map { (key, value) -> "-A$key=$value" })
 }
 
+// The committed contract baseline (contract-ir-gate FR-018), passed to the main compileJava only —
+// what the plugin's contractBaseline does. Declared as an input so editing it re-runs the gate.
+val contractBaseline = layout.projectDirectory.file(".atlas/api.ir.json")
+
+tasks.named<JavaCompile>("compileJava") {
+    inputs.files(contractBaseline).withPropertyName("contractBaseline")
+        .withPathSensitivity(PathSensitivity.NONE)
+    options.compilerArgs.add("-Aai.atlas.contract.baseline=${contractBaseline.asFile.absolutePath}")
+}
+
+tasks.test {
+    inputs.files(contractBaseline).withPropertyName("contractBaseline")
+        .withPathSensitivity(PathSensitivity.NONE)
+    systemProperty("ai.atlas.demo.contractBaseline", contractBaseline.asFile.absolutePath)
+}
+
 // Exports the exact inputs `:demo:compileJava` hands to the annotation processor — compile
 // classpath and -A options — so the processor's AtlasGenerator golden test can reproduce this
 // module's generated output byte-for-byte through the driver API.

@@ -38,7 +38,7 @@ class EmptyContractGateTest {
     void emptyContractAgainstABaselineWithActiveElementsFailsReportingEachRemoval() throws IOException {
         Path baseline = GateFixtures.writeBaseline(dir);
 
-        ContractGate.Outcome outcome = EmptyContract.check(baseline.toString(), "/api", M);
+        ContractGate.Outcome outcome = EmptyContract.check(baseline.toString(), false, "/api", M);
 
         assertThat(outcome.failed()).isTrue();
         List<String> errors = outcome.findings().stream().filter(f -> f.kind() == Diagnostic.Kind.ERROR)
@@ -71,7 +71,7 @@ class EmptyContractGateTest {
                         }
                         """).sources(), MAJOR + M)), StandardCharsets.UTF_8);
 
-        ContractGate.Outcome outcome = EmptyContract.check(future.toString(), "/api", M);
+        ContractGate.Outcome outcome = EmptyContract.check(future.toString(), false, "/api", M);
 
         assertThat(outcome.failed()).isFalse();
         assertThat(outcome.compared()).isTrue();
