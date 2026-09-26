@@ -3,18 +3,31 @@
  */
 package com.egoge.ai.atlas.plugin;
 
+import org.gradle.api.Action;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
+import org.gradle.api.Task;
 import org.gradle.api.artifacts.Configuration;
+import org.gradle.api.file.FileCollection;
+import org.gradle.api.file.FileTree;
 import org.gradle.api.plugins.JavaPlugin;
+import org.gradle.api.provider.Provider;
+import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.Nested;
 import org.gradle.api.tasks.TaskContainer;
 import org.gradle.api.tasks.TaskProvider;
+import org.gradle.api.tasks.compile.CompileOptions;
+import org.gradle.api.tasks.compile.ForkOptions;
 import org.gradle.api.tasks.compile.JavaCompile;
 import org.gradle.language.base.plugins.LifecycleBasePlugin;
+import org.gradle.process.CommandLineArgumentProvider;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.stream.Stream;
 
 /**
  * Gradle plugin that configures a Java project to use the AI-ATLAS framework.
@@ -110,24 +123,28 @@ public class AgenticPlugin implements Plugin<Project> {
         tasks.named(JavaPlugin.CLASSES_TASK_NAME).configure(task -> task.dependsOn(check));
 
         // The sources compiled as compileJava compiles them, less the contract options, so accepting
-        // works while the gate fails
+        // works while the gate fails. Everything is read from compileJava lazily, when the task graph is
+        // built or this task runs, so a change the build makes to compileJava after this task is created
+        // still reaches it and the accepted IR is byte-identical to compileJava's (FR-015).
         TaskProvider<JavaCompile> acceptCompile = tasks.register(ACCEPT_COMPILE_TASK, JavaCompile.class, task -> {
-            JavaCompile main = compileJava.get();
             task.setDescription("Compiles the main sources without the contract gate, for " + ACCEPT_TASK + ".");
             // Explicit prerequisites, such as source generators, read when the task graph is built
-            task.dependsOn((Callable<Set<Object>>) main::getDependsOn);
-            task.setSource(main.getSource());
-            task.setClasspath(main.getClasspath());
-            task.getOptions().setAnnotationProcessorPath(main.getOptions().getAnnotationProcessorPath());
-            task.getOptions().setEncoding(main.getOptions().getEncoding());
-            task.getOptions().getRelease().set(main.getOptions().getRelease());
-            task.getJavaCompiler().set(main.getJavaCompiler());
-            task.setSourceCompatibility(main.getSourceCompatibility());
-            task.setTargetCompatibility(main.getTargetCompatibility());
-            task.getOptions().getCompilerArgs().addAll(main.getOptions().getCompilerArgs().stream()
-                    .filter(arg -> !arg.startsWith(CONTRACT_OPTION_PREFIX)).toList());
-            task.getOptions().getCompilerArgumentProviders().addAll(main.getOptions().getCompilerArgumentProviders()
-                    .stream().filter(provider -> provider != contractArguments).toList());
+            task.dependsOn((Callable<Set<Object>>) () -> compileJava.get().getDependsOn());
+            task.setSource((Callable<FileTree>) () -> compileJava.get().getSource());
+            task.setClasspath(project.files((Callable<FileCollection>) () -> compileJava.get().getClasspath()));
+            task.getOptions().setAnnotationProcessorPath(project.files(
+                    (Callable<FileCollection>) () -> compileJava.get().getOptions().getAnnotationProcessorPath()));
+            task.getOptions().getRelease().set(
+                    project.provider(() -> compileJava.get().getOptions().getRelease().getOrNull()));
+            task.getJavaCompiler().set(project.provider(() -> compileJava.get().getJavaCompiler().getOrNull()));
+            task.getOptions().getCompilerArgumentProviders().add(new MainCompilerArguments(
+                    project.provider(() -> compileJava.get().getOptions().getCompilerArgs().stream()
+                            .filter(arg -> !arg.startsWith(CONTRACT_OPTION_PREFIX)).toList()),
+                    project.provider(() -> compileJava.get().getOptions().getCompilerArgumentProviders().stream()
+                            .filter(provider -> provider != contractArguments).toList())));
+            Provider<MainCompileSettings> settings = project.provider(() -> MainCompileSettings.of(compileJava.get()));
+            task.getInputs().property("mainCompileSettings", settings.map(MainCompileSettings::fingerprint));
+            task.doFirst(new ApplyMainCompileSettings(settings));
             task.getOptions().setIncremental(false);
             task.getDestinationDirectory().set(project.getLayout().getBuildDirectory().dir(ACCEPT_DIR + "/classes"));
             task.getOptions().getGeneratedSourceOutputDirectory()
@@ -143,6 +160,101 @@ public class AgenticPlugin implements Plugin<Project> {
             task.getApiBasePath().set(extension.getApiBasePath());
             task.getApiMajor().set(extension.getApiMajorVersion());
         });
+    }
+
+    /** compileJava's compiler arguments and argument providers, read when the accept compilation runs. */
+    public static final class MainCompilerArguments implements CommandLineArgumentProvider {
+
+        private final Provider<List<String>> compilerArgs;
+        private final Provider<List<CommandLineArgumentProvider>> argumentProviders;
+
+        MainCompilerArguments(Provider<List<String>> compilerArgs,
+                              Provider<List<CommandLineArgumentProvider>> argumentProviders) {
+            this.compilerArgs = compilerArgs;
+            this.argumentProviders = argumentProviders;
+        }
+
+        /**
+         * compileJava's compiler arguments, less the contract options.
+         *
+         * @return the arguments
+         */
+        @Input
+        public List<String> getCompilerArgs() {
+            return compilerArgs.get();
+        }
+
+        /**
+         * compileJava's argument providers, less the contract options.
+         *
+         * @return the providers
+         */
+        @Nested
+        public List<CommandLineArgumentProvider> getArgumentProviders() {
+            return argumentProviders.get();
+        }
+
+        @Override
+        public Iterable<String> asArguments() {
+            List<String> arguments = new ArrayList<>(getCompilerArgs());
+            getArgumentProviders().forEach(provider -> provider.asArguments().forEach(arguments::add));
+            return arguments;
+        }
+    }
+
+    /** compileJava's options that are not lazy properties, applied to the accept compilation as it runs. */
+    private record MainCompileSettings(String encoding, String sourceCompatibility, String targetCompatibility,
+                                       boolean fork, String executable, File javaHome, String memoryInitialSize,
+                                       String memoryMaximumSize, String tempDir, List<String> jvmArgs,
+                                       List<CommandLineArgumentProvider> jvmArgumentProviders) {
+
+        static MainCompileSettings of(JavaCompile main) {
+            CompileOptions options = main.getOptions();
+            ForkOptions fork = options.getForkOptions();
+            return new MainCompileSettings(options.getEncoding(), main.getSourceCompatibility(),
+                    main.getTargetCompatibility(), options.isFork(), fork.getExecutable(), fork.getJavaHome(),
+                    fork.getMemoryInitialSize(), fork.getMemoryMaximumSize(), fork.getTempDir(),
+                    fork.getJvmArgs() == null ? null : List.copyOf(fork.getJvmArgs()),
+                    List.copyOf(fork.getJvmArgumentProviders()));
+        }
+
+        /** The settings that are inputs of a compilation, so a change re-runs the accept compilation. */
+        List<String> fingerprint() {
+            return Stream.of(encoding, sourceCompatibility, targetCompatibility, fork, executable, jvmArgs)
+                    .map(String::valueOf).toList();
+        }
+
+        void applyTo(JavaCompile task) {
+            CompileOptions options = task.getOptions();
+            options.setEncoding(encoding);
+            task.setSourceCompatibility(sourceCompatibility);
+            task.setTargetCompatibility(targetCompatibility);
+            options.setFork(fork);
+            ForkOptions forkOptions = options.getForkOptions();
+            forkOptions.setExecutable(executable);
+            forkOptions.setJavaHome(javaHome);
+            forkOptions.setMemoryInitialSize(memoryInitialSize);
+            forkOptions.setMemoryMaximumSize(memoryMaximumSize);
+            forkOptions.setTempDir(tempDir);
+            forkOptions.setJvmArgs(jvmArgs);
+            forkOptions.getJvmArgumentProviders().clear();
+            forkOptions.getJvmArgumentProviders().addAll(jvmArgumentProviders);
+        }
+    }
+
+    /** Applies compileJava's final settings; a class, not a lambda, so the task stays cacheable. */
+    private static final class ApplyMainCompileSettings implements Action<Task> {
+
+        private final Provider<MainCompileSettings> settings;
+
+        ApplyMainCompileSettings(Provider<MainCompileSettings> settings) {
+            this.settings = settings;
+        }
+
+        @Override
+        public void execute(Task task) {
+            settings.get().applyTo((JavaCompile) task);
+        }
     }
 
     private void addDependencies(Project project, AgenticExtension extension) {
@@ -168,7 +280,7 @@ public class AgenticPlugin implements Plugin<Project> {
     }
 
     private void configureProcessorOptions(Project project, AgenticExtension extension) {
-        project.getTasks().withType(JavaCompile.class, task -> {
+        project.getTasks().withType(JavaCompile.class).configureEach(task -> {
             var args = task.getOptions().getCompilerArgs();
 
             if (extension.getPiiPatternsFile().isPresent()) {
