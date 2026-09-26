@@ -3,7 +3,9 @@
  */
 package com.egoge.ai.atlas.processor.contract;
 
+import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.egoge.ai.atlas.annotations.AgenticExposed;
+import com.egoge.ai.atlas.annotations.AgenticField;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Entity;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Field;
 import com.egoge.ai.atlas.processor.contract.ContractIr.FieldLifecycle;
@@ -40,6 +42,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -50,8 +53,8 @@ import java.util.TreeMap;
  * every valid field, whatever its lifecycle; operations are read from their elements with
  * method-then-class attribute resolution. Nothing is filtered by the configured major.
  *
- * <p>The builder reports no diagnostics: the scans and resolutions it shares with generation
- * report them there, once.
+ * <p>The builder reports only the diagnostics of attributes generation does not read
+ * ({@code openEnum}); the scans and resolutions it shares with generation report theirs there, once.
  */
 public final class IrBuilder {
 
@@ -82,6 +85,8 @@ public final class IrBuilder {
     private final ProcessingEnvironment env;
     private final Map<String, EntityModel> entities = new TreeMap<>();
     private final Map<String, Operation> operations = new TreeMap<>();
+    /** {@code entity#field} of every field declared {@code openEnum = true}. */
+    private final Set<String> openEnums = new HashSet<>();
     private boolean written = false;
 
     /**
@@ -94,31 +99,57 @@ public final class IrBuilder {
     /**
      * Records an entity with every field of the scan, whatever its lifecycle.
      *
-     * @param entity the entity as generation sees it; only its class-level attributes are used
+     * @param entity the {@code @AgenticEntity} class
      * @param fields every valid {@code @AgenticField} of the entity, in DTO declaration order
      */
-    public void addEntity(EntityModel entity, List<FieldScanner.ScannedField> fields) {
-        entities.put(entity.sourceClassName().canonicalName(), new EntityModel(entity.sourceClassName(),
-                entity.dtoName(), entity.dtoPackageName(), entity.displayName(), entity.classDescription(),
-                entity.includeTypeInfo(), fields.stream().map(FieldScanner.ScannedField::model).toList()));
+    public void addEntity(TypeElement entity, List<FieldScanner.ScannedField> fields) {
+        AgenticEntity annotation = entity.getAnnotation(AgenticEntity.class);
+        String className = entity.getQualifiedName().toString();
+        for (FieldScanner.ScannedField field : fields) {
+            AgenticField fieldAnnotation = field.element().getAnnotation(AgenticField.class);
+            if (fieldAnnotation != null && fieldAnnotation.openEnum()) {
+                recordOpenEnum(className, field);
+            }
+        }
+        String simpleName = entity.getSimpleName().toString();
+        String dtoPackage = annotation.packageName().isEmpty()
+                ? env.getElementUtils().getPackageOf(entity).getQualifiedName() + ".generated"
+                : annotation.packageName();
+        entities.put(className, new EntityModel(ClassName.get(entity),
+                annotation.dtoName().isEmpty() ? simpleName + "Dto" : annotation.dtoName(), dtoPackage,
+                annotation.name().isEmpty() ? simpleName : annotation.name(), annotation.description(),
+                annotation.includeTypeInfo(), fields.stream().map(FieldScanner.ScannedField::model).toList()));
+    }
+
+    /** Records {@code openEnum = true}, warning when the field has no values it could apply to (FR-011). */
+    private void recordOpenEnum(String className, FieldScanner.ScannedField field) {
+        FieldModel model = field.model();
+        if (!model.enumType() && model.enumValues().isEmpty()) {
+            env.getMessager().printMessage(Diagnostic.Kind.WARNING, "[ai-atlas] @AgenticField(openEnum = true) on field '"
+                    + model.name() + "' has no effect — the field is neither an enum nor has allowedValues",
+                    field.element());
+        }
+        openEnums.add(className + "#" + model.name());
     }
 
     /**
-     * Records an exposed method. A method whose channels cannot be resolved is left out; the
-     * generation path reports that error.
+     * Records an exposed method. The caller records only methods whose model is valid, as invalid
+     * fields are left out of the scan; the generation path reports why a method is invalid.
      *
      * @param service        the service class declaring the method
      * @param method         the method
      * @param typeAnnotation the service's class-level {@code @AgenticExposed}, or {@code null}
+     * @return the operation's identity, {@link Operation#id()}, or {@code null} when the method is
+     *         not exposed or its channels cannot be resolved
      */
-    public void addOperation(TypeElement service, ExecutableElement method, AgenticExposed typeAnnotation) {
+    public String addOperation(TypeElement service, ExecutableElement method, AgenticExposed typeAnnotation) {
         AgenticExposed methodAnnotation = method.getAnnotation(AgenticExposed.class);
         if (methodAnnotation == null && typeAnnotation == null) {
-            return;
+            return null;
         }
         Set<String> channels = AttributeResolver.resolveChannels(methodAnnotation, typeAnnotation, method, SILENT);
         if (channels == null) {
-            return;
+            return null;
         }
 
         String methodName = method.getSimpleName().toString();
@@ -154,6 +185,7 @@ public final class IrBuilder {
                 AttributeResolver.resolveDescription(methodAnnotation, typeAnnotation, methodName),
                 rest, parameters, returns, lifecycle);
         operations.put(operation.id(), operation);
+        return operation.id();
     }
 
     /**
@@ -180,6 +212,21 @@ public final class IrBuilder {
     }
 
     /**
+     * Projects the declarations recorded so far at {@code apiMajor}, resolving class names against
+     * the compilation's elements (FR-006).
+     *
+     * @param apiBasePath the configured REST base path
+     * @param apiMajor    the configured major
+     * @return the projection the generators consume
+     */
+    public ContractProjection project(String apiBasePath, int apiMajor) {
+        return ContractProjection.of(build(apiBasePath, apiMajor), apiMajor, qualifiedName -> {
+            TypeElement type = env.getElementUtils().getTypeElement(qualifiedName);
+            return type != null ? ClassName.get(type) : null;
+        });
+    }
+
+    /**
      * Builds the document, resolving each field's and return's entity reference against every
      * recorded entity.
      *
@@ -191,10 +238,11 @@ public final class IrBuilder {
         List<Entity> irEntities = new ArrayList<>();
         for (EntityModel entity : entities.values()) {
             List<Field> fields = new ArrayList<>();
+            String className = entity.sourceClassName().canonicalName();
             for (FieldModel field : entity.fields()) {
-                fields.add(field(field));
+                fields.add(field(field, openEnums.contains(className + "#" + field.name())));
             }
-            irEntities.add(new Entity(entity.sourceClassName().canonicalName(), entity.dtoName(),
+            irEntities.add(new Entity(className, entity.dtoName(),
                     entity.dtoPackageName(), entity.displayName(), entity.classDescription(),
                     entity.includeTypeInfo(), fields));
         }
@@ -213,18 +261,22 @@ public final class IrBuilder {
         return new ContractIr(ContractIr.IR_VERSION, apiBasePath, apiMajor, irEntities, irOperations);
     }
 
-    private Field field(FieldModel field) {
+    private Field field(FieldModel field, boolean openEnum) {
         EntityRefResolver.EntityRef ref = EntityRefResolver.resolve(field, entities);
         return new Field(field.name(), field.displayName(), field.typeName().toString(),
                 field.collectionKind().name(), typeString(field.elementTypeName()),
                 typeString(field.hintTypeName()),
                 ref != null ? new TypeRef(ref.entityClass().canonicalName(), ref.dtoClass().canonicalName()) : null,
-                field.enumType(), field.enumValues(), false, field.sensitive(), field.checkCircularReference(),
+                field.enumType(), field.enumValues(), openEnum, field.sensitive(), field.checkCircularReference(),
                 field.description(), new FieldLifecycle(field.sinceVersion(), field.removedInVersion(),
                         field.deprecatedSinceVersion(), field.deprecatedMessage()));
     }
 
-    private static String typeString(TypeMirror type) {
+    /**
+     * The canonical source form of a type (FR-005). {@code TypeName.get} does not carry TYPE_USE
+     * annotations, so annotating a type, e.g. with {@code @Nullable}, leaves its string unchanged.
+     */
+    static String typeString(TypeMirror type) {
         return TypeName.get(type).toString();
     }
 

@@ -91,6 +91,17 @@ public @interface AgenticField {
     String[] allowedValues() default {};
 
     /**
+     * Whether clients of the field tolerate values they do not know. The contract gate treats a
+     * value added to the field's enum constants or {@link #allowedValues()} as a breaking change
+     * while this is {@code false} (the default, a closed enum), and as compatible when it is
+     * {@code true}. Removing a value is compatible either way.
+     *
+     * <p>Only meaningful on enum-typed fields or fields with {@code allowedValues}; a compile
+     * warning is emitted when the field is neither an enum type nor has {@code allowedValues}.
+     */
+    boolean openEnum() default false;
+
+    /**
      * Declares the runtime element type for legacy collection fields whose
      * signatures use raw or wildcard types (e.g. {@code Collection} without
      * a type parameter). The annotation processor uses this hint as a

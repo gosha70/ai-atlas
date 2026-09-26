@@ -128,7 +128,19 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
 
         /** The method identity within its service, {@code method(parameter types)}. */
         public String signature() {
-            return method + "(" + String.join(",", parameters.stream().map(Parameter::javaType).toList()) + ")";
+            return renderSignature(method, parameters.stream().map(Parameter::javaType).toList());
+        }
+
+        /**
+         * {@code method(parameter types)}, the one rendering of an operation's identity within its
+         * service, shared by the IR and the gate's element lookup.
+         *
+         * @param method         method name
+         * @param parameterTypes parameter types in declaration order, as {@link Parameter#javaType()}
+         * @return the signature
+         */
+        public static String renderSignature(String method, List<String> parameterTypes) {
+            return method + "(" + String.join(",", parameterTypes) + ")";
         }
     }
 

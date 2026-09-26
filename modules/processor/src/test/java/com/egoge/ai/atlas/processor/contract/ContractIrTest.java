@@ -13,8 +13,11 @@ import com.google.testing.compile.JavaFileObjects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
+import javax.tools.StandardJavaFileManager;
 import javax.tools.StandardLocation;
+import javax.tools.ToolProvider;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -301,6 +304,84 @@ class ContractIrTest {
     }
 
     @Test
+    void contentAfterTheDocumentAndDuplicateKeysAreMalformed() throws IOException {
+        String valid = compileLifecycle();
+
+        assertMalformed(valid + "{}", "Trailing token");
+        assertMalformed(valid + "x", "Unrecognized token");
+        assertMalformed(valid.replaceFirst("\"irVersion\": 1,", "\"irVersion\": 1, \"irVersion\": 1,"),
+                "Duplicate field 'irVersion'");
+        assertMalformed(valid.replaceFirst("\"sensitive\": (true|false),", "\"sensitive\": true, \"sensitive\": $1,"),
+                "Duplicate field 'sensitive'");
+    }
+
+    @Test
+    void typeUseAnnotationsDoNotChangeCanonicalTypes() {
+        String annotated = irOf(javac().withProcessors(new AgenticProcessor()).compile(typeUseSources("@Nullable ")));
+        String plain = irOf(javac().withProcessors(new AgenticProcessor()).compile(typeUseSources("")));
+
+        assertThat(annotated).isEqualTo(plain).doesNotContain("Nullable")
+                .contains("\"javaType\": \"java.util.List<java.lang.String>\"");
+    }
+
+    @Test
+    void operationIsRecordedOnlyWhenItsMethodModelIsValid(@TempDir Path classOutput) throws Exception {
+        JavaFileObject service = JavaFileObjects.forSourceString("test.Mixed", """
+                package test;
+                import com.egoge.ai.atlas.annotations.AgenticExposed;
+                @AgenticExposed(description = "Mixed")
+                public class Mixed {
+                    public String good() { return null; }
+                    @AgenticExposed(description = "Bad since", apiSince = 0)
+                    public String badSince() { return null; }
+                    @AgenticExposed(description = "Bad range", apiSince = 3, apiUntil = 2)
+                    public String badRange() { return null; }
+                }
+                """);
+        // compile-testing withholds the output of a failed compilation, so run javac directly
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        boolean success;
+        try (StandardJavaFileManager files = compiler.getStandardFileManager(null, null, StandardCharsets.UTF_8)) {
+            files.setLocationFromPaths(StandardLocation.CLASS_OUTPUT, List.of(classOutput));
+            files.setLocationFromPaths(StandardLocation.SOURCE_OUTPUT, List.of(classOutput));
+            files.setLocationFromPaths(StandardLocation.CLASS_PATH, Stream.of(
+                    System.getProperty("java.class.path").split(File.pathSeparator)).map(Path::of).toList());
+            JavaCompiler.CompilationTask task = compiler.getTask(null, files, diagnostic -> { }, null, null,
+                    List.of(service));
+            task.setProcessors(List.of(new AgenticProcessor()));
+            success = task.call();
+        }
+
+        assertThat(success).isFalse();
+        ContractIr ir = IrJson.read(classOutput.resolve(ContractIr.RESOURCE_PATH));
+        assertThat(ir.operations()).extracting(Operation::id).containsExactly("test.Mixed#good()");
+    }
+
+    @Test
+    void declarationsGeneratedInALaterRoundAreRecorded() throws Exception {
+        JavaFileObject first = JavaFileObjects.forSourceString("shop.First", """
+                package shop;
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+                @AgenticEntity
+                public class First {
+                    @AgenticField private Long id;
+                    public Long getId() { return id; }
+                }
+                """);
+        Compilation compilation = javac()
+                .withProcessors(new AgenticProcessor(), new LaterRoundSourceProcessor())
+                .compile(first);
+
+        assertThat(compilation.status()).as(compilation.diagnostics().toString())
+                .isEqualTo(Compilation.Status.SUCCESS);
+        ContractIr ir = IrJson.parse(irOf(compilation), "api.ir.json");
+        assertThat(ir.entities()).extracting(Entity::className).containsExactly("shop.First", "shop.late.Late");
+        assertThat(ir.operations()).extracting(Operation::id).containsExactly("shop.late.LateService#late()");
+        assertThat(compilation.generatedSourceFile("shop.late.generated.LateDto")).isPresent();
+    }
+
+    @Test
     void readingABaselineFileReturnsTheDocument(@TempDir Path dir) throws Exception {
         String json = compileLifecycle();
         Path baseline = Files.writeString(dir.resolve("api.ir.json"), json, StandardCharsets.UTF_8);
@@ -310,6 +391,43 @@ class ContractIrTest {
     }
 
     // --- helpers ---
+
+    private static final JavaFileObject NULLABLE = JavaFileObjects.forSourceString("shop.Nullable", """
+            package shop;
+            import java.lang.annotation.ElementType;
+            import java.lang.annotation.Target;
+            @Target(ElementType.TYPE_USE)
+            public @interface Nullable { }
+            """);
+
+    /** An entity and a service whose field, parameter and return types carry {@code annotation}. */
+    private static List<JavaFileObject> typeUseSources(String annotation) {
+        return List.of(NULLABLE, JavaFileObjects.forSourceString("shop.Item", """
+                        package shop;
+                        import com.egoge.ai.atlas.annotations.AgenticEntity;
+                        import com.egoge.ai.atlas.annotations.AgenticField;
+                        import java.util.List;
+                        @AgenticEntity
+                        public class Item {
+                            @AgenticField private %1$sString name;
+                            @AgenticField private List<%1$sString> tags;
+                            @AgenticField private String %1$s[] codes;
+                            public String getName() { return name; }
+                            public List<String> getTags() { return tags; }
+                            public String[] getCodes() { return codes; }
+                        }
+                        """.formatted(annotation)),
+                JavaFileObjects.forSourceString("shop.ItemService", """
+                        package shop;
+                        import com.egoge.ai.atlas.annotations.AgenticExposed;
+                        @AgenticExposed(description = "Items")
+                        public class ItemService {
+                            @AgenticExposed(description = "Label")
+                            public %1$sString label(%1$sLong id) { return null; }
+                        }
+                        """.formatted(annotation)));
+    }
+
 
     private static void assertMalformed(String json, String detail) {
         assertThatThrownBy(() -> IrJson.parse(json, "baseline.json"))

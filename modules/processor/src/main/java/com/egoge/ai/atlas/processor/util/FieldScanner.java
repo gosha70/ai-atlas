@@ -47,55 +47,11 @@ public final class FieldScanner {
   }
 
   /**
-   * Scans the given type element and its entire superclass chain
-   * for {@code @AgenticField} fields. Fields from supertypes appear
-   * before subtype fields. Duplicate field names are skipped (subtype wins).
-   * Fields inactive for the given {@code apiMajor} are excluded.
-   *
-   * @param typeElement   the entity class to scan
-   * @param processingEnv the annotation processing environment (for type hierarchy checks)
-   * @param apiMajor      the configured API major version used for field filtering
-   * @return list of FieldModel for each annotated field active at apiMajor
-   */
-  public static List<FieldModel> scan(TypeElement typeElement, ProcessingEnvironment processingEnv,
-                                      int apiMajor) {
-    return selectActive(scanAll(typeElement, processingEnv), typeElement, apiMajor,
-        processingEnv.getMessager());
-  }
-
-  /**
-   * Returns the models of the fields active at {@code apiMajor}, in order, and reports a NOTE on
-   * each excluded field.
-   *
-   * @param fields      the result of {@link #scanAll} for {@code typeElement}
-   * @param typeElement the scanned entity class, named in the note
-   * @param apiMajor    the configured API major version used for field filtering
-   * @param messager    receives the exclusion notes
-   * @return list of FieldModel for each annotated field active at apiMajor
-   */
-  public static List<FieldModel> selectActive(List<ScannedField> fields, TypeElement typeElement,
-                                              int apiMajor, Messager messager) {
-    List<FieldModel> active = new ArrayList<>();
-    for (ScannedField scanned : fields) {
-      FieldModel field = scanned.model();
-      if (!VersionSelector.isFieldActive(field, apiMajor)) {
-        messager.printMessage(Diagnostic.Kind.NOTE,
-            "[ai-atlas] Field '" + field.name() + "' excluded from "
-                + typeElement.getSimpleName() + " DTO — not active for apiMajor="
-                + apiMajor + " (sinceVersion=" + field.sinceVersion()
-                + ", removedInVersion=" + field.removedInVersion() + ")", scanned.element());
-        continue;
-      }
-      active.add(field);
-    }
-    return active;
-  }
-
-  /**
    * Scans the given type element and its entire superclass chain for {@code @AgenticField}
    * fields, whatever their lifecycle, reporting validation diagnostics. Fields from supertypes
    * appear before subtype fields; duplicate field names are skipped (subtype wins); fields failing
-   * version-range validation are left out.
+   * version-range validation are left out. Selecting the fields active at the configured major is
+   * the Contract IR projection's job ({@code ContractProjection}), not the scanner's.
    *
    * @param typeElement   the entity class to scan
    * @param processingEnv the annotation processing environment (for type hierarchy checks)
