@@ -17,6 +17,12 @@ Documented in `docs/contract-governance.md`.
 - **CLI and MCP server.** `ai.atlas.contract.baseline` and `ai.atlas.contract.locked` pass through unchanged; a gate failure, or an empty contract against a baseline, is a failed generation.
 - **Demo.** The demo commits its baseline as `demo/.atlas/api.ir.json`, and a test asserts it matches the IR the demo build emits.
 
+### Fixed
+- **`compileJava` is relocatable again.** The contract baseline is fingerprinted by content only, so `compileJava` in checkouts at different paths shares build cache entries; its absolute path is passed to javac but is no longer part of the cache key.
+- **`atlasAccept` compiles with `compileJava`'s final configuration.** Compiler arguments and argument providers, encoding, `release`, source and target compatibility, fork options and the Java compiler are read from `compileJava` when the accept compilation runs, so options the build adds later still reach it and the accepted baseline is byte-identical to the IR `compileJava` emits.
+- **A processor version the plugin cannot run fails with a clear message.** When `agentic { version }` pins a processor that lacks the API the plugin calls, `atlasContractCheck` and `atlasAccept` fail naming the plugin version, the processor version on the `annotationProcessor` classpath and the remedy, instead of a raw `NoSuchMethodError` or `NoClassDefFoundError`.
+- **An ai-atlas annotation inside an anonymous or local class no longer hides an empty contract.**
+
 ### REST parameters are query parameters (OpenAPI correction)
 - **Query parameters are canonical.** Generated REST controllers have always bound method arguments with `@RequestParam`; the generated OpenAPI document now describes them the same way (`in: query`, `required: true`) instead of as an `application/json` request body.
 - **The REST wire format of running controllers is unchanged.** Existing callers keep working. Clients generated from an earlier OpenAPI document (which described a JSON request body) must be regenerated.

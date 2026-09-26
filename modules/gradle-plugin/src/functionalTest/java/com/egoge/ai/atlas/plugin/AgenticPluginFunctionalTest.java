@@ -254,7 +254,8 @@ class AgenticPluginFunctionalTest {
         BuildResult result = createRunner("compileJava", "--info").build();
 
         assertThat(result.task(":compileJava").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
-        assertThat(result.getOutput()).doesNotContain("Full recompilation is required");
+        assertThat(result.getOutput()).contains("Incremental compilation of")
+                .doesNotContain("Full recompilation is required");
     }
 
     @Test
