@@ -137,6 +137,7 @@ public final class AtlasGenerator {
         boolean success;
         boolean published = false;
         List<GeneratedFile> files = new ArrayList<>();
+        List<Diagnostic> contract = List.of(); // the empty-contract check's findings (FR-017)
         try {
             Files.createDirectories(output);
             // Staged inside the output directory so publishing is a same-filesystem move.
@@ -148,6 +149,8 @@ public final class AtlasGenerator {
 
             success = compile(compiler, collector, sourceFiles, classpath,
                     stagedSources, stagedClasses, processorOptions, processor);
+            contract = ContractCheck.after(success, stagedClasses, processorOptions);
+            success &= ContractCheck.passed(contract);
 
             // Only a successful run publishes. A failed compile leaves the staged tree partial (or
             // empty), and publishing it would replace the last good sources/ and resources/ with
@@ -190,7 +193,7 @@ public final class AtlasGenerator {
                 ? DiagnosticMapper.republishing(staging, output)
                 : DiagnosticMapper.unpublished(staging);
         return new GenerationResult(success, output, files, findOpenApi(files, processorOptions),
-                collector.getDiagnostics().stream().map(diagnostics::map).toList(),
+                ContractCheck.append(collector.getDiagnostics().stream().map(diagnostics::map).toList(), contract),
                 success ? processor.discoveredServices() : List.of());
     }
 
@@ -222,6 +225,7 @@ public final class AtlasGenerator {
         AgenticProcessor processor = new AgenticProcessor();
         boolean success;
         List<GeneratedFile> files = new ArrayList<>();
+        List<Diagnostic> contract; // the empty-contract check's findings (FR-017)
         try (StandardJavaFileManager stdFileManager =
                      compiler.getStandardFileManager(collector, Locale.ROOT, StandardCharsets.UTF_8);
              InMemoryJavaFileManager inMemory = new InMemoryJavaFileManager(stdFileManager)) {
@@ -232,6 +236,8 @@ public final class AtlasGenerator {
 
             Map<String, InMemoryJavaFileObject> classOutput =
                     inMemory.capturedAt(StandardLocation.CLASS_OUTPUT);
+            contract = ContractCheck.after(success, classOutput.keySet(), processorOptions);
+            success &= ContractCheck.passed(contract);
             Map<String, InMemoryJavaFileObject> resourceFiles = new LinkedHashMap<>();
             if (success) {
                 for (var entry : classOutput.entrySet()) {
@@ -261,7 +267,7 @@ public final class AtlasGenerator {
         return new GenerationResult(success, null, files, findOpenApi(files, processorOptions),
                 // Nothing is staged here — the in-memory run compiles straight from the caller's
                 // sources, so every diagnostic path is already the one to report.
-                collector.getDiagnostics().stream().map(DiagnosticMapper.passThrough()::map).toList(),
+                ContractCheck.append(collector.getDiagnostics().stream().map(DiagnosticMapper.passThrough()::map).toList(), contract),
                 success ? processor.discoveredServices() : List.of());
     }
 

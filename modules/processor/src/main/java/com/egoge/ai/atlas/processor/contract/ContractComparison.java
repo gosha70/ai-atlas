@@ -209,9 +209,9 @@ final class ContractComparison {
         Map<String, Operation> after = activeOperations(fresh);
         Map<String, String> idsBefore = ContractProjection.of(baseline, major).operationIds();
         Map<String, String> idsAfter = ContractProjection.of(fresh, major).operationIds();
-        List<String> addedApi = after.keySet().stream()
-                .filter(id -> !before.containsKey(id) && idsAfter.containsKey(id))
-                .map(id -> OPERATION_PATH + id).toList();
+        // API operations that are new to the API channel at M: added, or existing ones that gained it
+        List<Operation> newlyApi = idsAfter.keySet().stream().filter(id -> !idsBefore.containsKey(id))
+                .map(after::get).toList();
         for (Operation op : before.values()) {
             String path = OPERATION_PATH + op.id();
             Operation now = after.get(op.id());
@@ -226,10 +226,12 @@ final class ContractComparison {
             String idBefore = idsBefore.get(op.id());
             String idAfter = idsAfter.get(op.id());
             if (idBefore != null && idAfter != null && !idBefore.equals(idAfter)) {
+                List<String> causes = newlyApi.stream().filter(o -> o.method().equals(op.method()))
+                        .map(o -> OPERATION_PATH + o.id()).toList();
                 breaking(path, C_OPERATION_ID, Direction.INPUT, idBefore, idAfter,
                         "Clients generated from the OpenAPI document call the operation by its operationId",
-                        (addedApi.isEmpty() ? "restore the previous operation set"
-                                : "give the operation(s) whose addition caused it (" + String.join(", ", addedApi)
+                        (causes.isEmpty() ? "restore the previous operation set"
+                                : "give the operation(s) whose addition caused it (" + String.join(", ", causes)
                                 + ") a method name that does not collide, or declare apiSince = " + (major + 1)
                                 + " on them"));
             }

@@ -1,0 +1,78 @@
+{
+  "openapi" : "3.0.3",
+  "info" : {
+    "title" : "AI-ATLAS Generated API",
+    "description" : "Auto-generated API from @AgenticExposed services",
+    "version" : "1.0.0"
+  },
+  "paths" : {
+    "/api/v1/catalog-service/list" : {
+      "get" : {
+        "summary" : "List the catalog",
+        "operationId" : "list",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/catalog-service/lookup" : {
+      "get" : {
+        "summary" : "Legacy lookup",
+        "operationId" : "lookup",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : true
+      }
+    },
+    "/api/v1/late-service/late" : {
+      "get" : {
+        "summary" : "Late operation",
+        "operationId" : "late",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "LateDto" : {
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "string"
+          }
+        },
+        "description" : "LateDto — PII-safe projection of Late"
+      }
+    }
+  }
+}

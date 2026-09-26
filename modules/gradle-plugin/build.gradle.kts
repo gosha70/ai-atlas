@@ -51,6 +51,11 @@ tasks.check {
 gradlePlugin.testSourceSets.add(functionalTest)
 
 dependencies {
+    // The contract tasks' work actions call the processor's EmptyContract, ContractGate and IrJson.
+    // compileOnly: at run time they are loaded from the consumer's annotationProcessor classpath,
+    // in an isolated class loader, so the check runs the processor version that compiled.
+    compileOnly(project(":modules:processor"))
+
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)

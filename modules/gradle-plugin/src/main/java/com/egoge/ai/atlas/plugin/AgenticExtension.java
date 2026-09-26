@@ -3,6 +3,7 @@
  */
 package com.egoge.ai.atlas.plugin;
 
+import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.provider.Property;
 
 /**
@@ -78,4 +79,16 @@ public abstract class AgenticExtension {
      * warnings by default (e.g. an AI tool without a description of its own) fail the build.
      */
     public abstract Property<Boolean> getStrict();
+
+    /**
+     * The committed contract baseline the compatibility gate compares the build against.
+     * Defaults to {@code <projectDir>/.atlas/api.ir.json}. Only {@code atlasAccept} writes it.
+     */
+    public abstract RegularFileProperty getContractBaseline();
+
+    /**
+     * Lock mode. Defaults to false. When true, any difference between the baseline and the
+     * current contract fails the build until it is accepted with {@code atlasAccept}.
+     */
+    public abstract Property<Boolean> getContractLocked();
 }

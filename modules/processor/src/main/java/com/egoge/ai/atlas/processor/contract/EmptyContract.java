@@ -22,12 +22,17 @@ public final class EmptyContract {
     /**
      * The empty IR document.
      *
-     * @param apiBasePath the configured REST base path
+     * @param apiBasePath the configured REST base path; trailing slashes are dropped, as the
+     *                    processor drops them
      * @param apiMajor    the configured major
      * @return a document with no entities and no operations
      */
     public static ContractIr document(String apiBasePath, int apiMajor) {
-        return new ContractIr(ContractIr.IR_VERSION, apiBasePath, apiMajor, List.of(), List.of());
+        String basePath = apiBasePath;
+        while (basePath.endsWith("/") && basePath.length() > 1) {
+            basePath = basePath.substring(0, basePath.length() - 1);
+        }
+        return new ContractIr(ContractIr.IR_VERSION, basePath, apiMajor, List.of(), List.of());
     }
 
     /**
@@ -43,17 +48,18 @@ public final class EmptyContract {
     }
 
     /**
-     * Checks the empty contract against the baseline, with the gate's rules and messages. When the
-     * baseline publishes elements at its major, the per-element errors are preceded by one error
-     * saying the compilation declares nothing.
+     * Checks the empty contract against the baseline, with the gate's rules and messages, including
+     * lock mode (FR-014). When the baseline publishes elements at its major, the per-element errors
+     * are preceded by one error saying the compilation declares nothing.
      *
      * @param baselinePath the {@code ai.atlas.contract.baseline} value, or {@code null}
+     * @param locked       the {@code ai.atlas.contract.locked} value
      * @param apiBasePath  the configured REST base path
      * @param apiMajor     the configured major
      * @return the gate's outcome; {@link ContractGate.Outcome#failed()} means the build must fail
      */
-    public static ContractGate.Outcome check(String baselinePath, String apiBasePath, int apiMajor) {
-        ContractGate.Outcome outcome = ContractGate.check(baselinePath, document(apiBasePath, apiMajor));
+    public static ContractGate.Outcome check(String baselinePath, boolean locked, String apiBasePath, int apiMajor) {
+        ContractGate.Outcome outcome = ContractGate.check(baselinePath, locked, document(apiBasePath, apiMajor));
         // A removal is a breaking difference whose after value is null; apiBasePath and channels changes
         // have non-null after values and are excluded
         long removed = outcome.differences().stream()

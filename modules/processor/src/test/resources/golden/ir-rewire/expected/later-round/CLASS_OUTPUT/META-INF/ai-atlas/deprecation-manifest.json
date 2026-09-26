@@ -1,0 +1,9 @@
+{
+  "apiMajor":1,
+  "basePath":"/api",
+  "endpoints":[
+    {"method":"GET","path":"/api/v1/catalog-service/list","deprecated":false,"deprecatedSince":0,"replacement":""},
+    {"method":"GET","path":"/api/v1/catalog-service/lookup","deprecated":true,"deprecatedSince":1,"replacement":"list"},
+    {"method":"GET","path":"/api/v1/late-service/late","deprecated":false,"deprecatedSince":0,"replacement":""}
+  ]
+}

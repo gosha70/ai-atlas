@@ -148,6 +148,33 @@ final class GateFixtures {
         return compilation;
     }
 
+    static void assertPasses(Compilation compilation) {
+        assertThat(compilation.status()).as(compilation.diagnostics().toString())
+                .isEqualTo(Compilation.Status.SUCCESS);
+    }
+
+    /** The error messages of a compilation, which must have failed. */
+    static List<String> errors(Compilation compilation) {
+        assertThat(compilation.status()).isEqualTo(Compilation.Status.FAILURE);
+        return compilation.errors().stream().map(d -> d.getMessage(null)).toList();
+    }
+
+    /** The one error message of a compilation, which must have failed. */
+    static String singleError(Compilation compilation) {
+        List<String> errors = errors(compilation);
+        assertThat(errors).hasSize(1);
+        return errors.get(0);
+    }
+
+    /** Every error is reported on the declaration element, which still exists. */
+    static void assertOnElement(Compilation compilation) {
+        assertThat(compilation.errors()).allSatisfy(d -> assertThat(d.getSource()).isNotNull());
+    }
+
+    static List<String> notes(Compilation compilation, String containing) {
+        return compilation.notes().stream().map(d -> d.getMessage(null)).filter(m -> m.contains(containing)).toList();
+    }
+
     static String irOf(Compilation compilation) {
         return generated(compilation, ContractIr.RESOURCE_PATH);
     }

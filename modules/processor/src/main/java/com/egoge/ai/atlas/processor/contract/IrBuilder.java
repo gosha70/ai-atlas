@@ -97,14 +97,24 @@ public final class IrBuilder {
     }
 
     /**
-     * Records an entity with every field of the scan, whatever its lifecycle.
+     * Records an entity with every field of the scan, whatever its lifecycle. A field whose type
+     * cannot be resolved is reported as an ERROR on the field and left out (FR-006).
      *
-     * @param entity the {@code @AgenticEntity} class
-     * @param fields every valid {@code @AgenticField} of the entity, in DTO declaration order
+     * @param entity  the {@code @AgenticEntity} class
+     * @param scanned every valid {@code @AgenticField} of the entity, in DTO declaration order
+     * @return the recorded fields, in the same order
      */
-    public void addEntity(TypeElement entity, List<FieldScanner.ScannedField> fields) {
+    public List<FieldScanner.ScannedField> addEntity(TypeElement entity, List<FieldScanner.ScannedField> scanned) {
         AgenticEntity annotation = entity.getAnnotation(AgenticEntity.class);
         String className = entity.getQualifiedName().toString();
+        List<FieldScanner.ScannedField> fields = new ArrayList<>();
+        for (FieldScanner.ScannedField field : scanned) {
+            FieldModel model = field.model();
+            if (resolved(field.element(), "field '" + model.name() + "'", model.typeName(),
+                    model.elementTypeName(), model.hintTypeName())) {
+                fields.add(field);
+            }
+        }
         for (FieldScanner.ScannedField field : fields) {
             AgenticField fieldAnnotation = field.element().getAnnotation(AgenticField.class);
             if (fieldAnnotation != null && fieldAnnotation.openEnum()) {
@@ -119,6 +129,29 @@ public final class IrBuilder {
                 annotation.dtoName().isEmpty() ? simpleName + "Dto" : annotation.dtoName(), dtoPackage,
                 annotation.name().isEmpty() ? simpleName : annotation.name(), annotation.description(),
                 annotation.includeTypeInfo(), fields.stream().map(FieldScanner.ScannedField::model).toList()));
+        return fields;
+    }
+
+    /**
+     * Whether every type is resolved, i.e. its canonical string parses back. javac renders a type
+     * it cannot resolve, such as one another processor has not generated yet, as {@code <any>}; an
+     * ERROR on {@code element} names the declaration instead of failing the projection.
+     */
+    private boolean resolved(Element element, String declaration, TypeName... types) {
+        for (TypeName type : types) {
+            if (type == null) {
+                continue;
+            }
+            try {
+                ContractProjection.parseType(type.toString());
+            } catch (IllegalArgumentException e) {
+                env.getMessager().printMessage(Diagnostic.Kind.ERROR, "[ai-atlas] The type of " + declaration
+                        + " cannot be resolved (javac renders it as '" + type + "'), so it cannot be recorded in"
+                        + " the Contract IR. Make the type available to the compilation", element);
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Records {@code openEnum = true}, warning when the field has no values it could apply to (FR-011). */
@@ -140,7 +173,8 @@ public final class IrBuilder {
      * @param method         the method
      * @param typeAnnotation the service's class-level {@code @AgenticExposed}, or {@code null}
      * @return the operation's identity, {@link Operation#id()}, or {@code null} when the method is
-     *         not exposed or its channels cannot be resolved
+     *         not exposed, its channels cannot be resolved, or a parameter or return type cannot be
+     *         resolved (reported as an ERROR on the method)
      */
     public String addOperation(TypeElement service, ExecutableElement method, AgenticExposed typeAnnotation) {
         AgenticExposed methodAnnotation = method.getAnnotation(AgenticExposed.class);
@@ -153,6 +187,12 @@ public final class IrBuilder {
         }
 
         String methodName = method.getSimpleName().toString();
+        List<TypeName> signatureTypes = new ArrayList<>();
+        signatureTypes.add(TypeName.get(method.getReturnType()));
+        method.getParameters().forEach(p -> signatureTypes.add(TypeName.get(p.asType())));
+        if (!resolved(method, "method '" + methodName + "'", signatureTypes.toArray(TypeName[]::new))) {
+            return null;
+        }
         String toolName = methodAnnotation != null && !methodAnnotation.toolName().isEmpty()
                 ? methodAnnotation.toolName() : methodName;
         List<Parameter> parameters = new ArrayList<>();

@@ -24,6 +24,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.function.Function;
 
 /**
  * The compatibility gate (FR-008..FR-013): compares a committed baseline IR with the fresh IR of
@@ -50,6 +54,8 @@ public final class ContractGate {
 
     private static final String PREFIX = "[ai-atlas] ";
     private static final String ABSENT = "(none)";
+    private static final String LOCKED_MISSING = ", but lock mode (" + AgenticProcessor.OPT_CONTRACT_LOCKED
+            + "=true) requires one";
 
 
     private static final String K_PUBLISHED_MAJOR = "publishedMajor";
@@ -145,25 +151,61 @@ public final class ContractGate {
     }
 
     /**
+     * Parses the {@code ai.atlas.contract.locked} option (FR-014).
+     *
+     * @param value the option value, or {@code null} when unset
+     * @return {@code false} when unset, the value when it is {@code true} or {@code false} in any
+     *         case, or {@code null} when it is anything else
+     */
+    public static Boolean parseLocked(String value) {
+        if (value == null || "false".equalsIgnoreCase(value)) {
+            return false;
+        }
+        return "true".equalsIgnoreCase(value) ? Boolean.TRUE : null;
+    }
+
+    /**
+     * The compile error for an {@code ai.atlas.contract.locked} value {@link #parseLocked} rejects.
+     *
+     * @param value the rejected value
+     * @return the message, prefixed {@code [ai-atlas]}
+     */
+    public static String invalidLockedMessage(String value) {
+        return PREFIX + AgenticProcessor.OPT_CONTRACT_LOCKED + " must be 'true' or 'false'. Got: " + value;
+    }
+
+    /**
+     * Checks {@code fresh} against the baseline named by {@code baselineOption}, unlocked.
+     *
+     * @see #check(String, boolean, ContractIr)
+     */
+    public static Outcome check(String baselineOption, ContractIr fresh) {
+        return check(baselineOption, false, fresh);
+    }
+
+    /**
      * Checks {@code fresh} against the baseline named by {@code baselineOption} (FR-008). With no
-     * option, or no file at the path, nothing is compared and one NOTE names the expected path and
-     * {@value #ACCEPT_TASK}.
+     * option, or no regular file at the path, nothing is compared and one NOTE names the expected
+     * path and {@value #ACCEPT_TASK}; in lock mode that is an ERROR instead (FR-014). In lock mode,
+     * any difference between the two documents is also an ERROR listing each differing element path.
      *
      * @param baselineOption the {@code ai.atlas.contract.baseline} value, or {@code null}
+     * @param locked         the {@code ai.atlas.contract.locked} value
      * @param fresh          the IR of the current compilation; its {@code apiMajor} is the configured major
      * @return the findings, differences and difference report
      */
-    public static Outcome check(String baselineOption, ContractIr fresh) {
+    public static Outcome check(String baselineOption, boolean locked, ContractIr fresh) {
+        Diagnostic.Kind missing = locked ? Diagnostic.Kind.ERROR : Diagnostic.Kind.NOTE;
+        String consequence = locked ? LOCKED_MISSING : ", so the compatibility gate did not run";
         if (baselineOption == null || baselineOption.isBlank()) {
-            return notCompared(new Finding(Diagnostic.Kind.NOTE, null, PREFIX + "No contract baseline is configured ("
-                    + AgenticProcessor.OPT_CONTRACT_BASELINE + "), so the compatibility gate did not run. Run "
+            return notCompared(new Finding(missing, null, PREFIX + "No contract baseline is configured ("
+                    + AgenticProcessor.OPT_CONTRACT_BASELINE + ")" + consequence + ". Run "
                     + ACCEPT_TASK + " to write one; the Gradle plugin expects it at .atlas/api.ir.json"));
         }
         Path path = Path.of(baselineOption);
-        if (!Files.exists(path)) {
-            return notCompared(new Finding(Diagnostic.Kind.NOTE, null, PREFIX + "No contract baseline at " + path
-                    + ", so the compatibility gate did not run. Run " + ACCEPT_TASK
-                    + " to write it from the current sources"));
+        if (!Files.isRegularFile(path)) {
+            return notCompared(new Finding(missing, null, PREFIX + "No contract baseline at " + path
+                    + consequence + ". Run " + ACCEPT_TASK + " to write it from the current sources"));
         }
         ContractIr baseline;
         try {
@@ -179,12 +221,19 @@ public final class ContractGate {
                     + " baseline. Set " + AgenticProcessor.OPT_API_MAJOR + " to " + published
                     + " or above, or accept the change explicitly with " + ACCEPT_TASK));
         }
+        try {
+            ContractProjection.of(baseline, published); // the comparison's projection of the baseline
+        } catch (IllegalArgumentException e) {
+            return notCompared(new Finding(Diagnostic.Kind.ERROR, null, PREFIX + "Contract baseline " + path
+                    + " is not valid Contract IR JSON: " + e.getMessage()));
+        }
         List<Difference> differences;
         try {
             differences = compare(baseline, fresh);
         } catch (IllegalArgumentException e) {
-            return notCompared(new Finding(Diagnostic.Kind.ERROR, null, PREFIX + "Contract baseline " + path
-                    + " is not valid Contract IR JSON: " + e.getMessage()));
+            // The baseline projected above, so the failure lies in the compilation's own IR
+            return notCompared(new Finding(Diagnostic.Kind.ERROR, null, PREFIX + "Internal error comparing the"
+                    + " compilation's Contract IR with the baseline " + path + ": " + e.getMessage()));
         }
         List<Finding> findings = new ArrayList<>();
         for (Difference difference : differences) {
@@ -192,7 +241,80 @@ public final class ContractGate {
                 findings.add(new Finding(Diagnostic.Kind.ERROR, difference.path(), message(difference, published)));
             }
         }
+        List<String> changed = locked ? documentDifferences(baseline, fresh) : List.of();
+        if (!changed.isEmpty()) {
+            findings.add(new Finding(Diagnostic.Kind.ERROR, null, PREFIX + "Lock mode ("
+                    + AgenticProcessor.OPT_CONTRACT_LOCKED + "=true): the contract differs from the baseline " + path
+                    + " at " + changed.size() + " element(s): " + String.join(", ", changed)
+                    + ". Accept the change explicitly with " + ACCEPT_TASK + "."));
+        }
         return new Outcome(findings, published, differences, diffJson(published, differences));
+    }
+
+    /**
+     * The element paths at which two IR documents differ in any declaration or attribute, whatever
+     * the major, as lock mode compares them (FR-014): {@value #DOCUMENT_PATH} for the document's
+     * own attributes, an entity for its attributes or field order, and each differing field and
+     * operation. An element present on one side only is listed, with each of its fields.
+     *
+     * @param baseline the committed baseline
+     * @param fresh    the current IR
+     * @return the differing element paths, sorted; empty when the documents are equal
+     */
+    public static List<String> documentDifferences(ContractIr baseline, ContractIr fresh) {
+        Set<String> paths = new TreeSet<>();
+        if (baseline.irVersion() != fresh.irVersion() || baseline.apiMajor() != fresh.apiMajor()
+                || !Objects.equals(baseline.apiBasePath(), fresh.apiBasePath())) {
+            paths.add(DOCUMENT_PATH);
+        }
+        Map<String, ContractIr.Entity> before = byKey(baseline.entities(), ContractIr.Entity::className);
+        Map<String, ContractIr.Entity> after = byKey(fresh.entities(), ContractIr.Entity::className);
+        for (String className : union(before.keySet(), after.keySet())) {
+            ContractIr.Entity old = before.get(className);
+            ContractIr.Entity now = after.get(className);
+            if (old == null || now == null || !withoutFields(old).equals(withoutFields(now))
+                    || !fieldNames(old).equals(fieldNames(now))) {
+                paths.add(ENTITY_PATH + className);
+            }
+            Map<String, ContractIr.Field> oldFields = byKey(old != null ? old.fields() : List.of(),
+                    ContractIr.Field::name);
+            Map<String, ContractIr.Field> newFields = byKey(now != null ? now.fields() : List.of(),
+                    ContractIr.Field::name);
+            for (String name : union(oldFields.keySet(), newFields.keySet())) {
+                if (!Objects.equals(oldFields.get(name), newFields.get(name))) {
+                    paths.add(FIELD_PATH + className + "#" + name);
+                }
+            }
+        }
+        Map<String, ContractIr.Operation> oldOps = byKey(baseline.operations(), ContractIr.Operation::id);
+        Map<String, ContractIr.Operation> newOps = byKey(fresh.operations(), ContractIr.Operation::id);
+        for (String id : union(oldOps.keySet(), newOps.keySet())) {
+            if (!Objects.equals(oldOps.get(id), newOps.get(id))) {
+                paths.add(OPERATION_PATH + id);
+            }
+        }
+        return List.copyOf(paths);
+    }
+
+    private static <T> Map<String, T> byKey(List<T> items, Function<T, String> key) {
+        Map<String, T> result = new LinkedHashMap<>();
+        items.forEach(item -> result.put(key.apply(item), item));
+        return result;
+    }
+
+    private static Set<String> union(Set<String> a, Set<String> b) {
+        Set<String> result = new TreeSet<>(a);
+        result.addAll(b);
+        return result;
+    }
+
+    private static ContractIr.Entity withoutFields(ContractIr.Entity e) {
+        return new ContractIr.Entity(e.className(), e.dtoName(), e.dtoPackage(), e.displayName(), e.description(),
+                e.includeTypeInfo(), List.of());
+    }
+
+    private static List<String> fieldNames(ContractIr.Entity e) {
+        return e.fields().stream().map(ContractIr.Field::name).toList();
     }
 
     private static Outcome notCompared(Finding finding) {
@@ -260,14 +382,21 @@ public final class ContractGate {
      * Checks {@code fresh} against the baseline named by the compilation's
      * {@code ai.atlas.contract.baseline}, reports every finding on its element when that still
      * exists in the compilation (FR-012), and writes {@link #DIFF_RESOURCE_PATH} to the class
-     * output when a comparison ran (FR-013).
+     * output when a comparison ran (FR-013). An {@code ai.atlas.contract.locked} value other than
+     * {@code true} or {@code false} is an ERROR, and nothing is compared (FR-014).
      *
      * @param env   the processing environment of the compilation
      * @param fresh the compilation's IR
      */
     public static void run(ProcessingEnvironment env, ContractIr fresh) {
-        Outcome outcome = check(env.getOptions().get(AgenticProcessor.OPT_CONTRACT_BASELINE), fresh);
         Messager messager = env.getMessager();
+        String lockedValue = env.getOptions().get(AgenticProcessor.OPT_CONTRACT_LOCKED);
+        Boolean locked = parseLocked(lockedValue);
+        if (locked == null) {
+            messager.printMessage(Diagnostic.Kind.ERROR, invalidLockedMessage(lockedValue));
+            return;
+        }
+        Outcome outcome = check(env.getOptions().get(AgenticProcessor.OPT_CONTRACT_BASELINE), locked, fresh);
         for (Finding finding : outcome.findings()) {
             Element element = finding.elementPath() != null ? locate(env, finding.elementPath()) : null;
             if (element != null) {

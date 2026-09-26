@@ -23,10 +23,15 @@ import java.util.List;
 import static com.egoge.ai.atlas.processor.contract.GateFixtures.BASELINE;
 import static com.egoge.ai.atlas.processor.contract.GateFixtures.M;
 import static com.egoge.ai.atlas.processor.contract.GateFixtures.MAJOR;
+import static com.egoge.ai.atlas.processor.contract.GateFixtures.assertOnElement;
+import static com.egoge.ai.atlas.processor.contract.GateFixtures.assertPasses;
 import static com.egoge.ai.atlas.processor.contract.GateFixtures.compile;
+import static com.egoge.ai.atlas.processor.contract.GateFixtures.errors;
 import static com.egoge.ai.atlas.processor.contract.GateFixtures.fixture;
 import static com.egoge.ai.atlas.processor.contract.GateFixtures.generated;
 import static com.egoge.ai.atlas.processor.contract.GateFixtures.irOf;
+import static com.egoge.ai.atlas.processor.contract.GateFixtures.notes;
+import static com.egoge.ai.atlas.processor.contract.GateFixtures.singleError;
 import static com.google.testing.compile.Compiler.javac;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -129,6 +134,19 @@ class ContractGateTest {
     }
 
     @Test
+    void unmarkingAFieldSensitivePassesSilently() throws Exception {
+        Files.writeString(baseline, irOf(compile(fixture().with("shop.Order", "@AgenticField(description = \"Total\")",
+                "@AgenticField(description = \"Total\", sensitive = true)").sources(), MAJOR + M)), StandardCharsets.UTF_8);
+
+        Compilation compilation = gate(fixture());
+
+        assertPasses(compilation);
+        assertThat(compilation.diagnostics()).noneSatisfy(d -> assertThat(d.getMessage(null)).contains("Breaking"));
+        assertThat(generated(compilation, ContractGate.DIFF_RESOURCE_PATH))
+                .contains("\"change\": \"sensitive\"").contains("\"classification\": \"compatible\"");
+    }
+
+    @Test
     void addingAFieldPasses() {
         assertPasses(gate(fixture().with("shop.Order", "public Long getId()",
                 "@AgenticField(description = \"Note\") private String note;\n    public String getNote() { return note; }\n    public Long getId()")));
@@ -184,6 +202,45 @@ class ContractGateTest {
     }
 
     @Test
+    void changingAnEntitysDtoPackageFails() {
+        Compilation compilation = gate(fixture().with("shop.Order", "@AgenticEntity(description = \"An order\")",
+                "@AgenticEntity(description = \"An order\", packageName = \"shop.api\")"));
+
+        assertThat(errors(compilation))
+                .anySatisfy(e -> assertThat(e).contains("entity shop.Order: dtoPackage shop.generated → shop.api")
+                        .contains("restore the previous value"));
+        assertOnElement(compilation);
+    }
+
+    @Test
+    void changingAnEntitysIncludeTypeInfoFails() {
+        Compilation compilation = gate(fixture().with("shop.Customer", "@AgenticEntity(description = \"A customer\")",
+                "@AgenticEntity(description = \"A customer\", includeTypeInfo = false)"));
+
+        assertThat(singleError(compilation)).contains("entity shop.Customer: includeTypeInfo true → false");
+        assertOnElement(compilation);
+    }
+
+    @Test
+    void anUnresolvableTypeIsAnErrorOnTheElementNotACrash() {
+        Compilation compilation = javac().withProcessors(new AgenticProcessor())
+                .withOptions(MAJOR + M, BASELINE + baseline).compile(fixture()
+                        .with("shop.Order", "public Long getId()",
+                                "@AgenticField(description = \"Pending\") private Missing<String> pending;\n"
+                                        + "    public Long getId()")
+                        .with("shop.OrderService", "public String find()",
+                                "public String take(Missing<String> m) { return null; }\n    public String find()")
+                        .sources());
+
+        assertThat(compilation.status()).isEqualTo(Compilation.Status.FAILURE);
+        assertThat(compilation.errors()).filteredOn(d -> d.getMessage(null).contains("cannot be resolved"))
+                .hasSize(2)
+                .anySatisfy(d -> assertThat(d.getMessage(null)).contains("field 'pending'").contains("'<any>'"))
+                .anySatisfy(d -> assertThat(d.getMessage(null)).contains("method 'take'"))
+                .allSatisfy(d -> assertThat(d.getSource()).isNotNull());
+    }
+
+    @Test
     void changingAMethodLevelReturnTypeBetweenDeclaredEntitiesFails() {
         Compilation compilation = gate(fixture().with("shop.OrderService",
                 "\"Recent orders\", returnType = Order.class", "\"Recent orders\", returnType = Customer.class"));
@@ -219,6 +276,30 @@ class ContractGateTest {
         assertThat(error).contains("operation shop.OrderService#find(): operationId find → OrderService_find_get")
                 .contains("whose addition caused it (operation shop.CustomerService#find())")
                 .contains("apiSince = 3");
+    }
+
+    @Test
+    void theOperationIdRemedyNamesOnlyTheCollidingAddition() {
+        Compilation compilation = gate(fixture().add("shop.CustomerService", ADDED_FIND_SERVICE.formatted(""))
+                .with("shop.OrderService", "public String find()",
+                        "public String summary(Long id) { return null; }\n    public String find()"));
+
+        assertThat(singleError(compilation)).contains("(operation shop.CustomerService#find())")
+                .doesNotContain("summary");
+    }
+
+    @Test
+    void theOperationIdRemedyNamesAnExistingOperationThatGainsTheApiChannel() throws Exception {
+        String aiOnly = ADDED_FIND_SERVICE.formatted("").replace("toolName = \"findCustomer\"",
+                "toolName = \"findCustomer\", channels = { AgenticExposed.Channel.AI }");
+        Files.writeString(baseline, irOf(compile(fixture().add("shop.CustomerService", aiOnly).sources(),
+                MAJOR + M)), StandardCharsets.UTF_8);
+
+        Compilation compilation = gate(fixture().add("shop.CustomerService", ADDED_FIND_SERVICE.formatted("")));
+
+        assertThat(singleError(compilation))
+                .contains("operation shop.OrderService#find(): operationId find → OrderService_find_get")
+                .contains("(operation shop.CustomerService#find())");
     }
 
     @Test
@@ -408,28 +489,4 @@ class ContractGateTest {
         return javac().withProcessors(new AgenticProcessor()).withOptions(all).compile(fixture.sources());
     }
 
-    private static void assertPasses(Compilation compilation) {
-        assertThat(compilation.status()).as(compilation.diagnostics().toString())
-                .isEqualTo(Compilation.Status.SUCCESS);
-    }
-
-    private static List<String> errors(Compilation compilation) {
-        assertThat(compilation.status()).isEqualTo(Compilation.Status.FAILURE);
-        return compilation.errors().stream().map(d -> d.getMessage(null)).toList();
-    }
-
-    private static String singleError(Compilation compilation) {
-        List<String> errors = errors(compilation);
-        assertThat(errors).hasSize(1);
-        return errors.get(0);
-    }
-
-    /** Every error is reported on the declaration element, which still exists. */
-    private static void assertOnElement(Compilation compilation) {
-        assertThat(compilation.errors()).allSatisfy(d -> assertThat(d.getSource()).isNotNull());
-    }
-
-    private static List<String> notes(Compilation compilation, String containing) {
-        return compilation.notes().stream().map(d -> d.getMessage(null)).filter(m -> m.contains(containing)).toList();
-    }
 }

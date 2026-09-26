@@ -62,7 +62,7 @@ import java.util.Set;
 @SupportedOptions({
         "ai.atlas.pii.patterns", "ai.atlas.pii.patterns.file",
         "ai.atlas.api.basePath", "ai.atlas.api.major", "ai.atlas.openapi.infoVersion",
-        "ai.atlas.strict", "ai.atlas.contract.baseline"
+        "ai.atlas.strict", "ai.atlas.contract.baseline", "ai.atlas.contract.locked"
 })
 public class AgenticProcessor extends AbstractProcessor {
 
@@ -71,6 +71,7 @@ public class AgenticProcessor extends AbstractProcessor {
     public static final String OPT_OPENAPI_INFO_VERSION = "ai.atlas.openapi.infoVersion";
     public static final String OPT_STRICT = "ai.atlas.strict";
     public static final String OPT_CONTRACT_BASELINE = "ai.atlas.contract.baseline";
+    public static final String OPT_CONTRACT_LOCKED = "ai.atlas.contract.locked";
     private final Map<String, EntityModel> entityRegistry = new HashMap<>();
     private final Set<String> dtoSkippedKeys = new HashSet<>();
     private final List<ServiceModel> serviceRegistry = new ArrayList<>();
@@ -150,7 +151,7 @@ public class AgenticProcessor extends AbstractProcessor {
         }
         if (roundEnv.processingOver()) {
             contractIr.write(apiBasePath, apiMajor); // every round's declarations, including later rounds'
-            ContractGate.run(processingEnv, contractIr.build(apiBasePath, apiMajor)); // FR-008..013
+            ContractGate.run(processingEnv, contractIr.build(apiBasePath, apiMajor)); // FR-008..014
             // Phase 3: Generate aggregate artifacts after all rounds, from the projection the gate checked
             if (!openApiGenerated && (!entityRegistry.isEmpty() || !serviceRegistry.isEmpty())) {
                 OpenApiGenerator.generate(new ArrayList<>(entityRegistry.values()),
@@ -211,8 +212,7 @@ public class AgenticProcessor extends AbstractProcessor {
                         typeElement);
             }
 
-            var scanned = FieldScanner.scanAll(typeElement, processingEnv);
-            contractIr.addEntity(typeElement, scanned);
+            var scanned = contractIr.addEntity(typeElement, FieldScanner.scanAll(typeElement, processingEnv));
             roundEntities.put(typeElement, scanned);
         }
         ContractProjection projection = contractIr.project(apiBasePath, apiMajor);
@@ -364,8 +364,9 @@ public class AgenticProcessor extends AbstractProcessor {
         List<String> operationIds = new ArrayList<>();
         for (ExecutableElement method : methods) {
             MethodModel methodModel = buildMethodModel(method, typeAnnotation);
-            if (methodModel != null) {
-                operationIds.add(contractIr.addOperation(serviceType, method, typeAnnotation));
+            String operationId = methodModel != null ? contractIr.addOperation(serviceType, method, typeAnnotation) : null;
+            if (operationId != null) {
+                operationIds.add(operationId);
                 restMappings.record(serviceType, method, methodModel, apiBasePath, apiMajor);
                 toolNames.record(serviceType, method, methodModel, apiMajor);
                 QualityDiagnostics.reportMissingDescription(qualityKind, processingEnv.getMessager(),
