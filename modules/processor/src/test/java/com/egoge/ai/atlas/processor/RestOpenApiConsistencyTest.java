@@ -66,6 +66,10 @@ class RestOpenApiConsistencyTest {
                 public long count() { return 0; }
                 @AgenticExposed(description = "Item ids")
                 public List<Long> ids() { return null; }
+                @AgenticExposed(description = "Item tags")
+                public List<String> tags() { return null; }
+                @AgenticExposed(description = "Item names")
+                public String[] names() { return null; }
                 @AgenticExposed(description = "Item stats")
                 public Map<String, Object> stats() { return null; }
                 @AgenticExposed(description = "Touch item")
@@ -104,6 +108,8 @@ class RestOpenApiConsistencyTest {
                 "POST " + BASE + "/label",
                 "GET " + BASE + "/count",
                 "GET " + BASE + "/ids",
+                "GET " + BASE + "/tags",
+                "GET " + BASE + "/names",
                 "GET " + BASE + "/stats",
                 "POST " + BASE + "/touch",
                 "GET " + BASE + "/reset");
@@ -138,6 +144,11 @@ class RestOpenApiConsistencyTest {
         JsonNode ids = jsonSchema(ops.get("GET " + BASE + "/ids"));
         assertThat(ids.path("type").asText()).isEqualTo("array");
         assertThat(ids.path("items").path("type").asText()).isEqualTo("integer");
+        for (String strings : List.of("/tags", "/names")) {
+            JsonNode schema = jsonSchema(ops.get("GET " + BASE + strings));
+            assertThat(schema.path("type").asText()).as(strings).isEqualTo("array");
+            assertThat(schema.path("items").path("type").asText()).as(strings).isEqualTo("string");
+        }
         assertThat(jsonSchema(ops.get("GET " + BASE + "/stats")).path("type").asText()).isEqualTo("object");
 
         // void on the default channels and on the API channel: no response content
