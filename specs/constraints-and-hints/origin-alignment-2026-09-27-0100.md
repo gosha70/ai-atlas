@@ -11,5 +11,7 @@ Working claim:
 Mismatches:
   - none. Owner-chosen scoping within the epic's options: hints are explicit-only (the epic permits "derive hints when semantics are structurally known"; the owner declined inference because the only structural fact is method shape); schemas and hints target SYNC MCP servers only; enforcement is Bean Validation on the generated tool class (option A). Collection safety, projections, REST metadata and release snapshots stay in Phases 4–5.
 
+Revised after the owner's review of PR #44 at d701c4d (ADR-7): schemas are rendered per dialect (OpenAPI 3.0 boolean exclusives, JSON Schema 2020-12 numeric exclusives, validated against the metaschema); patterns keep Bean Validation whole-string semantics (anchored when published, unpublishable Java-only patterns enforced but omitted, notBlank as its own key); Bean Validation constraints are intersected order-independently before overrides; bounds are compared as endpoints. These tighten the epic's §5 criteria that constraints reach MCP and OpenAPI accurately and that contradictions fail.
+
 Verdict: aligned
 Confidence: high

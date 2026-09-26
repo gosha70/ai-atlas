@@ -92,39 +92,81 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
     - `minimum` and `maximum`: decimal strings, default `""`;
     - `exclusiveMinimum` and `exclusiveMaximum`: booleans, default `false`;
     - `minLength`, `maxLength`, `minItems` and `maxItems`: ints, default `-1`;
-    - `pattern`: a string, default `""`.
+    - `pattern`: a Java regex with Bean Validation semantics (it must match the *whole* value), default `""`.
 - **FR-002**: The processor MUST read Jakarta Bean Validation annotations on `@AgenticField`
   fields and on the parameters of exposed methods. It identifies them by qualified name, with no
   compile-time dependency on the validation API, and normalises them as follows:
-  - `@Min`/`@DecimalMin` become `minimum`, and `@Max`/`@DecimalMax` become `maximum`. A `@DecimalMin`/`@DecimalMax` with `inclusive = false` sets `exclusiveMinimum`/`exclusiveMaximum`.
-  - `@Positive` is `minimum 0` with `exclusiveMinimum`; `@PositiveOrZero` is `minimum 0`.
-  - `@Negative` is `maximum 0` with `exclusiveMaximum`; `@NegativeOrZero` is `maximum 0`.
+  - **Which constraints count.** Only constraints that apply to the default validation group count:
+    an empty `groups`, or one that contains `jakarta.validation.groups.Default`. Repeated
+    constraints count one by one, whether written directly or through a `.List` container (for
+    example `@Pattern.List`).
+  - `@Min`/`@DecimalMin` become a lower bound, and `@Max`/`@DecimalMax` become an upper bound. A `@DecimalMin`/`@DecimalMax` with `inclusive = false` makes the bound exclusive.
+  - `@Positive` is the exclusive lower bound 0, and `@PositiveOrZero` the inclusive lower bound 0.
+  - `@Negative` is the exclusive upper bound 0, and `@NegativeOrZero` the inclusive upper bound 0.
   - `@Size` becomes `minLength`/`maxLength` on a `String`, and `minItems`/`maxItems` on a collection or array. Its default bounds (`0` and `Integer.MAX_VALUE`) are not recorded.
-  - `@Pattern` becomes `pattern`.
-  - `@NotNull` makes the input required. `@NotBlank` makes it required with `minLength 1` and `pattern ".*\S.*"`. `@NotEmpty` makes it required with `minLength 1` (a string) or `minItems 1` (a collection or array).
+  - `@Pattern` adds its `regexp` and `flags` to the input's set of patterns. The set is unordered,
+    and a value must match every pattern, each as a whole-string Java match.
+  - `@NotNull` makes the input required.
+  - `@NotBlank` makes it required and sets `notBlank`: at least one non-whitespace character
+    anywhere, including across line breaks. It is **not** translated to a regex.
+  - `@NotEmpty` makes it required with `minLength 1` (a string) or `minItems 1` (a collection or array).
   - Other constraint annotations, including composed ones, are ignored.
-- **FR-003**: The effective contract of an input or field MUST be resolved per constraint key:
-  - `@AgenticConstraints` replaces only the keys it sets, and every other Bean Validation key still applies.
+- **FR-003**: The effective contract of an input or field MUST be resolved in two steps. The result
+  MUST NOT depend on the order in which annotations are written.
+  - **First, intersect the Bean Validation constraints.** A value must satisfy every one of them.
+    - Lower bound: the *tightest* of all lower bounds. That is the highest value; at an equal value, an exclusive bound beats an inclusive one. For example, `@Min(10) @Positive` gives the inclusive lower bound 10.
+    - Upper bound: symmetrically, the lowest value, with exclusive winning a tie.
+    - `minLength`/`minItems`: the largest. `maxLength`/`maxItems`: the smallest.
+    - Patterns: the union of all pattern sets.
+    - `notBlank` and requiredness: set if any constraint sets them.
+    - `@NotBlank @Pattern(...)` keeps both.
+  - **Then, apply `@AgenticConstraints` per key.** A bound, length or item key it sets replaces the
+    intersected value for that key. A non-empty `pattern` replaces the whole pattern set with that
+    one pattern. Every key it does not set keeps the intersected value.
   - Requiredness comes from `@AgenticParam(required)` when it is not `DEFAULT`; `@AgenticParam(description)`, when non-empty, becomes the parameter's description.
   - Otherwise a parameter is required when it is a primitive, or carries `@NotNull`, `@NotBlank` or `@NotEmpty`.
   - Otherwise it is required, as REST query parameters are today.
 - **FR-004**: The processor MUST report:
-  - A compile **ERROR** on the element for a self-contradiction:
-    - `minimum > maximum`, or equal bounds with either exclusive;
+  - A compile **ERROR** on the element for a self-contradiction. The check runs both on the
+    intersected Bean Validation constraints and on the final effective contract:
+    - a lower bound above the upper bound, or equal bounds with either exclusive (for an integral
+      type, after the FR-008 normalisation, for example `> 4` and `< 5`);
     - a negative length or item bound, or a `min` above its `max`;
-    - a `pattern` that does not compile as a Java regex;
+    - a pattern, or `@AgenticConstraints.pattern`, that does not compile as a Java regex with its flags;
     - an exclusive flag without its bound;
     - a length attribute on a non-string, or an item attribute on a non-collection, non-array;
     - `minimum`/`maximum` on a non-numeric type;
     - `Requiredness.OPTIONAL` on a primitive, or together with `@NotNull`, `@NotBlank` or `@NotEmpty`.
   - A **WARNING** on the parameter when an `@AgenticConstraints` value on an *input* is looser than
     the Bean Validation constraint it replaces, naming the key and both values. Looser means a lower
-    minimum, a higher maximum, a wider length or item range, or a removed pattern.
+    minimum, a higher maximum, a wider length or item range, or a replaced pattern set.
+  - A **WARNING** on the element when a pattern cannot be published faithfully in a schema (FR-004a).
+    It names the pattern and the reason. The pattern stays in the IR and stays enforced by Bean
+    Validation, but it is left out of the OpenAPI and MCP schemas.
+- **FR-004a**: A pattern is *publishable* only when both of these hold:
+  - it has no `@Pattern.flags`;
+  - it contains none of these Java-only constructs, found by a documented token scan:
+    - inline flags `(?`*letters*`)` or `(?`*letters*`:`;
+    - possessive quantifiers `*+`, `++`, `?+`, `}+`;
+    - atomic groups `(?>`;
+    - `\A`, `\Z`, `\z`, `\G`, `\R`, `\h`, `\H`, `\X`;
+    - `\p{java`…`}`, `\p{Is`…`}`, `\p{In`…`}`;
+    - `\Q`…`\E`;
+    - character-class intersection `&&`.
+
+  A publishable pattern `p` is written into schemas as the anchored `^(?:p)$`, so the schema accepts
+  exactly the values that Bean Validation's whole-string match accepts. `notBlank` is written as the
+  unanchored schema pattern `\S`, together with `minLength 1`. Several published patterns on one
+  property, including `notBlank`'s, are written as an `allOf` of single-`pattern` schemas inside
+  that property, never at the schema root.
 - **FR-005**: The Contract IR MUST move to `irVersion` 2:
   - `Field` gains `constraints`.
   - `Parameter` gains `constraints` and `required` (boolean).
   - `Operation` gains `hints`, with `readOnly`, `destructive`, `idempotent` and `openWorld`, each `true`, `false` or absent.
-  - `constraints` is an object with only the keys that are set, in the fixed order `minimum`, `exclusiveMinimum`, `maximum`, `exclusiveMaximum`, `minLength`, `maxLength`, `minItems`, `maxItems`, `pattern`.
+  - `constraints` is an object with only the keys that are set, in the fixed order `minimum`, `exclusiveMinimum`, `maximum`, `exclusiveMaximum`, `minLength`, `maxLength`, `minItems`, `maxItems`, `patterns`, `notBlank`:
+    - `minimum`/`maximum` are decimal strings, and `exclusiveMinimum`/`exclusiveMaximum` are booleans present only when `true`;
+    - `patterns` is a list of `{regex, flags}` objects, sorted by regex then flags;
+    - this is ai-atlas's own normalised form, and neither schema dialect.
   - Output stays deterministic under Phase 2's FR-003 rules.
   - The IR records constraints and hints whether or not the flag is on.
 - **FR-006**: Reading a baseline MUST accept `irVersion` 1 and 2:
@@ -138,13 +180,18 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
 ### The gate (US2)
 
 - **FR-008**: For inputs (operation parameters), compared at the baseline's published major:
+  - **Bounds are compared as endpoints**, meaning value and exclusivity together, never separately:
+    - An absent lower bound is −∞, and an absent upper bound is +∞.
+    - For an integral Java type (`byte`, `short`, `int`, `long`, their boxes, `BigInteger`), an exclusive bound is first normalised to the inclusive one: `> 9` becomes `>= 10`, and `< 10` becomes `<= 9`. So `> 9` and `>= 10` are the same endpoint and no difference.
+    - A lower endpoint is *tighter* when its value is higher, or equal and exclusive.
+    - An upper endpoint is *tighter* when its value is lower, or equal and exclusive.
+    - Examples: `>= 10` → `> 0` is widening (compatible); `> 0` → `>= 10` is narrowing (breaking); `>= 0` → `> 0` on a decimal is narrowing.
   - **Breaking:**
     - a parameter's `required` goes from `false` to `true`;
-    - a new key is set;
-    - `minimum` rises, `maximum` falls, or either becomes exclusive;
-    - `minLength` or `minItems` rises;
-    - `maxLength` or `maxItems` falls;
-    - `pattern` is added or changed.
+    - a lower or upper endpoint becomes tighter;
+    - `minLength` or `minItems` rises or appears, and `maxLength` or `maxItems` falls or appears;
+    - a pattern is added to the set, which includes a changed pattern, because that is a removal plus an addition;
+    - `notBlank` goes from absent to set.
   - **Compatible:** the reverse of each of these.
   - **Never a difference:** any change from an *unknown* baseline value.
 - **FR-009**: Differences in output constraints (entity fields) and in hints MUST be classified as
@@ -171,14 +218,29 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
   - Nothing is inferred from method names, parameters or HTTP method.
   - With the flag on, an AI-channel method whose four resolved hints are all `UNSET` gets a
     WARNING naming the method, which becomes an ERROR under `ai.atlas.strict`.
-- **FR-014**: With the flag on, the OpenAPI document MUST describe:
-  - each query parameter's `required` from FR-003, and its constraints as JSON-Schema keywords on the parameter schema;
+- **FR-014**: With the flag on, the OpenAPI document (OpenAPI 3.0.3, which ai-atlas generates today)
+  MUST describe:
+  - each query parameter's `required` from FR-003, and its constraints on the parameter schema;
   - each DTO property's field constraints on the component schema.
+
+  Constraints are written in the **OpenAPI 3.0 Schema Object** dialect:
+  - bounds as `minimum`/`maximum`, with boolean `exclusiveMinimum`/`exclusiveMaximum: true` for exclusive ones;
+  - lengths and items as `minLength`, `maxLength`, `minItems` and `maxItems`;
+  - patterns per FR-004a.
+
+  A test MUST parse the generated document with the OpenAPI parser already used by the processor's
+  tests and assert that it reports no validation messages.
 - **FR-015**: With the flag on, a generated REST controller MUST bind an `OPTIONAL` parameter with
   `@RequestParam(required = false)`. Required parameters are unchanged.
 - **FR-016**: With the flag on, each generated MCP tool class MUST:
   - set `@ToolParam(required = …)` from FR-003;
-  - carry each parameter's effective contract constraints as Jakarta Bean Validation annotations;
+  - carry each parameter's effective contract (FR-003) as Jakarta Bean Validation annotations,
+    after intersection and overrides, never the raw source annotations:
+    - bounds become `@DecimalMin`/`@DecimalMax` with `inclusive`;
+    - lengths and items become `@Size`;
+    - each pattern becomes a `@Pattern` with its `regexp` and `flags`;
+    - `notBlank` becomes `@NotBlank`;
+    - a required reference type gets `@NotNull`;
   - be annotated `@Validated`.
 
   When `jakarta.validation.constraints.NotNull` does not resolve in the compilation, the processor
@@ -188,12 +250,26 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
   entry per AI-channel tool active at the configured major, ordered by tool name, and each entry
   holds:
   - the tool name;
-  - `inputSchema`: an object schema with `properties` (one per parameter, with its JSON type and
-    constraints, all inside `properties`, never at the root), `required`, and
-    `additionalProperties: false`;
+  - `inputSchema`, in the **JSON Schema 2020-12** dialect, which MCP uses for tool input schemas:
+    - an object schema with `"$schema": "https://json-schema.org/draft/2020-12/schema"`, `properties` (one per parameter, with its JSON type and constraints, all inside `properties`, never at the root), `required`, and `additionalProperties: false`;
+    - an inclusive bound is written as `minimum`/`maximum`, and an exclusive one as the **numeric** `exclusiveMinimum`/`exclusiveMaximum` *instead of* `minimum`/`maximum`. For example, `@Positive` becomes `exclusiveMinimum: 0`;
+    - lengths, items and patterns are written as in FR-014 (patterns per FR-004a).
   - `annotations`, holding only the hints declared `TRUE` or `FALSE`.
 
   The file is deterministic under Phase 2's FR-003 rules. With the flag off, it is not written.
+  A test MUST validate every generated `inputSchema` against the JSON Schema 2020-12 metaschema,
+  offline. The metaschema is bundled by a test-only validator library, never fetched over the
+  network.
+- **FR-017a**: Regex semantics MUST be consistent across all three places a value is checked. A
+  shared fixture runs the same inputs through Bean Validation on the generated MCP tool class,
+  through a JSON Schema 2020-12 validator on `mcp-tools.json`, and through the OpenAPI parameter
+  schema, and asserts identical accept/reject results:
+  - `@Pattern("[A-Z]+")` accepts `"ABC"` and rejects `"xABCy"`;
+  - `@NotBlank` accepts `"a\nb"` and `" a "`, and rejects `""`, `" "` and `"\n\t"`;
+  - `@NotBlank @Pattern("[a-z ]+")` rejects `"   "` and accepts `" ab "`;
+  - `@Pattern(regexp = "[a-z]+", flags = CASE_INSENSITIVE)` and a pattern with a possessive
+    quantifier are enforced by Bean Validation, left out of both schemas, and produce the FR-004
+    WARNING.
 
 ### The runtime (US4)
 
@@ -245,7 +321,10 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
 ## Key Entities
 
 - **Effective contract (of an input or field):** the constraints and requiredness after FR-003's precedence.
-- **Constraint keys:** `minimum`, `exclusiveMinimum`, `maximum`, `exclusiveMaximum`, `minLength`, `maxLength`, `minItems`, `maxItems`, `pattern`.
+- **Constraint keys (ai-atlas's normalised form):** `minimum`, `exclusiveMinimum`, `maximum`, `exclusiveMaximum`, `minLength`, `maxLength`, `minItems`, `maxItems`, `patterns`, `notBlank`.
+- **Endpoint:** a bound's value together with its exclusivity. It is compared as a whole (FR-008).
+- **Dialects:** OpenAPI 3.0 Schema Object (boolean exclusives) for the OpenAPI document; JSON Schema 2020-12 (numeric exclusives) for MCP `inputSchema`.
+- **Publishable pattern:** a pattern that FR-004a allows into schemas, written anchored as `^(?:p)$`.
 - **Unknown:** the value of every constraint, requiredness and hint slot in a migrated `irVersion` 1 baseline.
 - **Tool specification:** an entry of `META-INF/ai-atlas/mcp-tools.json`, registered by the runtime as a `SyncToolSpecification`.
 
@@ -253,17 +332,21 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
 
 1. **US1 / FR-001–FR-007:**
    - a fixture mixing Bean Validation and overrides yields the expected IR version 2 constraints;
+   - `@Min(10) @Positive` and `@Positive @Min(10)` both give the inclusive lower bound 10, and `@NotBlank @Pattern` keeps both;
    - each contradiction errors, and a looser override warns;
    - a version-1 baseline migrates with unknown slots;
    - the demo baseline is version 2 and its test passes.
 2. **US2 / FR-008–FR-011:**
    - narrowing a `@Max`, or making a parameter required, fails, naming the path and before → after;
+   - `>= 10` → `> 0` passes, `> 0` → `>= 10` fails, and on an `int`, `> 9` ↔ `>= 10` is no difference;
    - widening passes;
    - a migrated baseline passes in gate and lock mode;
    - output-constraint and hint changes are informational.
 3. **US3 / FR-012–FR-017:**
    - the golden snapshot is unchanged with the flag off;
-   - with the flag on, OpenAPI, REST, MCP classes and `mcp-tools.json` match fixtures, and hints appear only when declared.
+   - with the flag on, OpenAPI, REST, MCP classes and `mcp-tools.json` match fixtures, and hints appear only when declared;
+   - `@Positive` is `exclusiveMinimum: 0` in MCP and `minimum: 0, exclusiveMinimum: true` in OpenAPI, and every `inputSchema` validates against the 2020-12 metaschema;
+   - the FR-017a regex fixture gives identical results in all three validators.
 4. **US4 / FR-018–FR-020:** over SSE and Streamable HTTP:
    - `tools/list` shows the constraints and declared hints;
    - a violating call returns a tool error without reaching the service;

@@ -103,6 +103,28 @@ annotations itself.
 
 **Consequences**: Surfaces cannot disagree, extending Phase 2's "one model, many projections".
 
+### ADR-7: One normalised model, two schema dialects, whole-string regex (review of PR #44)
+
+**Context**: Review of PR #44 at `d701c4d` found four gaps.
+- OpenAPI 3.0.3 writes exclusive bounds as booleans. JSON Schema 2020-12, which MCP uses for tool input schemas, writes them as numbers.
+- Bean Validation's `@Pattern` must match the *whole* value. A JSON Schema `pattern` matches a *substring*, so `[A-Z]+` rejects `xABCy` in validation but accepts it in the schema.
+- Several Bean Validation constraints on one input had no combination rule.
+- Treating exclusivity separately from the bound's value made `>= 10` → `> 0` look breaking, when it widens.
+
+**Decision**:
+- The IR keeps ai-atlas's own form: decimal bounds with boolean exclusivity, a set of `{regex, flags}` patterns, and `notBlank`.
+- Two renderers produce the dialects: one for OpenAPI 3.0 (boolean exclusives) and one for JSON Schema 2020-12 (numeric exclusives replace `minimum`/`maximum`).
+- Patterns are published anchored as `^(?:p)$`, and only when publishable (FR-004a). A pattern with flags or Java-only syntax stays enforced by Bean Validation, is left out of the schemas, and warns.
+- `@NotBlank` is its own key, published as the unanchored `\S` plus `minLength 1`, never as a Java regex. Several patterns are published as an `allOf` inside the property.
+- Bean Validation constraints are **intersected** first, which is order-independent: the tightest endpoint and the union of patterns. `@AgenticConstraints` then replaces per key.
+- Bounds are compared as **endpoints** (value plus exclusivity), with integral exclusive bounds normalised to inclusive ones.
+
+**Consequences**:
+- Every published schema is valid in its dialect: tests validate MCP schemas against the 2020-12 metaschema and parse the OpenAPI document.
+- The FR-017a fixture proves that accept/reject results agree across Bean Validation, MCP and OpenAPI.
+- Some Java regexes cannot be published. They are still enforced at the MCP boundary, and the user is told why.
+- Two new **test-only** dependencies: a JSON-Schema validator that bundles the metaschemas, and a Bean Validation provider for the processor's consistency test. There is no production dependency.
+
 ### ADR-3: IR version 2, with *unknown* slots from a version-1 baseline
 
 **Context**: Adding slots changes the IR format. Existing committed baselines are version 1.
@@ -175,7 +197,7 @@ modules/processor/src/main/java/com/egoge/ai/atlas/processor/generator/         
 modules/processor/src/main/java/com/egoge/ai/atlas/processor/AgenticProcessor.java        — option ai.atlas.constraints, hint diagnostic (FR-012, FR-013)
 modules/processor/src/test/java/com/egoge/ai/atlas/processor/constraints/                 — ConstraintModelTest
 modules/processor/src/test/java/com/egoge/ai/atlas/processor/contract/                    — IrVersion2Test, ConstraintGateTest
-modules/processor/src/test/java/com/egoge/ai/atlas/processor/                             — ConstraintGenerationTest
+modules/processor/src/test/java/com/egoge/ai/atlas/processor/                             — ConstraintGenerationTest, RegexConsistencyTest (FR-017a)
 modules/runtime/src/main/java/com/egoge/ai/atlas/runtime/mcp/AgenticMcpConfiguration.java — SyncToolSpecification registration (FR-018, FR-019)
 modules/runtime/src/test/java/com/egoge/ai/atlas/runtime/mcp/                             — McpToolSpecificationTest (+ ProxiedToolBeanTest kept green)
 modules/gradle-plugin/src/main/java/com/egoge/ai/atlas/plugin/                            — constraints property (FR-020)
