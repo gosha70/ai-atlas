@@ -151,6 +151,24 @@ public class AgenticProcessor extends AbstractProcessor {
         if (roundEnv.processingOver()) {
             contractIr.write(apiBasePath, apiMajor); // every round's declarations, including later rounds'
             ContractGate.run(processingEnv, contractIr.build(apiBasePath, apiMajor)); // FR-008..013
+            // Phase 3: Generate aggregate artifacts after all rounds, from the projection the gate checked
+            if (!openApiGenerated && (!entityRegistry.isEmpty() || !serviceRegistry.isEmpty())) {
+                OpenApiGenerator.generate(new ArrayList<>(entityRegistry.values()),
+                        serviceRegistry, contractIr.project(apiBasePath, apiMajor).operationIds(),
+                        apiBasePath, apiMajor, openApiInfoVersion,
+                        processingEnv.getFiler(), processingEnv.getMessager());
+                openApiGenerated = true;
+            }
+            if (!apiVersionPropertiesGenerated) {
+                ApiVersionPropertiesGenerator.generate(apiBasePath, apiMajor,
+                        processingEnv.getFiler(), processingEnv.getMessager());
+                apiVersionPropertiesGenerated = true;
+            }
+            if (!deprecationManifestGenerated) {
+                DeprecationManifestGenerator.generate(serviceRegistry, apiBasePath, apiMajor,
+                        processingEnv.getFiler(), processingEnv.getMessager());
+                deprecationManifestGenerated = true;
+            }
             return false;
         }
 
@@ -159,25 +177,6 @@ public class AgenticProcessor extends AbstractProcessor {
 
         // Phase 2: Process @AgenticExposed services → generate MCP tools + REST controllers
         processServices(roundEnv);
-
-        // Phase 3: Generate aggregate artifacts once per compilation
-        if (!openApiGenerated && (!entityRegistry.isEmpty() || !serviceRegistry.isEmpty())) {
-            OpenApiGenerator.generate(new ArrayList<>(entityRegistry.values()),
-                    serviceRegistry, contractIr.project(apiBasePath, apiMajor).operationIds(),
-                    apiBasePath, apiMajor, openApiInfoVersion,
-                    processingEnv.getFiler(), processingEnv.getMessager());
-            openApiGenerated = true;
-        }
-        if (!apiVersionPropertiesGenerated) {
-            ApiVersionPropertiesGenerator.generate(apiBasePath, apiMajor,
-                    processingEnv.getFiler(), processingEnv.getMessager());
-            apiVersionPropertiesGenerated = true;
-        }
-        if (!deprecationManifestGenerated) {
-            DeprecationManifestGenerator.generate(serviceRegistry, apiBasePath, apiMajor,
-                    processingEnv.getFiler(), processingEnv.getMessager());
-            deprecationManifestGenerated = true;
-        }
 
         return true;
     }

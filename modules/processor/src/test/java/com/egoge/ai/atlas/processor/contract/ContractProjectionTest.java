@@ -172,6 +172,29 @@ class ContractProjectionTest {
     }
 
     @Test
+    void projectedOperationIdsAreThoseOfTheGeneratedOpenApiDocumentAcrossRounds() throws IOException {
+        JavaFileObject first = JavaFileObjects.forSourceString("shop.FirstService", """
+                package shop;
+                import com.egoge.ai.atlas.annotations.AgenticExposed;
+                public class FirstService {
+                    @AgenticExposed(description = "First late operation", channels = { AgenticExposed.Channel.API })
+                    public String late() { return null; }
+                }
+                """);
+        Compilation compilation = javac()
+                .withProcessors(new AgenticProcessor(), new LaterRoundSourceProcessor()).compile(first);
+
+        assertThat(compilation.status()).as(compilation.diagnostics().toString())
+                .isEqualTo(Compilation.Status.SUCCESS);
+        ContractIr ir = ir(compilation);
+        List<String> documented = new ObjectMapper().readTree(text(compilation, OPENAPI_PATH))
+                .findValuesAsText("operationId");
+        assertThat(documented).containsExactlyInAnyOrderElementsOf(
+                ContractProjection.of(ir, ir.apiMajor()).operationIds().values());
+        assertThat(documented).containsExactlyInAnyOrder("FirstService_late_get", "LateService_late_get");
+    }
+
+    @Test
     void parsesEveryCanonicalTypeForm() {
         ClassName outer = ClassName.get("a.b", "Outer");
         assertThat(ContractProjection.parseType("a.b.Outer.Inner")).isEqualTo(outer.nestedClass("Inner"));
