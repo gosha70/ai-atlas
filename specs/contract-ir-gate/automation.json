@@ -9,7 +9,7 @@
   "phases": {
     "source": "tasks.md",
     "milestone_every": 0,
-    "max_phases": 4
+    "max_phases": 2
   },
   "build": {
     "max_turns": 80,
