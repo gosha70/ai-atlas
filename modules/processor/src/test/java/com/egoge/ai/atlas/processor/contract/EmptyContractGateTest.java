@@ -48,6 +48,7 @@ class EmptyContractGateTest {
         assertThat(errors.subList(1, errors.size())).allSatisfy(e -> assertThat(e)
                         .startsWith("[ai-atlas] Breaking contract change to ").contains(": removed ")
                         .contains("breaks clients of major 2").contains("atlasAccept"))
+                .anySatisfy(e -> assertThat(e).contains("entity shop.Order: removed shop.generated.OrderDto"))
                 .anySatisfy(e -> assertThat(e).contains("field shop.Order#total: removed"))
                 .anySatisfy(e -> assertThat(e).contains("field shop.Customer#id: removed"))
                 .anySatisfy(e -> assertThat(e).contains("operation shop.OrderService#find(): removed"))

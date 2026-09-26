@@ -4,7 +4,6 @@
 package com.egoge.ai.atlas.processor.contract;
 
 import com.egoge.ai.atlas.processor.AgenticProcessor;
-import com.palantir.javapoet.TypeName;
 
 import javax.annotation.processing.Messager;
 import javax.annotation.processing.ProcessingEnvironment;
@@ -291,7 +290,12 @@ public final class ContractGate {
         }
     }
 
-    /** The element an element path names, or {@code null} when it no longer exists. */
+    /**
+     * The element an element path names, or {@code null} when it no longer exists. A field is
+     * searched on its class and up the superclass chain (a class hierarchy is acyclic); interface
+     * constants are not searched, as {@code @AgenticField} applies to instance fields. When no
+     * element is found, the finding is reported without a source location.
+     */
     private static Element locate(ProcessingEnvironment env, String path) {
         if (path.startsWith(ENTITY_PATH)) {
             return env.getElementUtils().getTypeElement(path.substring(ENTITY_PATH.length()));
@@ -317,10 +321,10 @@ public final class ContractGate {
         return null;
     }
 
-    /** {@code method(parameter types)}, as {@link ContractIr.Operation#signature()} identifies it. */
+    /** {@code method(parameter types)}, rendered exactly as {@link ContractIr.Operation#signature()}. */
     private static String signature(ExecutableElement method) {
-        return method.getSimpleName() + "(" + String.join(",", method.getParameters().stream()
-                .map(p -> TypeName.get(p.asType()).toString()).toList()) + ")";
+        return ContractIr.Operation.renderSignature(method.getSimpleName().toString(), method.getParameters().stream()
+                .map(p -> IrBuilder.typeString(p.asType())).toList());
     }
 
     private static TypeElement superclass(TypeElement type) {

@@ -14,6 +14,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import javax.tools.StandardLocation;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -251,6 +253,20 @@ class ContractGateTest {
     }
 
     @Test
+    void renamingAGenericParameterIsReportedOnTheMethod() throws Exception {
+        String generic = "label(java.util.List<Long> ids, String[] tags, int limit)";
+        Files.writeString(baseline, irOf(compile(fixture().with("shop.OrderService", "label(Long id)", generic)
+                .sources(), MAJOR + M)), StandardCharsets.UTF_8);
+
+        Compilation compilation = gate(fixture().with("shop.OrderService", "label(Long id)",
+                "label(java.util.List<Long> orderIds, String[] tags, int limit)"));
+
+        assertThat(singleError(compilation)).contains("operation shop.OrderService#label("
+                + "java.util.List<java.lang.Long>,java.lang.String[],int): parameter 0.name ids → orderIds");
+        assertOnElement(compilation);
+    }
+
+    @Test
     void removingAChannelFails() {
         Compilation compilation = gate(fixture().with("shop.OrderService", "toolName = \"labelOrder\")",
                 "toolName = \"labelOrder\", channels = { AgenticExposed.Channel.AI })"));
@@ -377,6 +393,7 @@ class ContractGateTest {
                 .singleElement().satisfies(d -> assertThat(d.getMessage(null))
                         .contains("@AgenticField(openEnum = true) on field 'id' has no effect"));
         ContractIr ir = IrJson.parse(irOf(compilation), "api.ir.json");
+        // The IR records the declaration as written, so 'id' keeps the flag despite the warning
         assertThat(ir.entities().stream().filter(e -> e.className().equals("shop.Order")).findFirst().orElseThrow()
                 .fields()).filteredOn(ContractIr.Field::openEnum).extracting(ContractIr.Field::name)
                 .containsExactly("id", "status", "size");

@@ -54,6 +54,8 @@ public final class EmptyContract {
      */
     public static ContractGate.Outcome check(String baselinePath, String apiBasePath, int apiMajor) {
         ContractGate.Outcome outcome = ContractGate.check(baselinePath, document(apiBasePath, apiMajor));
+        // A removal is a breaking difference whose after value is null; apiBasePath and channels changes
+        // have non-null after values and are excluded
         long removed = outcome.differences().stream()
                 .filter(d -> d.breaking() && d.after() == null).count();
         if (removed == 0) {

@@ -92,6 +92,10 @@ final class ContractComparison {
             Entity current = after.get(old.className());
             if (current != null) {
                 compareEntity(old, current);
+            } else {
+                breaking(ENTITY_PATH + old.className(), C_REMOVED, Direction.OUTPUT,
+                        old.dtoPackage() + "." + old.dtoName(), null,
+                        "Clients of major " + major + " refer to the entity's DTO by this name", fieldRemedy());
             }
             compareFields(old, current);
         }
@@ -217,6 +221,8 @@ final class ContractComparison {
                 continue;
             }
             compareOperation(path, op, now);
+            // operationIds() covers only API-channel operations: a null id is an MCP-only operation, which
+            // has no operationId to compare; losing the API channel is reported as a channels change
             String idBefore = idsBefore.get(op.id());
             String idAfter = idsAfter.get(op.id());
             if (idBefore != null && idAfter != null && !idBefore.equals(idAfter)) {
@@ -259,6 +265,12 @@ final class ContractComparison {
                     "REST clients call the operation with this HTTP method", operationRemedy());
             diff(path, C_REST_PATH, Direction.INPUT, old.rest().path(), now.rest().path(), true,
                     "REST clients call the operation at this path", operationRemedy());
+        }
+        if (old.parameters().size() != now.parameters().size()) {
+            // Unreachable while Operation.id() carries the parameter types; guards a future change to the identity
+            breaking(path, C_PARAMETER + "count", Direction.INPUT, str(old.parameters().size()),
+                    str(now.parameters().size()), "The operation's parameter list changes", operationRemedy());
+            return;
         }
         for (int i = 0; i < old.parameters().size(); i++) {
             compareParameter(path, i, old.parameters().get(i), now.parameters().get(i));

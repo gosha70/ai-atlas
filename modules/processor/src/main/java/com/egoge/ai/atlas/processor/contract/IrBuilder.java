@@ -106,7 +106,8 @@ public final class IrBuilder {
         AgenticEntity annotation = entity.getAnnotation(AgenticEntity.class);
         String className = entity.getQualifiedName().toString();
         for (FieldScanner.ScannedField field : fields) {
-            if (field.element().getAnnotation(AgenticField.class).openEnum()) {
+            AgenticField fieldAnnotation = field.element().getAnnotation(AgenticField.class);
+            if (fieldAnnotation != null && fieldAnnotation.openEnum()) {
                 recordOpenEnum(className, field);
             }
         }
@@ -275,7 +276,7 @@ public final class IrBuilder {
      * The canonical source form of a type (FR-005). {@code TypeName.get} does not carry TYPE_USE
      * annotations, so annotating a type, e.g. with {@code @Nullable}, leaves its string unchanged.
      */
-    private static String typeString(TypeMirror type) {
+    static String typeString(TypeMirror type) {
         return TypeName.get(type).toString();
     }
 

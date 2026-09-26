@@ -97,7 +97,7 @@ public @interface AgenticField {
      * {@code true}. Removing a value is compatible either way.
      *
      * <p>Only meaningful on enum-typed fields or fields with {@code allowedValues}; a compile
-     * warning is emitted when the field is neither.
+     * warning is emitted when the field is neither an enum type nor has {@code allowedValues}.
      */
     boolean openEnum() default false;
 
