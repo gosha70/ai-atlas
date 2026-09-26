@@ -58,6 +58,10 @@ public abstract class AtlasContractCheck extends DefaultTask {
     @Input
     public abstract Property<Integer> getApiMajor();
 
+    /** The processor on the {@code annotationProcessor} classpath, named when this plugin cannot run it. */
+    @Internal
+    public abstract Property<String> getProcessorVersion();
+
     @Inject
     protected abstract WorkerExecutor getWorkerExecutor();
 
@@ -75,5 +79,6 @@ public abstract class AtlasContractCheck extends DefaultTask {
                     parameters.getApiBasePath().set(getApiBasePath());
                     parameters.getApiMajor().set(getApiMajor());
                 });
+        AgenticPlugin.awaitProcessor(getWorkerExecutor(), getProcessorVersion());
     }
 }

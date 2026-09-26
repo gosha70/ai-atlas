@@ -221,6 +221,11 @@ The plugin passes them as `ai.atlas.contract.baseline` (absolute path) and
 receives them, so test sources are never compared against the main baseline. The baseline file is
 an optional input of `compileJava`, so creating, editing or accepting it re-runs the gate.
 
+The plugin and the processor must be the same ai-atlas version. `atlasContractCheck` and
+`atlasAccept` call the processor found on the `annotationProcessor` classpath, so pinning
+`agentic { version }` to a different release than the plugin's makes them fail with a message naming
+both versions. Align `agentic { version }` with the plugin's version, or remove the pin.
+
 ### Processor options
 
 Other build tools pass the options directly to javac:

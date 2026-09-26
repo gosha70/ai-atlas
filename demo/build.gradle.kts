@@ -45,13 +45,21 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 // The committed contract baseline (contract-ir-gate FR-018), passed to the main compileJava only —
-// what the plugin's contractBaseline does. Declared as an input so editing it re-runs the gate.
+// what the plugin's contractBaseline does. An argument provider, not a compilerArgs string: the
+// baseline's content is an input, so editing it re-runs the gate, but its absolute path is not,
+// so checkouts in different directories share build cache entries.
 val contractBaseline = layout.projectDirectory.file(".atlas/api.ir.json")
 
+class ContractBaselineArgument(
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    val baseline: FileCollection
+) : CommandLineArgumentProvider {
+    override fun asArguments() = listOf("-Aai.atlas.contract.baseline=${baseline.singleFile.absolutePath}")
+}
+
 tasks.named<JavaCompile>("compileJava") {
-    inputs.files(contractBaseline).withPropertyName("contractBaseline")
-        .withPathSensitivity(PathSensitivity.NONE)
-    options.compilerArgs.add("-Aai.atlas.contract.baseline=${contractBaseline.asFile.absolutePath}")
+    options.compilerArgumentProviders.add(ContractBaselineArgument(files(contractBaseline)))
 }
 
 tasks.test {
