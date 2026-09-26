@@ -3,6 +3,7 @@
  */
 package com.egoge.ai.atlas.processor.generator;
 
+import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel;
@@ -39,14 +40,9 @@ import javax.tools.StandardLocation;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Generates an OpenAPI 3.0.3 specification (JSON) from entity and service models.
@@ -83,13 +79,17 @@ public final class OpenApiGenerator {
 
   /**
    * Generates the OpenAPI spec and writes it as a resource file.
+   *
+   * @param operationIds the operationId of every active API operation, keyed by
+   *                     {@link ContractProjection#operationKey}, as the projection assigns them
    */
   public static void generate(
       List<EntityModel> entities,
       List<ServiceModel> services,
+      Map<String, String> operationIds,
       String apiBasePath, int apiMajor, String infoVersion,
       Filer filer, Messager messager) {
-    OpenAPI openAPI = buildSpec(entities, services, apiBasePath, apiMajor, infoVersion);
+    OpenAPI openAPI = buildSpec(entities, services, operationIds, apiBasePath, apiMajor, infoVersion);
 
     try {
       String json = serializeToJson(openAPI);
@@ -124,6 +124,7 @@ public final class OpenApiGenerator {
   static OpenAPI buildSpec(
       List<EntityModel> entities,
       List<ServiceModel> services,
+      Map<String, String> operationIds,
       String apiBasePath, int apiMajor, String infoVersion) {
     OpenAPI openAPI = new OpenAPI();
     openAPI.openapi(OPENAPI_VERSION);
@@ -146,17 +147,19 @@ public final class OpenApiGenerator {
     for (ServiceModel service : services) {
       collectServiceOperations(entries, service, apiBasePath, apiMajor);
     }
-    List<String> operationIds = assignOperationIds(entries);
     Paths paths = new Paths();
-    for (int i = 0; i < entries.size(); i++) {
-      OperationEntry entry = entries.get(i);
+    for (OperationEntry entry : entries) {
+      String operationId = operationIds.get(entry.operationKey());
+      if (operationId == null) {
+        throw new IllegalStateException("No operationId projected for " + entry.operationKey());
+      }
       PathItem pathItem = paths.get(entry.path());
       if (pathItem == null) {
         pathItem = new PathItem();
         paths.addPathItem(entry.path(), pathItem);
       }
       pathItem.operation(entry.httpMethod(),
-          buildOperation(entry.method(), operationIds.get(i), apiMajor));
+          buildOperation(entry.method(), operationId, apiMajor));
     }
     openAPI.paths(paths);
 
@@ -220,11 +223,7 @@ public final class OpenApiGenerator {
 
   /** One operation of the document, in the order the controllers declare their mappings. */
   private record OperationEntry(String path, PathItem.HttpMethod httpMethod,
-                                String serviceSimpleName, MethodModel method) {
-
-    String httpMethodName() {
-      return httpMethod.name().toLowerCase(Locale.ROOT);
-    }
+                                String operationKey, MethodModel method) {
   }
 
   private static void collectServiceOperations(List<OperationEntry> entries, ServiceModel service,
@@ -239,44 +238,9 @@ public final class OpenApiGenerator {
       String path = basePath + "/" + toKebabCase(method.methodName());
       PathItem.HttpMethod httpMethod = method.parameters().isEmpty()
           ? PathItem.HttpMethod.GET : PathItem.HttpMethod.POST;
-      entries.add(new OperationEntry(path, httpMethod, serviceName, method));
+      entries.add(new OperationEntry(path, httpMethod,
+          ContractProjection.operationKey(service.serviceClassName(), method), method));
     }
-  }
-
-  /**
-   * Assigns a unique operationId to every entry (same index): a method name used by one
-   * operation only is kept; shared ones, in (path, HTTP method) order, get
-   * {@code {Service}_{method}_{httpMethod}} plus the smallest free {@code _N} suffix if taken.
-   */
-  private static List<String> assignOperationIds(List<OperationEntry> entries) {
-    Map<String, Long> nameCounts = entries.stream()
-        .collect(Collectors.groupingBy(e -> e.method().methodName(), Collectors.counting()));
-    String[] ids = new String[entries.size()];
-    Set<String> taken = new HashSet<>();
-    List<Integer> shared = new ArrayList<>();
-    for (int i = 0; i < entries.size(); i++) {
-      String methodName = entries.get(i).method().methodName();
-      if (nameCounts.get(methodName) == 1) {
-        ids[i] = methodName;
-        taken.add(methodName);
-      } else {
-        shared.add(i);
-      }
-    }
-    shared.sort(Comparator.<Integer, String>comparing(i -> entries.get(i).path())
-        .thenComparing(i -> entries.get(i).httpMethodName()));
-    for (int i : shared) {
-      OperationEntry entry = entries.get(i);
-      String candidate = entry.serviceSimpleName() + "_" + entry.method().methodName()
-          + "_" + entry.httpMethodName();
-      String id = candidate;
-      for (int suffix = 2; taken.contains(id); suffix++) {
-        id = candidate + "_" + suffix;
-      }
-      taken.add(id);
-      ids[i] = id;
-    }
-    return List.of(ids);
   }
 
   private static Operation buildOperation(MethodModel method, String operationId, int apiMajor) {

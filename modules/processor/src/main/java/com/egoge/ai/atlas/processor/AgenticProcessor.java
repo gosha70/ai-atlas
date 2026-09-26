@@ -5,6 +5,7 @@ package com.egoge.ai.atlas.processor;
 
 import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.egoge.ai.atlas.annotations.AgenticExposed;
+import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.contract.IrBuilder;
 import com.egoge.ai.atlas.processor.generator.ApiVersionPropertiesGenerator;
 import com.egoge.ai.atlas.processor.generator.DeprecationManifestGenerator;
@@ -149,7 +150,7 @@ public class AgenticProcessor extends AbstractProcessor {
             return false;
         }
         if (roundEnv.processingOver()) {
-            contractIr.write(apiBasePath, apiMajor); // declarations that yielded no OpenAPI document
+            contractIr.write(apiBasePath, apiMajor); // every round's declarations, including later rounds'
             return false;
         }
 
@@ -162,10 +163,10 @@ public class AgenticProcessor extends AbstractProcessor {
         // Phase 3: Generate aggregate artifacts once per compilation
         if (!openApiGenerated && (!entityRegistry.isEmpty() || !serviceRegistry.isEmpty())) {
             OpenApiGenerator.generate(new ArrayList<>(entityRegistry.values()),
-                    serviceRegistry, apiBasePath, apiMajor, openApiInfoVersion,
+                    serviceRegistry, contractIr.project(apiBasePath, apiMajor).operationIds(),
+                    apiBasePath, apiMajor, openApiInfoVersion,
                     processingEnv.getFiler(), processingEnv.getMessager());
             openApiGenerated = true;
-            contractIr.write(apiBasePath, apiMajor);
         }
         if (!apiVersionPropertiesGenerated) {
             ApiVersionPropertiesGenerator.generate(apiBasePath, apiMajor,
@@ -182,8 +183,8 @@ public class AgenticProcessor extends AbstractProcessor {
     }
 
     private void processEntities(RoundEnvironment roundEnv) {
-        // Pass 1: Validate and register all entity models
-        List<String> roundEntityKeys = new ArrayList<>();
+        // Pass 1: Validate, scan and record all entities in the IR, then project and register them
+        Map<TypeElement, List<FieldScanner.ScannedField>> roundEntities = new LinkedHashMap<>();
         for (var element : roundEnv.getElementsAnnotatedWith(AgenticEntity.class)) {
             if (element.getKind() == ElementKind.INTERFACE) {
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
@@ -211,8 +212,16 @@ public class AgenticProcessor extends AbstractProcessor {
                         typeElement);
             }
 
+            var scanned = FieldScanner.scanAll(typeElement, processingEnv);
+            contractIr.addEntity(typeElement, scanned);
+            roundEntities.put(typeElement, scanned);
+        }
+        ContractProjection projection = contractIr.project(apiBasePath, apiMajor);
+        List<String> roundEntityKeys = new ArrayList<>();
+        for (var entry : roundEntities.entrySet()) {
+            TypeElement typeElement = entry.getKey();
             String key = typeElement.getQualifiedName().toString();
-            processEntity(typeElement);
+            processEntity(typeElement, entry.getValue(), projection);
             // Only add to roundEntityKeys if entity has active fields (non-empty)
             EntityModel registered = entityRegistry.get(key);
             if (registered != null && !registered.fields().isEmpty()) {
@@ -247,24 +256,14 @@ public class AgenticProcessor extends AbstractProcessor {
         }
     }
 
-    private void processEntity(TypeElement typeElement) {
-        var annotation = typeElement.getAnnotation(AgenticEntity.class);
-        var scanned = FieldScanner.scanAll(typeElement, processingEnv);
-        var fields = FieldScanner.selectActive(scanned, typeElement, apiMajor, processingEnv.getMessager());
+    private void processEntity(TypeElement typeElement, List<FieldScanner.ScannedField> scanned,
+                               ContractProjection projection) {
+        String simpleName = typeElement.getSimpleName().toString();
+        EntityModel model = projection.entity(typeElement.getQualifiedName().toString());
+        List<FieldModel> fields = model.fields();
+        projection.reportExcluded(typeElement, scanned, processingEnv.getMessager());
 
         PiiDetector.checkUnannotatedFields(typeElement, processingEnv);
-
-        String simpleName = typeElement.getSimpleName().toString();
-        String dtoName = annotation.dtoName().isEmpty() ? simpleName + "Dto" : annotation.dtoName();
-        String sourcePackage = processingEnv.getElementUtils()
-                .getPackageOf(typeElement).getQualifiedName().toString();
-        String dtoPackage = annotation.packageName().isEmpty()
-                ? sourcePackage + ".generated" : annotation.packageName();
-        String displayName = annotation.name().isEmpty() ? simpleName : annotation.name();
-        ClassName sourceClassName = ClassName.get(typeElement);
-        EntityModel model = new EntityModel(sourceClassName, dtoName, dtoPackage,
-                displayName, annotation.description(), annotation.includeTypeInfo(), fields);
-        contractIr.addEntity(model, scanned);
 
         if (fields.isEmpty()) {
             // Register with empty fields so references can be detected in pass 2,
@@ -319,14 +318,20 @@ public class AgenticProcessor extends AbstractProcessor {
             }
         }
         // Sorted: RoundEnvironment is unordered, and registry order decides OpenAPI path order (FR-002).
+        Map<TypeElement, List<String>> recorded = new LinkedHashMap<>();
         for (var entry : typesByQName.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
             String qName = entry.getKey();
             discoveredServiceNames.add(qName);
-            if (typeLevelTypes.contains(qName)) {
-                processServiceType(entry.getValue());
-            } else {
-                processServiceWithMethods(entry.getValue(), methodsByType.get(qName));
+            List<ExecutableElement> methods = typeLevelTypes.contains(qName)
+                    ? publicMethods(entry.getValue()) : methodsByType.get(qName);
+            List<String> operationIds = recordOperations(entry.getValue(), methods);
+            if (!operationIds.isEmpty()) {
+                recorded.put(entry.getValue(), operationIds);
             }
+        }
+        if (!recorded.isEmpty()) {
+            ContractProjection projection = contractIr.project(apiBasePath, apiMajor);
+            recorded.forEach((serviceType, operationIds) -> generateService(serviceType, operationIds, projection));
         }
         restMappings.reportDuplicates(processingEnv.getMessager());
         toolNames.reportCollisions(processingEnv.getMessager());
@@ -335,7 +340,8 @@ public class AgenticProcessor extends AbstractProcessor {
     /** Every discovered {@code @AgenticExposed} service (qualified, processing order) — recorded before method processing, so fully-filtered and no-public-method services are included. Read by the driver; never emitted to the class output. */
     public List<String> discoveredServices() { return List.copyOf(discoveredServiceNames); }
 
-    private void processServiceType(TypeElement typeElement) {
+    /** The public methods of a class-level {@code @AgenticExposed} service; warns when it has none. */
+    private List<ExecutableElement> publicMethods(TypeElement typeElement) {
         List<ExecutableElement> methods = typeElement.getEnclosedElements().stream()
                 .filter(e -> e.getKind() == ElementKind.METHOD)
                 .filter(e -> e.getModifiers().contains(javax.lang.model.element.Modifier.PUBLIC))
@@ -345,35 +351,36 @@ public class AgenticProcessor extends AbstractProcessor {
             processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
                     "@AgenticExposed on " + typeElement.getSimpleName()
                             + " has no public methods to expose", typeElement);
-            return;
         }
-        processServiceWithMethods(typeElement, methods);
+        return methods;
     }
 
-    private void processServiceWithMethods(TypeElement serviceType, List<ExecutableElement> methods) {
-        ClassName serviceClassName = ClassName.get(serviceType);
-        String servicePackage = processingEnv.getElementUtils()
-                .getPackageOf(serviceType).getQualifiedName().toString();
-        String generatedPackage = servicePackage + ".generated";
+    /**
+     * Validates each method and records the valid ones in the IR (FR-001).
+     *
+     * @return the IR identities of the valid methods, in declaration order
+     */
+    private List<String> recordOperations(TypeElement serviceType, List<ExecutableElement> methods) {
         AgenticExposed typeAnnotation = serviceType.getAnnotation(AgenticExposed.class);
-
-        List<MethodModel> methodModels = new ArrayList<>();
+        List<String> operationIds = new ArrayList<>();
         for (ExecutableElement method : methods) {
-            contractIr.addOperation(serviceType, method, typeAnnotation);
             MethodModel methodModel = buildMethodModel(method, typeAnnotation);
             if (methodModel != null) {
-                methodModels.add(methodModel);
+                operationIds.add(contractIr.addOperation(serviceType, method, typeAnnotation));
                 restMappings.record(serviceType, method, methodModel, apiBasePath, apiMajor);
                 toolNames.record(serviceType, method, methodModel, apiMajor);
                 QualityDiagnostics.reportMissingDescription(qualityKind, processingEnv.getMessager(),
                         serviceType, method, methodModel, typeAnnotation, apiMajor);
             }
         }
-        if (methodModels.isEmpty()) {
-            return;
-        }
+        return operationIds;
+    }
 
-        ServiceModel model = new ServiceModel(serviceClassName, methodModels);
+    /** Generates a service's MCP tool and REST controller from its operations active in the projection. */
+    private void generateService(TypeElement serviceType, List<String> operationIds, ContractProjection projection) {
+        String generatedPackage = processingEnv.getElementUtils()
+                .getPackageOf(serviceType).getQualifiedName() + ".generated";
+        ServiceModel model = projection.service(ClassName.get(serviceType), operationIds);
         serviceRegistry.add(model);
         McpToolGenerator.generate(model, generatedPackage, apiMajor,
                 processingEnv.getFiler(), processingEnv.getMessager());

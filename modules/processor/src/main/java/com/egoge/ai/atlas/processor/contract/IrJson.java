@@ -12,7 +12,9 @@ import com.egoge.ai.atlas.processor.contract.ContractIr.Parameter;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Rest;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Return;
 import com.egoge.ai.atlas.processor.contract.ContractIr.TypeRef;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -83,6 +85,11 @@ public final class IrJson {
 
     private static final String INDENT = "  ";
     private static final char NEWLINE = '\n';
+
+    /** Strict reading: content after the document, and a key repeated within an object, are malformed. */
+    private static final ObjectMapper READER = new ObjectMapper()
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
 
     private IrJson() {
     }
@@ -313,7 +320,7 @@ public final class IrJson {
     public static ContractIr parse(String json, String source) throws IrReadException {
         JsonNode root;
         try {
-            root = new ObjectMapper().readTree(json);
+            root = READER.readTree(json);
         } catch (JsonProcessingException e) {
             throw malformed(source, e.getOriginalMessage());
         }

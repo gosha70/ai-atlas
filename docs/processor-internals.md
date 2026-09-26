@@ -24,11 +24,12 @@ Phase 1: Entity Processing          Phase 2: Service Processing        Phase 3: 
 For each class annotated with `@AgenticEntity`:
 
 1. **Validate** — reject interfaces, enums, non-class elements (emit warnings/errors)
-2. **Scan fields** — `FieldScanner.scan()` walks the superclass chain top-down, collecting `@AgenticField` fields. Subclass fields override same-named superclass fields. For fields whose type is another `@AgenticEntity` entity, the scanner records the cross-reference (including collection element types) for DTO-to-DTO mapping. Raw/wildcard collection fields fall back to `@AgenticField(type = ...)` hints.
-3. **PII warnings** — `PiiDetector.check()` runs on all fields **not** annotated with `@AgenticField`, emitting NOTE diagnostics for suspicious names
-4. **Build model** — construct an `EntityModel` record with DTO name, package, display name, description, and the ordered list of `FieldModel` records
-5. **Generate DTO** — `DtoGenerator.generate()` produces a Java record via JavaPoet
-6. **Register** — store the `EntityModel` in `entityRegistry` (keyed by qualified class name) for Phase 2 lookups
+2. **Scan fields** — `FieldScanner.scanAll()` walks the superclass chain top-down, collecting every valid `@AgenticField` field whatever its lifecycle. Subclass fields override same-named superclass fields. For fields whose type is another `@AgenticEntity` entity, the scanner records the cross-reference (including collection element types) for DTO-to-DTO mapping. Raw/wildcard collection fields fall back to `@AgenticField(type = ...)` hints. The scanner does not filter by `apiMajor`.
+3. **Record in the Contract IR** — `IrBuilder` records the entity with all its fields; the IR is then projected at `apiMajor` (`ContractProjection`), which keeps only the active fields and resolves deprecation. A NOTE names each field excluded as not active for `apiMajor`.
+4. **PII warnings** — `PiiDetector.check()` runs on all fields **not** annotated with `@AgenticField`, emitting NOTE diagnostics for suspicious names
+5. **Build model** — the projection supplies the `EntityModel` record with DTO name, package, display name, description, and the ordered list of active `FieldModel` records
+6. **Generate DTO** — `DtoGenerator.generate()` produces a Java record via JavaPoet
+7. **Register** — store the `EntityModel` in `entityRegistry` (keyed by qualified class name) for Phase 2 lookups
 
 ### Phase 2: Service Processing
 
@@ -40,8 +41,9 @@ For each class or method annotated with `@AgenticExposed`:
 4. **Validate return type** — `ReturnTypeValidator` checks that the method's return type is assignable to the declared `returnType` entity, emitting a compile warning on mismatches
 5. **Read channels** — extract the `channels` attribute (`AI`, `API`, or both) to determine which generators to invoke
 6. **Map to DTOs** — look up the return entity's `EntityModel` in the registry to find the DTO class name
-7. **Build model** — construct a `ServiceModel` with `MethodModel` entries for each exposed method
-8. **Generate** — invoke `McpToolGenerator` (if channels include `AI`) and `RestControllerGenerator` (if channels include `API`)
+7. **Record in the Contract IR** — each method whose model is valid is recorded by `IrBuilder`; invalid methods are left out, as invalid fields are
+8. **Build model** — the projection of the IR at `apiMajor` supplies a `ServiceModel` with a `MethodModel` for each active exposed method, in declaration order
+9. **Generate** — invoke `McpToolGenerator` (if channels include `AI`) and `RestControllerGenerator` (if channels include `API`)
 
 ### Phase 3: OpenAPI Generation
 
@@ -50,7 +52,10 @@ After all entities and services are processed:
 1. Collect all `EntityModel` and `ServiceModel` instances from registries
 2. Build OpenAPI schema definitions from entity DTOs (including enum constraints)
 3. Build path definitions from service methods
-4. Serialize to JSON via Jackson and write to `META-INF/openapi/openapi.json` using the Filer API
+4. Take each operation's `operationId` from the projection, which assigns them over all its active API operations
+5. Serialize to JSON via Jackson and write to `META-INF/openapi/openapi.json` using the Filer API
+
+The Contract IR, `META-INF/ai-atlas/api.ir.json`, is written in the final round, so it includes entities and services that another processor generates in a later round.
 
 ## Internal Models
 
@@ -150,7 +155,7 @@ Produces `META-INF/openapi/openapi.json` (OpenAPI 3.0.3) using swagger-models:
 - Schema definitions from entity DTOs with property types and enum constraints
 - One operation per controller mapping (only methods with `API` channel); operations sharing a path are merged into one path item
 - Method arguments as query parameters (`in: query`, `required: true`), matching the controller's `@RequestParam`; no `requestBody`
-- `operationId` is the method name when unique in the document; otherwise `{Service}_{method}_{httpMethod}`, plus the smallest free `_2`, `_3`, … if taken
+- `operationId`, assigned by `ContractProjection` so the generator and the contract gate share one derivation, is the method name when unique in the document; otherwise `{Service}_{method}_{httpMethod}`, plus the smallest free `_2`, `_3`, … if taken
 - Response `200` content per return type: DTO (or array of DTO) as `application/json`, `String` as `text/plain`, numbers/booleans (or arrays of them) as `application/json`, `void` with no content, anything else as a JSON object
 - Java-to-OpenAPI type mapping (Long→int64, Integer→int32, etc.)
 
@@ -177,7 +182,7 @@ This is not a workaround — it is the standard JSR 269 pattern for compile-time
 
 ### Superclass Chain Walking
 
-`FieldScanner.scan()` processes the inheritance hierarchy top-down:
+`FieldScanner.scanAll()` processes the inheritance hierarchy top-down:
 
 1. Collect all TypeElements from `Object` down to the annotated class
 2. Process superclasses first — their fields appear earlier in the DTO

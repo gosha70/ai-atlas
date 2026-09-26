@@ -3,6 +3,7 @@
  */
 package com.egoge.ai.atlas.processor.contract;
 
+import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.egoge.ai.atlas.annotations.AgenticExposed;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Entity;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Field;
@@ -94,31 +95,39 @@ public final class IrBuilder {
     /**
      * Records an entity with every field of the scan, whatever its lifecycle.
      *
-     * @param entity the entity as generation sees it; only its class-level attributes are used
+     * @param entity the {@code @AgenticEntity} class
      * @param fields every valid {@code @AgenticField} of the entity, in DTO declaration order
      */
-    public void addEntity(EntityModel entity, List<FieldScanner.ScannedField> fields) {
-        entities.put(entity.sourceClassName().canonicalName(), new EntityModel(entity.sourceClassName(),
-                entity.dtoName(), entity.dtoPackageName(), entity.displayName(), entity.classDescription(),
-                entity.includeTypeInfo(), fields.stream().map(FieldScanner.ScannedField::model).toList()));
+    public void addEntity(TypeElement entity, List<FieldScanner.ScannedField> fields) {
+        AgenticEntity annotation = entity.getAnnotation(AgenticEntity.class);
+        String simpleName = entity.getSimpleName().toString();
+        String dtoPackage = annotation.packageName().isEmpty()
+                ? env.getElementUtils().getPackageOf(entity).getQualifiedName() + ".generated"
+                : annotation.packageName();
+        entities.put(entity.getQualifiedName().toString(), new EntityModel(ClassName.get(entity),
+                annotation.dtoName().isEmpty() ? simpleName + "Dto" : annotation.dtoName(), dtoPackage,
+                annotation.name().isEmpty() ? simpleName : annotation.name(), annotation.description(),
+                annotation.includeTypeInfo(), fields.stream().map(FieldScanner.ScannedField::model).toList()));
     }
 
     /**
-     * Records an exposed method. A method whose channels cannot be resolved is left out; the
-     * generation path reports that error.
+     * Records an exposed method. The caller records only methods whose model is valid, as invalid
+     * fields are left out of the scan; the generation path reports why a method is invalid.
      *
      * @param service        the service class declaring the method
      * @param method         the method
      * @param typeAnnotation the service's class-level {@code @AgenticExposed}, or {@code null}
+     * @return the operation's identity, {@link Operation#id()}, or {@code null} when the method is
+     *         not exposed or its channels cannot be resolved
      */
-    public void addOperation(TypeElement service, ExecutableElement method, AgenticExposed typeAnnotation) {
+    public String addOperation(TypeElement service, ExecutableElement method, AgenticExposed typeAnnotation) {
         AgenticExposed methodAnnotation = method.getAnnotation(AgenticExposed.class);
         if (methodAnnotation == null && typeAnnotation == null) {
-            return;
+            return null;
         }
         Set<String> channels = AttributeResolver.resolveChannels(methodAnnotation, typeAnnotation, method, SILENT);
         if (channels == null) {
-            return;
+            return null;
         }
 
         String methodName = method.getSimpleName().toString();
@@ -154,6 +163,7 @@ public final class IrBuilder {
                 AttributeResolver.resolveDescription(methodAnnotation, typeAnnotation, methodName),
                 rest, parameters, returns, lifecycle);
         operations.put(operation.id(), operation);
+        return operation.id();
     }
 
     /**
@@ -177,6 +187,21 @@ public final class IrBuilder {
             env.getMessager().printMessage(Diagnostic.Kind.ERROR,
                     "[ai-atlas] Failed to write the Contract IR " + ContractIr.RESOURCE_PATH + ": " + e.getMessage());
         }
+    }
+
+    /**
+     * Projects the declarations recorded so far at {@code apiMajor}, resolving class names against
+     * the compilation's elements (FR-006).
+     *
+     * @param apiBasePath the configured REST base path
+     * @param apiMajor    the configured major
+     * @return the projection the generators consume
+     */
+    public ContractProjection project(String apiBasePath, int apiMajor) {
+        return ContractProjection.of(build(apiBasePath, apiMajor), apiMajor, qualifiedName -> {
+            TypeElement type = env.getElementUtils().getTypeElement(qualifiedName);
+            return type != null ? ClassName.get(type) : null;
+        });
     }
 
     /**
@@ -224,6 +249,10 @@ public final class IrBuilder {
                         field.deprecatedSinceVersion(), field.deprecatedMessage()));
     }
 
+    /**
+     * The canonical source form of a type (FR-005). {@code TypeName.get} does not carry TYPE_USE
+     * annotations, so annotating a type, e.g. with {@code @Nullable}, leaves its string unchanged.
+     */
     private static String typeString(TypeMirror type) {
         return TypeName.get(type).toString();
     }
