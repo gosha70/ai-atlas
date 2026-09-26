@@ -17,6 +17,7 @@ import org.gradle.api.plugins.JavaPlugin;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.Nested;
+import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskContainer;
 import org.gradle.api.tasks.TaskProvider;
 import org.gradle.api.tasks.compile.CompileOptions;
@@ -158,8 +159,17 @@ public class AgenticPlugin implements Plugin<Project> {
                             .filter(arg -> !arg.startsWith(CONTRACT_OPTION_PREFIX)).toList()),
                     project.provider(() -> compileJava.get().getOptions().getCompilerArgumentProviders().stream()
                             .filter(provider -> provider != contractArguments).toList())));
+            // compileJava's JVM argument providers, nested so Gradle fingerprints their own inputs before
+            // this task runs; applied when the fork options are, as Gradle only reads them for a fork
+            task.getOptions().getForkOptions().getJvmArgumentProviders().add(new MainJvmArguments(
+                    project.provider(() -> compileJava.get().getOptions().getForkOptions().getJvmArgumentProviders())));
             Provider<MainCompileSettings> settings = project.provider(() -> MainCompileSettings.of(compileJava.get()));
             task.getInputs().property("mainCompileSettings", settings.map(MainCompileSettings::fingerprint));
+            // The JDK compileJava forks, by the content of its release file, as its path is not relocatable
+            task.getInputs().files((Callable<Object>) () -> {
+                File javaHome = compileJava.get().getOptions().getForkOptions().getJavaHome();
+                return javaHome == null ? List.of() : List.of(new File(javaHome, "release"));
+            }).withPropertyName("mainForkJavaHome").withPathSensitivity(PathSensitivity.NONE);
             task.doFirst(new ApplyMainCompileSettings(settings));
             task.getOptions().setIncremental(false);
             task.getDestinationDirectory().set(project.getLayout().getBuildDirectory().dir(ACCEPT_DIR + "/classes"));
@@ -269,11 +279,37 @@ public class AgenticPlugin implements Plugin<Project> {
         }
     }
 
+    /** compileJava's JVM argument providers, read when the accept compilation runs. */
+    public static final class MainJvmArguments implements CommandLineArgumentProvider {
+
+        private final Provider<List<CommandLineArgumentProvider>> argumentProviders;
+
+        MainJvmArguments(Provider<List<CommandLineArgumentProvider>> argumentProviders) {
+            this.argumentProviders = argumentProviders;
+        }
+
+        /**
+         * compileJava's JVM argument providers.
+         *
+         * @return the providers
+         */
+        @Nested
+        public List<CommandLineArgumentProvider> getArgumentProviders() {
+            return argumentProviders.get();
+        }
+
+        @Override
+        public Iterable<String> asArguments() {
+            List<String> arguments = new ArrayList<>();
+            getArgumentProviders().forEach(provider -> provider.asArguments().forEach(arguments::add));
+            return arguments;
+        }
+    }
+
     /** compileJava's options that are not lazy properties, applied to the accept compilation as it runs. */
     private record MainCompileSettings(String encoding, String sourceCompatibility, String targetCompatibility,
                                        boolean fork, String executable, File javaHome, String memoryInitialSize,
-                                       String memoryMaximumSize, String tempDir, List<String> jvmArgs,
-                                       List<CommandLineArgumentProvider> jvmArgumentProviders) {
+                                       String memoryMaximumSize, String tempDir, List<String> jvmArgs) {
 
         static MainCompileSettings of(JavaCompile main) {
             CompileOptions options = main.getOptions();
@@ -281,13 +317,17 @@ public class AgenticPlugin implements Plugin<Project> {
             return new MainCompileSettings(options.getEncoding(), main.getSourceCompatibility(),
                     main.getTargetCompatibility(), options.isFork(), fork.getExecutable(), fork.getJavaHome(),
                     fork.getMemoryInitialSize(), fork.getMemoryMaximumSize(), fork.getTempDir(),
-                    fork.getJvmArgs() == null ? null : List.copyOf(fork.getJvmArgs()),
-                    List.copyOf(fork.getJvmArgumentProviders()));
+                    fork.getJvmArgs() == null ? null : List.copyOf(fork.getJvmArgs()));
         }
 
-        /** The settings that are inputs of a compilation, so a change re-runs the accept compilation. */
+        /**
+         * The settings that are inputs of a compilation, so a change re-runs the accept compilation. The
+         * Java home is an input by content, and the temporary directory is not one, as in Gradle's own
+         * fork options: it does not change the classes compiled, and its path is not relocatable.
+         */
         List<String> fingerprint() {
-            return Stream.of(encoding, sourceCompatibility, targetCompatibility, fork, executable, jvmArgs)
+            return Stream.of(encoding, sourceCompatibility, targetCompatibility, fork, executable,
+                            memoryInitialSize, memoryMaximumSize, jvmArgs)
                     .map(String::valueOf).toList();
         }
 
@@ -304,8 +344,6 @@ public class AgenticPlugin implements Plugin<Project> {
             forkOptions.setMemoryMaximumSize(memoryMaximumSize);
             forkOptions.setTempDir(tempDir);
             forkOptions.setJvmArgs(jvmArgs);
-            forkOptions.getJvmArgumentProviders().clear();
-            forkOptions.getJvmArgumentProviders().addAll(jvmArgumentProviders);
         }
     }
 
