@@ -20,4 +20,6 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    // Bean Validation for ProxiedToolBeanTest's @Validated tool service (test only)
+    testImplementation("org.springframework.boot:spring-boot-starter-validation")
 }
