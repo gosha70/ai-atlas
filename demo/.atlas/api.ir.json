@@ -1,0 +1,745 @@
+{
+  "irVersion": 1,
+  "apiBasePath": "/api",
+  "apiMajor": 2,
+  "entities": [
+    {
+      "className": "com.egoge.ai.atlas.demo.entity.Address",
+      "dtoName": "AddressDto",
+      "dtoPackage": "com.egoge.ai.atlas.demo.entity.generated",
+      "displayName": "address",
+      "description": "A customer mailing address",
+      "includeTypeInfo": true,
+      "fields": [
+        {
+          "name": "id",
+          "displayName": "id",
+          "javaType": "java.lang.Long",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Unique address identifier",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "street",
+          "displayName": "street",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Street line",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "city",
+          "displayName": "city",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "City name",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "state",
+          "displayName": "state",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "State or province code",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "zipCode",
+          "displayName": "zipCode",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Postal / ZIP code",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "country",
+          "displayName": "country",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "ISO 3166-1 country code",
+          "lifecycle": {
+            "sinceVersion": 2,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        }
+      ]
+    },
+    {
+      "className": "com.egoge.ai.atlas.demo.entity.Customer",
+      "dtoName": "CustomerDto",
+      "dtoPackage": "com.egoge.ai.atlas.demo.entity.generated",
+      "displayName": "customer",
+      "description": "A customer with addresses and contact info",
+      "includeTypeInfo": true,
+      "fields": [
+        {
+          "name": "id",
+          "displayName": "id",
+          "javaType": "java.lang.Long",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Unique customer identifier",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "name",
+          "displayName": "name",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Customer display name",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "addresses",
+          "displayName": "addresses",
+          "javaType": "java.util.Collection",
+          "collectionKind": "COLLECTION",
+          "elementType": null,
+          "typeHint": "com.egoge.ai.atlas.demo.entity.Address",
+          "reference": {
+            "entity": "com.egoge.ai.atlas.demo.entity.Address",
+            "dto": "com.egoge.ai.atlas.demo.entity.generated.AddressDto"
+          },
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Customer mailing addresses",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        }
+      ]
+    },
+    {
+      "className": "com.egoge.ai.atlas.demo.entity.Order",
+      "dtoName": "OrderDto",
+      "dtoPackage": "com.egoge.ai.atlas.demo.entity.generated",
+      "displayName": "order",
+      "description": "A customer order with status tracking and item summary",
+      "includeTypeInfo": true,
+      "fields": [
+        {
+          "name": "id",
+          "displayName": "id",
+          "javaType": "java.lang.Long",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Unique order identifier",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "status",
+          "displayName": "status",
+          "javaType": "com.egoge.ai.atlas.demo.entity.Order.OrderStatus",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": true,
+          "allowedValues": [
+            "PENDING",
+            "CONFIRMED",
+            "SHIPPED",
+            "DELIVERED",
+            "CANCELLED"
+          ],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Current order status",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "totalAmountCents",
+          "displayName": "totalCents",
+          "javaType": "long",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Total order amount in cents",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 2,
+            "deprecatedMessage": "Use totalMajorUnits and totalMinorUnits instead"
+          }
+        },
+        {
+          "name": "totalMajorUnits",
+          "displayName": "totalMajorUnits",
+          "javaType": "int",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Total amount — whole currency units (e.g. dollars)",
+          "lifecycle": {
+            "sinceVersion": 2,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "totalMinorUnits",
+          "displayName": "totalMinorUnits",
+          "javaType": "int",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Total amount — fractional currency units (e.g. cents)",
+          "lifecycle": {
+            "sinceVersion": 2,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "itemCount",
+          "displayName": "itemCount",
+          "javaType": "int",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Number of items in the order",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "actions",
+          "displayName": "actions",
+          "javaType": "java.util.List<com.egoge.ai.atlas.demo.entity.OrderAction>",
+          "collectionKind": "COLLECTION",
+          "elementType": "com.egoge.ai.atlas.demo.entity.OrderAction",
+          "typeHint": null,
+          "reference": {
+            "entity": "com.egoge.ai.atlas.demo.entity.OrderAction",
+            "dto": "com.egoge.ai.atlas.demo.entity.generated.OrderActionDto"
+          },
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Actions performed on this order",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "legacyNotes",
+          "displayName": "legacyNotes",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Legacy free-text notes (removed in v2)",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        }
+      ]
+    },
+    {
+      "className": "com.egoge.ai.atlas.demo.entity.OrderAction",
+      "dtoName": "OrderActionDto",
+      "dtoPackage": "com.egoge.ai.atlas.demo.entity.generated",
+      "displayName": "orderAction",
+      "description": "An action or status change performed on an order",
+      "includeTypeInfo": true,
+      "fields": [
+        {
+          "name": "id",
+          "displayName": "id",
+          "javaType": "java.lang.Long",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Unique action identifier",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "actionType",
+          "displayName": "actionType",
+          "javaType": "com.egoge.ai.atlas.demo.entity.OrderAction.ActionType",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": true,
+          "allowedValues": [
+            "CREATED",
+            "CONFIRMED",
+            "SHIPPED",
+            "DELIVERED",
+            "CANCELLED",
+            "NOTE"
+          ],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Type of action performed",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "description",
+          "displayName": "description",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Human-readable action description",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "timestamp",
+          "displayName": "timestamp",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "When the action occurred (ISO-8601)",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "order",
+          "displayName": "order",
+          "javaType": "com.egoge.ai.atlas.demo.entity.Order",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": {
+            "entity": "com.egoge.ai.atlas.demo.entity.Order",
+            "dto": "com.egoge.ai.atlas.demo.entity.generated.OrderDto"
+          },
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Parent order this action belongs to",
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        }
+      ]
+    }
+  ],
+  "operations": [
+    {
+      "id": "com.egoge.ai.atlas.demo.service.CustomerService#getCustomers()",
+      "service": "com.egoge.ai.atlas.demo.service.CustomerService",
+      "method": "getCustomers",
+      "toolName": "getCustomers",
+      "channels": [
+        "API"
+      ],
+      "description": "Retrieve all customers (deprecated — use getCustomersV2)",
+      "rest": {
+        "httpMethod": "GET",
+        "path": "/customer-service/get-customers"
+      },
+      "parameters": [],
+      "returns": {
+        "javaType": "java.util.List<?>",
+        "returnKind": "COLLECTION",
+        "returnType": "com.egoge.ai.atlas.demo.entity.Customer",
+        "reference": {
+          "entity": "com.egoge.ai.atlas.demo.entity.Customer",
+          "dto": "com.egoge.ai.atlas.demo.entity.generated.CustomerDto"
+        }
+      },
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 2,
+        "apiReplacement": "getCustomersV2"
+      }
+    },
+    {
+      "id": "com.egoge.ai.atlas.demo.service.CustomerService#getCustomersV2()",
+      "service": "com.egoge.ai.atlas.demo.service.CustomerService",
+      "method": "getCustomersV2",
+      "toolName": "getCustomersV2",
+      "channels": [
+        "API"
+      ],
+      "description": "Retrieve all customers with their addresses",
+      "rest": {
+        "httpMethod": "GET",
+        "path": "/customer-service/get-customers-v2"
+      },
+      "parameters": [],
+      "returns": {
+        "javaType": "java.util.List<?>",
+        "returnKind": "COLLECTION",
+        "returnType": "com.egoge.ai.atlas.demo.entity.Customer",
+        "reference": {
+          "entity": "com.egoge.ai.atlas.demo.entity.Customer",
+          "dto": "com.egoge.ai.atlas.demo.entity.generated.CustomerDto"
+        }
+      },
+      "lifecycle": {
+        "apiSince": 2,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "com.egoge.ai.atlas.demo.service.OrderService#findById(java.lang.Long)",
+      "service": "com.egoge.ai.atlas.demo.service.OrderService",
+      "method": "findById",
+      "toolName": "findById",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Find order by ID (legacy)",
+      "rest": {
+        "httpMethod": "POST",
+        "path": "/order-service/find-by-id"
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "javaType": "java.lang.Long",
+          "description": "",
+          "enumConstants": []
+        }
+      ],
+      "returns": {
+        "javaType": "com.egoge.ai.atlas.demo.entity.Order",
+        "returnKind": "NONE",
+        "returnType": "com.egoge.ai.atlas.demo.entity.Order",
+        "reference": {
+          "entity": "com.egoge.ai.atlas.demo.entity.Order",
+          "dto": "com.egoge.ai.atlas.demo.entity.generated.OrderDto"
+        }
+      },
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 1,
+        "apiReplacement": "findByIdV2"
+      }
+    },
+    {
+      "id": "com.egoge.ai.atlas.demo.service.OrderService#findByIdV2(java.lang.Long)",
+      "service": "com.egoge.ai.atlas.demo.service.OrderService",
+      "method": "findByIdV2",
+      "toolName": "findByIdV2",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Find order by ID",
+      "rest": {
+        "httpMethod": "POST",
+        "path": "/order-service/find-by-id-v2"
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "javaType": "java.lang.Long",
+          "description": "",
+          "enumConstants": []
+        }
+      ],
+      "returns": {
+        "javaType": "com.egoge.ai.atlas.demo.entity.Order",
+        "returnKind": "NONE",
+        "returnType": "com.egoge.ai.atlas.demo.entity.Order",
+        "reference": {
+          "entity": "com.egoge.ai.atlas.demo.entity.Order",
+          "dto": "com.egoge.ai.atlas.demo.entity.generated.OrderDto"
+        }
+      },
+      "lifecycle": {
+        "apiSince": 2,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "com.egoge.ai.atlas.demo.service.OrderService#findByPriority(java.lang.String)",
+      "service": "com.egoge.ai.atlas.demo.service.OrderService",
+      "method": "findByPriority",
+      "toolName": "findByPriority",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Find orders by priority (planned for v3)",
+      "rest": {
+        "httpMethod": "POST",
+        "path": "/order-service/find-by-priority"
+      },
+      "parameters": [
+        {
+          "name": "priority",
+          "javaType": "java.lang.String",
+          "description": "",
+          "enumConstants": []
+        }
+      ],
+      "returns": {
+        "javaType": "java.util.List<com.egoge.ai.atlas.demo.entity.Order>",
+        "returnKind": "COLLECTION",
+        "returnType": "com.egoge.ai.atlas.demo.entity.Order",
+        "reference": {
+          "entity": "com.egoge.ai.atlas.demo.entity.Order",
+          "dto": "com.egoge.ai.atlas.demo.entity.generated.OrderDto"
+        }
+      },
+      "lifecycle": {
+        "apiSince": 3,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "com.egoge.ai.atlas.demo.service.OrderService#findByStatus(java.lang.String)",
+      "service": "com.egoge.ai.atlas.demo.service.OrderService",
+      "method": "findByStatus",
+      "toolName": "findByStatus",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Find orders by status (e.g. PENDING, CONFIRMED)",
+      "rest": {
+        "httpMethod": "POST",
+        "path": "/order-service/find-by-status"
+      },
+      "parameters": [
+        {
+          "name": "status",
+          "javaType": "java.lang.String",
+          "description": "",
+          "enumConstants": []
+        }
+      ],
+      "returns": {
+        "javaType": "java.util.List<com.egoge.ai.atlas.demo.entity.Order>",
+        "returnKind": "COLLECTION",
+        "returnType": "com.egoge.ai.atlas.demo.entity.Order",
+        "reference": {
+          "entity": "com.egoge.ai.atlas.demo.entity.Order",
+          "dto": "com.egoge.ai.atlas.demo.entity.generated.OrderDto"
+        }
+      },
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    }
+  ]
+}

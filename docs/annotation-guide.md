@@ -59,6 +59,7 @@ Marks a field for inclusion in the generated DTO. Fields without this annotation
 | `sensitive` | boolean | `false` | Whether the field should be masked in audit logs |
 | `checkCircularReference` | boolean | `true` | Enable identity-based cycle detection during serialization |
 | `allowedValues` | String[] | `{}` | Explicit list of valid values (overrides automatic enum detection) |
+| `openEnum` | boolean | `false` | Whether clients tolerate values they do not know; governs whether the contract gate treats an added enum constant or allowed value as breaking (see [Open and Closed Enums](#open-and-closed-enums)) |
 | `type` | Class<?> | `void.class` | Element type hint for raw/wildcard collection fields (e.g., `Collection` without a type parameter) |
 | `sinceVersion` | int | `1` | Minimum major API version where this field is included in the generated DTO |
 | `removedInVersion` | int | `Integer.MAX_VALUE` | Major version at which this field is removed from the DTO (exclusive — half-open interval) |
@@ -102,6 +103,19 @@ The `name` attribute creates an alias used in enriched JSON output. The Java fie
 ### Enum Detection
 
 If a field's type is a Java enum, the processor automatically extracts the enum constant names and includes them in `FIELD_METADATA.validValues` and the OpenAPI `enum` constraint. You can override this by specifying `allowedValues` explicitly.
+
+### Open and Closed Enums
+
+A field's enum constants or `allowedValues` are part of its published contract. By default they are **closed** (`openEnum = false`): the [contract gate](contract-governance.md) reports a value added to them as a breaking change, because a client that switches over the known values cannot handle a new one. Removing a value is always compatible for a response field.
+
+Set `openEnum = true` when clients of the field tolerate unknown values; adding a value is then compatible:
+
+```java
+@AgenticField(description = "Current order status", openEnum = true)
+private OrderStatus status;
+```
+
+`openEnum` changes no generated code; it is recorded in the Contract IR (`api.ir.json`) for the gate. Setting it on a field that is neither enum-typed nor has `allowedValues` emits a compile WARNING naming the field, since it has no effect there.
 
 ### Inheritance
 
