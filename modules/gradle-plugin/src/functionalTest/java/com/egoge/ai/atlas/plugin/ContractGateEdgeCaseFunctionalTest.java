@@ -68,6 +68,50 @@ class ContractGateEdgeCaseFunctionalTest {
     }
 
     @Test
+    void anAnnotationInAnAnonymousClassIsNoDeclaration() throws IOException {
+        write(SERVICE, """
+                package test;
+
+                import com.egoge.ai.atlas.annotations.AgenticExposed;
+
+                @AgenticExposed(description = "Orders")
+                public class OrderService {
+                    public String find(Long id) { return null; }
+                }
+                """);
+        run("atlasAccept").build();
+        // javac reports no annotation in an anonymous class to the processor, so it emits no IR
+        write(SERVICE, """
+                package test;
+
+                import com.egoge.ai.atlas.annotations.AgenticExposed;
+
+                public class OrderService {
+                    Runnable task = new Runnable() {
+                        @AgenticExposed(description = "Run")
+                        public void run() { }
+                    };
+
+                    public String find(Long id) { return null; }
+                }
+                """);
+
+        BuildResult failed = run("classes").buildAndFail();
+
+        assertThat(failed.task(":atlasContractCheck").getOutcome()).isEqualTo(TaskOutcome.FAILED);
+        assertThat(failed.getOutput()).contains(EMPTY_CONTRACT_FAILURE)
+                .contains("operation test.OrderService#find(java.lang.Long): removed");
+
+        BuildResult accepted = run("atlasAccept").build();
+
+        assertThat(accepted.task(":atlasAccept").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+        assertThat(Files.readString(new File(projectDir, ".atlas/api.ir.json").toPath()))
+                .contains("\"entities\": []").contains("\"operations\": []").doesNotContain("OrderService");
+        assertThat(run("classes").build().task(":atlasContractCheck").getOutcome())
+                .isEqualTo(TaskOutcome.SUCCESS);
+    }
+
+    @Test
     void aMethodAnnotatedAfterAnotherAnnotationWithValuesIsADeclaration() throws IOException {
         write(SERVICE, """
                 package test;
