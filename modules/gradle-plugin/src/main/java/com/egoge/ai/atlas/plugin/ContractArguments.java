@@ -17,7 +17,9 @@ import java.util.List;
 /**
  * The contract options of the main {@code compileJava} task (FR-016): the baseline's absolute
  * path and lock mode. The baseline is an input, and a missing file is allowed, so creating,
- * editing or accepting it re-runs the compilation and with it the gate.
+ * editing or accepting it re-runs the compilation and with it the gate. Only its content is
+ * fingerprinted: the absolute path appears in the arguments alone, so checkouts in different
+ * directories share build cache entries.
  */
 public abstract class ContractArguments implements CommandLineArgumentProvider {
 
@@ -29,7 +31,7 @@ public abstract class ContractArguments implements CommandLineArgumentProvider {
 
     /** The baseline file; it may not exist yet. */
     @InputFiles
-    @PathSensitive(PathSensitivity.ABSOLUTE)
+    @PathSensitive(PathSensitivity.NONE)
     public abstract ConfigurableFileCollection getBaseline();
 
     /** Whether lock mode is on. */
