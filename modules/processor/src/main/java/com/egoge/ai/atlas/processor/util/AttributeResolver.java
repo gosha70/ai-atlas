@@ -9,6 +9,7 @@ import com.palantir.javapoet.ClassName;
 import javax.annotation.processing.Messager;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.type.MirroredTypeException;
+import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.util.Types;
@@ -58,26 +59,36 @@ public final class AttributeResolver {
         return "\"Invokes " + methodName + "\"";
     }
 
-    /** Resolves returnType: method non-void → class non-void → null. */
+    /**
+     * Resolves returnType: method non-void → class non-void → null. A {@code void} method does not
+     * inherit the class-level returnType: it has no entity to map.
+     */
     public static ClassName resolveReturnEntityType(AgenticExposed methodAnn,
                                                      AgenticExposed typeAnn,
+                                                     ExecutableElement method,
                                                      Types typeUtils) {
         ClassName fromMethod = methodAnn != null ? extractReturnType(methodAnn, typeUtils) : null;
         if (fromMethod != null) {
             return fromMethod;
         }
-        return typeAnn != null ? extractReturnType(typeAnn, typeUtils) : null;
+        return inheritsReturnType(typeAnn, method) ? extractReturnType(typeAnn, typeUtils) : null;
     }
 
-    /** Resolves returnType as TypeMirror for validation: method non-void → class non-void → null. */
+    /** Resolves returnType as TypeMirror for validation, as {@link #resolveReturnEntityType} does. */
     public static TypeMirror resolveReturnEntityTypeMirror(AgenticExposed methodAnn,
-                                                            AgenticExposed typeAnn) {
+                                                            AgenticExposed typeAnn,
+                                                            ExecutableElement method) {
         TypeMirror fromMethod = methodAnn != null
                 ? ReturnTypeValidator.resolveReturnEntityTypeMirror(methodAnn) : null;
         if (fromMethod != null) {
             return fromMethod;
         }
-        return typeAnn != null ? ReturnTypeValidator.resolveReturnEntityTypeMirror(typeAnn) : null;
+        return inheritsReturnType(typeAnn, method)
+                ? ReturnTypeValidator.resolveReturnEntityTypeMirror(typeAnn) : null;
+    }
+
+    private static boolean inheritsReturnType(AgenticExposed typeAnn, ExecutableElement method) {
+        return typeAnn != null && method.getReturnType().getKind() != TypeKind.VOID;
     }
 
     /**

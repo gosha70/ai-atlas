@@ -66,6 +66,10 @@ class RestOpenApiConsistencyTest {
                 public long count() { return 0; }
                 @AgenticExposed(description = "Item ids")
                 public List<Long> ids() { return null; }
+                @AgenticExposed(description = "Item tags")
+                public List<String> tags() { return null; }
+                @AgenticExposed(description = "Item names")
+                public String[] names() { return null; }
                 @AgenticExposed(description = "Item stats")
                 public Map<String, Object> stats() { return null; }
                 @AgenticExposed(description = "Touch item")
@@ -104,6 +108,8 @@ class RestOpenApiConsistencyTest {
                 "POST " + BASE + "/label",
                 "GET " + BASE + "/count",
                 "GET " + BASE + "/ids",
+                "GET " + BASE + "/tags",
+                "GET " + BASE + "/names",
                 "GET " + BASE + "/stats",
                 "POST " + BASE + "/touch",
                 "GET " + BASE + "/reset");
@@ -138,6 +144,11 @@ class RestOpenApiConsistencyTest {
         JsonNode ids = jsonSchema(ops.get("GET " + BASE + "/ids"));
         assertThat(ids.path("type").asText()).isEqualTo("array");
         assertThat(ids.path("items").path("type").asText()).isEqualTo("integer");
+        for (String strings : List.of("/tags", "/names")) {
+            JsonNode schema = jsonSchema(ops.get("GET " + BASE + strings));
+            assertThat(schema.path("type").asText()).as(strings).isEqualTo("array");
+            assertThat(schema.path("items").path("type").asText()).as(strings).isEqualTo("string");
+        }
         assertThat(jsonSchema(ops.get("GET " + BASE + "/stats")).path("type").asText()).isEqualTo("object");
 
         // void on the default channels and on the API channel: no response content
@@ -150,6 +161,55 @@ class RestOpenApiConsistencyTest {
         String tool = generatedSource(compilation, "test/generated/CatalogServiceMcpTool.java");
         assertThat(tool).contains("public void touch(").contains("service.touch(id);")
                 .doesNotContain("return service.touch").doesNotContain("reset");
+    }
+
+    @Test
+    void voidMethodsDoNotInheritTheClassLevelReturnType() {
+        JavaFileObject service = JavaFileObjects.forSourceString("test.StockService", """
+                package test;
+                import com.egoge.ai.atlas.annotations.AgenticExposed;
+                @AgenticExposed(description = "Stock", returnType = Item.class)
+                public class StockService {
+                    public Item find(Long id) { return null; }
+                    public void touch(Long id) { }
+                    @AgenticExposed(description = "Reset stock", channels = { AgenticExposed.Channel.API })
+                    public void reset() { }
+                }
+                """);
+
+        Compilation compilation = javac().withProcessors(new AgenticProcessor()).compile(ITEM, service);
+
+        assertThat(compilation.status()).as(compilation.diagnostics().toString())
+                .isEqualTo(Compilation.Status.SUCCESS);
+        Map<String, JsonNode> ops = operationsByMapping(openApi(compilation));
+        String base = "/api/v1/stock-service";
+        assertThat(jsonSchema(ops.get("POST " + base + "/find")).path("$ref").asText())
+                .isEqualTo("#/components/schemas/ItemDto");
+        assertThat(ops.get("POST " + base + "/touch").path("responses").path("200").has("content")).isFalse();
+        assertThat(ops.get("GET " + base + "/reset").path("responses").path("200").has("content")).isFalse();
+        String controller = generatedSource(compilation, "test/generated/StockServiceRestController.java");
+        assertThat(controller).contains("public void touch(").contains("service.touch(id);")
+                .contains("public void reset(").contains("service.reset();");
+        String tool = generatedSource(compilation, "test/generated/StockServiceMcpTool.java");
+        assertThat(tool).contains("public void touch(").contains("service.touch(id);").doesNotContain("reset");
+    }
+
+    @Test
+    void aMethodLevelReturnTypeOnAVoidMethodIsACompileError() {
+        JavaFileObject service = JavaFileObjects.forSourceString("test.StockService", """
+                package test;
+                import com.egoge.ai.atlas.annotations.AgenticExposed;
+                public class StockService {
+                    @AgenticExposed(description = "Touch", returnType = Item.class)
+                    public void touch(Long id) { }
+                }
+                """);
+
+        Compilation compilation = javac().withProcessors(new AgenticProcessor()).compile(ITEM, service);
+
+        assertThat(compilation.status()).isEqualTo(Compilation.Status.FAILURE);
+        assertThat(compilation.errors()).anySatisfy(error -> assertThat(error.getMessage(null))
+                .contains("@AgenticExposed(returnType = Item) is not compatible with method return type void"));
     }
 
     @Test

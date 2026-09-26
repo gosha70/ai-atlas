@@ -297,7 +297,8 @@ public final class OpenApiGenerator {
       return jsonContent(mapJavaTypeToSchema(returnType.toString()));
     }
     TypeName elementType = elementType(returnType, method.returnKind());
-    if (elementType != null && isScalar(elementType)) {
+    // A String element too: Spring serializes a collection of strings as a JSON array of strings
+    if (elementType != null && (isScalar(elementType) || elementType.equals(STRING))) {
       return jsonContent(new ArraySchema().items(mapJavaTypeToSchema(elementType.toString())));
     }
     return jsonContent(new Schema<>().type("object"));

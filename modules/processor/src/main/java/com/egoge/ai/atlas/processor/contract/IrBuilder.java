@@ -241,7 +241,7 @@ public final class IrBuilder {
                             + "/" + RestControllerGenerator.toKebabCase(methodName));
         }
         ClassName returnType = AttributeResolver.resolveReturnEntityType(
-                methodAnnotation, typeAnnotation, env.getTypeUtils());
+                methodAnnotation, typeAnnotation, method, env.getTypeUtils());
         Return returns = new Return(typeString(method.getReturnType()),
                 ReturnTypeValidator.resolveReturnKind(method, env.getTypeUtils(), env.getElementUtils()).name(),
                 returnType != null ? returnType.canonicalName() : null, null);
