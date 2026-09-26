@@ -13,6 +13,8 @@ import org.gradle.api.tasks.compile.JavaCompile;
 import org.gradle.language.base.plugins.LifecycleBasePlugin;
 
 import java.io.File;
+import java.util.Set;
+import java.util.concurrent.Callable;
 
 /**
  * Gradle plugin that configures a Java project to use the AI-ATLAS framework.
@@ -112,6 +114,8 @@ public class AgenticPlugin implements Plugin<Project> {
         TaskProvider<JavaCompile> acceptCompile = tasks.register(ACCEPT_COMPILE_TASK, JavaCompile.class, task -> {
             JavaCompile main = compileJava.get();
             task.setDescription("Compiles the main sources without the contract gate, for " + ACCEPT_TASK + ".");
+            // Explicit prerequisites, such as source generators, read when the task graph is built
+            task.dependsOn((Callable<Set<Object>>) main::getDependsOn);
             task.setSource(main.getSource());
             task.setClasspath(main.getClasspath());
             task.getOptions().setAnnotationProcessorPath(main.getOptions().getAnnotationProcessorPath());
