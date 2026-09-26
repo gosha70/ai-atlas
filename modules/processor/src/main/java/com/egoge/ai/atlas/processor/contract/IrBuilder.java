@@ -34,13 +34,16 @@ import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
+import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.WildcardType;
 import javax.tools.Diagnostic;
 import javax.tools.StandardLocation;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -98,7 +101,9 @@ public final class IrBuilder {
 
     /**
      * Records an entity with every field of the scan, whatever its lifecycle. A field whose type
-     * cannot be resolved is reported as an ERROR on the field and left out (FR-006).
+     * cannot be resolved is reported as an ERROR on the field and left out (FR-006), so the result
+     * may be shorter than {@code scanned}; that ERROR fails the compilation, so the generation fed
+     * the shorter list never produces a usable artifact.
      *
      * @param entity  the {@code @AgenticEntity} class
      * @param scanned every valid {@code @AgenticField} of the entity, in DTO declaration order
@@ -110,8 +115,8 @@ public final class IrBuilder {
         List<FieldScanner.ScannedField> fields = new ArrayList<>();
         for (FieldScanner.ScannedField field : scanned) {
             FieldModel model = field.model();
-            if (resolved(field.element(), "field '" + model.name() + "'", model.typeName(),
-                    model.elementTypeName(), model.hintTypeName())) {
+            if (resolved(field.element(), "field '" + model.name() + "'", List.of(field.element().asType()),
+                    model.typeName(), model.elementTypeName(), model.hintTypeName())) {
                 fields.add(field);
             }
         }
@@ -133,25 +138,54 @@ public final class IrBuilder {
     }
 
     /**
-     * Whether every type is resolved, i.e. its canonical string parses back. javac renders a type
-     * it cannot resolve, such as one another processor has not generated yet, as {@code <any>}; an
-     * ERROR on {@code element} names the declaration instead of failing the projection.
+     * Whether every type is resolved: no declared type, down to its type arguments, is one javac
+     * could not resolve, and every canonical string parses back. javac renders a type it cannot
+     * resolve, such as one another processor has not generated yet, as {@code <any>}, or by its
+     * simple name as a type argument; an ERROR on {@code element} names the declaration instead of
+     * failing the projection or recording the name as a type variable.
      */
-    private boolean resolved(Element element, String declaration, TypeName... types) {
-        for (TypeName type : types) {
+    private boolean resolved(Element element, String declaration, List<TypeMirror> declared, TypeName... types) {
+        List<TypeName> rendered = new ArrayList<>();
+        for (TypeMirror type : declared) {
+            if (unresolved(type)) {
+                return reportUnresolved(element, declaration, TypeName.get(type));
+            }
+            rendered.add(TypeName.get(type));
+        }
+        rendered.addAll(Arrays.asList(types));
+        for (TypeName type : rendered) {
             if (type == null) {
                 continue;
             }
             try {
                 ContractProjection.parseType(type.toString());
             } catch (IllegalArgumentException e) {
-                env.getMessager().printMessage(Diagnostic.Kind.ERROR, "[ai-atlas] The type of " + declaration
-                        + " cannot be resolved (javac renders it as '" + type + "'), so it cannot be recorded in"
-                        + " the Contract IR. Make the type available to the compilation", element);
-                return false;
+                return reportUnresolved(element, declaration, type);
             }
         }
         return true;
+    }
+
+    private boolean reportUnresolved(Element element, String declaration, TypeName type) {
+        env.getMessager().printMessage(Diagnostic.Kind.ERROR, "[ai-atlas] The type of " + declaration
+                + " cannot be resolved (javac renders it as '" + type + "'), so it cannot be recorded in"
+                + " the Contract IR. Make the type available to the compilation", element);
+        return false;
+    }
+
+    /** Whether {@code type}, or a type argument, component or bound of it, is one javac could not resolve. */
+    private static boolean unresolved(TypeMirror type) {
+        return switch (type.getKind()) {
+            case ERROR -> true;
+            case DECLARED -> ((DeclaredType) type).getTypeArguments().stream().anyMatch(IrBuilder::unresolved);
+            case ARRAY -> unresolved(((ArrayType) type).getComponentType());
+            case WILDCARD -> {
+                WildcardType wildcard = (WildcardType) type;
+                yield wildcard.getExtendsBound() != null && unresolved(wildcard.getExtendsBound())
+                        || wildcard.getSuperBound() != null && unresolved(wildcard.getSuperBound());
+            }
+            default -> false;
+        };
     }
 
     /** Records {@code openEnum = true}, warning when the field has no values it could apply to (FR-011). */
@@ -187,10 +221,10 @@ public final class IrBuilder {
         }
 
         String methodName = method.getSimpleName().toString();
-        List<TypeName> signatureTypes = new ArrayList<>();
-        signatureTypes.add(TypeName.get(method.getReturnType()));
-        method.getParameters().forEach(p -> signatureTypes.add(TypeName.get(p.asType())));
-        if (!resolved(method, "method '" + methodName + "'", signatureTypes.toArray(TypeName[]::new))) {
+        List<TypeMirror> signatureTypes = new ArrayList<>();
+        signatureTypes.add(method.getReturnType());
+        method.getParameters().forEach(p -> signatureTypes.add(p.asType()));
+        if (!resolved(method, "method '" + methodName + "'", signatureTypes)) {
             return null;
         }
         String toolName = methodAnnotation != null && !methodAnnotation.toolName().isEmpty()

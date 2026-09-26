@@ -63,6 +63,7 @@ class ContractLockTest {
                         .with("shop.Order", "@AgenticField(description = \"Legacy\", removedInVersion = 2)",
                                 "@AgenticField(description = \"Old\", removedInVersion = 2)").sources());
 
+        // document: the major bump M → M + 1 changes the document's apiMajor, so lock mode requires atlasAccept
         assertThat(singleError(compilation)).contains("at 2 element(s): document, field shop.Order#legacy");
     }
 

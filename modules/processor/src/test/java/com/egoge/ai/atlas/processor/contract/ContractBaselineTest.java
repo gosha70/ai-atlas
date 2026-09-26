@@ -60,4 +60,25 @@ class ContractBaselineTest {
         assertThat(badBaseline.findings()).singleElement().satisfies(f -> assertThat(f.message())
                 .contains("Contract baseline " + baseline + " is not valid Contract IR JSON"));
     }
+
+    @Test
+    void anUnresolvableTypeArgumentIsAnErrorOnTheElementNotATypeVariable() throws IOException {
+        Path baseline = GateFixtures.writeBaseline(dir);
+        Compilation compilation = javac().withProcessors(new AgenticProcessor())
+                .withOptions(MAJOR + M, BASELINE + baseline).compile(fixture()
+                        .with("shop.Order", "public Long getId()",
+                                "@AgenticField(description = \"Pending\") private java.util.List<Missing> pending;\n"
+                                        + "    public Long getId()")
+                        .with("shop.OrderService", "public String find()",
+                                "public String take(java.util.List<Missing> m) { return null; }\n"
+                                        + "    public String find()")
+                        .sources());
+
+        assertThat(compilation.status()).isEqualTo(Compilation.Status.FAILURE);
+        assertThat(compilation.errors()).filteredOn(d -> d.getMessage(null).contains("cannot be resolved"))
+                .hasSize(2)
+                .anySatisfy(d -> assertThat(d.getMessage(null)).contains("field 'pending'"))
+                .anySatisfy(d -> assertThat(d.getMessage(null)).contains("method 'take'"))
+                .allSatisfy(d -> assertThat(d.getSource()).isNotNull());
+    }
 }

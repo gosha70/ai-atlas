@@ -20,6 +20,7 @@ import org.gradle.workers.WorkerExecutor;
 
 import javax.inject.Inject;
 import java.io.File;
+import java.util.List;
 
 /**
  * {@code atlasAccept} (FR-015): writes the contract of the current sources to the baseline. Its
@@ -38,7 +39,10 @@ public abstract class AtlasAccept extends DefaultTask {
     @Classpath
     public abstract ConfigurableFileCollection getProcessorClasspath();
 
-    /** The baseline file to write. */
+    /**
+     * The baseline file to write. Not an {@code @OutputFile}: the task declares no outputs, so it
+     * is never up-to-date and accepting always rewrites the baseline, even one edited by hand.
+     */
     @Internal
     public abstract RegularFileProperty getBaseline();
 
@@ -55,17 +59,18 @@ public abstract class AtlasAccept extends DefaultTask {
 
     @TaskAction
     void accept() {
-        File freshIr = null;
-        for (File classesDir : getClassesDirs()) {
-            if (ContractDeclarations.declared(classesDir)) {
-                freshIr = new File(classesDir, ContractDeclarations.IR_PATH);
-                if (!freshIr.isFile()) {
-                    throw new GradleException("The compilation declares an ai-atlas contract but emitted no "
-                            + ContractDeclarations.IR_PATH + " in " + classesDir);
-                }
-            }
+        List<File> declaring = getClassesDirs().getFiles().stream().filter(ContractDeclarations::declared).toList();
+        List<File> irs = declaring.stream().map(dir -> new File(dir, ContractDeclarations.IR_PATH))
+                .filter(File::isFile).toList();
+        if (!declaring.isEmpty() && irs.isEmpty()) {
+            throw new GradleException("The compilation declares an ai-atlas contract but emitted no "
+                    + ContractDeclarations.IR_PATH + " in " + declaring);
         }
-        File ir = freshIr;
+        if (irs.size() > 1) {
+            throw new GradleException("The compilation emitted more than one " + ContractDeclarations.IR_PATH
+                    + ", so the contract to accept is ambiguous: " + irs);
+        }
+        File ir = irs.isEmpty() ? null : irs.get(0);
         getWorkerExecutor().classLoaderIsolation(spec -> spec.getClasspath().from(getProcessorClasspath()))
                 .submit(AcceptAction.class, parameters -> {
                     parameters.getBaseline().set(getBaseline());

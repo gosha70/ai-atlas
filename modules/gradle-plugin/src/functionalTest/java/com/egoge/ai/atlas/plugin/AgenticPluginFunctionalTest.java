@@ -287,7 +287,38 @@ class AgenticPluginFunctionalTest {
         String test = output.lines().filter(l -> l.startsWith("TEST-ARGS ")).findFirst().orElseThrow();
         assertThat(main).contains("-Aai.atlas.contract.baseline=" + baseline().getCanonicalPath())
                 .contains("-Aai.atlas.contract.locked=false");
-        assertThat(test).doesNotContain("ai.atlas.contract.");
+        assertThat(test).doesNotContain("ai.atlas.contract.baseline").doesNotContain("ai.atlas.contract.locked");
+    }
+
+    @Test
+    void theAcceptCompilationKeepsOtherArgumentProvidersButNotTheContractOptions() throws IOException {
+        writeContractProject("");
+        appendFile("build.gradle.kts", """
+                tasks.named<JavaCompile>("compileJava") {
+                    options.compilerArgumentProviders.add(CommandLineArgumentProvider { listOf("-Aother.option=1") })
+                }
+                tasks.named<JavaCompile>("atlasAcceptCompile") { doFirst { println("ACCEPT-ARGS " + options.allCompilerArgs) } }
+                """);
+
+        String output = createRunner("atlasAccept").build().getOutput();
+
+        String accept = output.lines().filter(l -> l.startsWith("ACCEPT-ARGS ")).findFirst().orElseThrow();
+        assertThat(accept).contains("-Aother.option=1")
+                .doesNotContain("ai.atlas.contract.baseline").doesNotContain("ai.atlas.contract.locked");
+    }
+
+    @Test
+    void creatingTheBaselineRerunsCompilation() throws IOException {
+        writeContractProject("");
+        createRunner("classes").build();
+        assertThat(baseline()).doesNotExist();
+        assertThat(createRunner("compileJava").build().task(":compileJava").getOutcome())
+                .isEqualTo(TaskOutcome.UP_TO_DATE);
+        createRunner("atlasAccept").build();
+
+        BuildResult result = createRunner("compileJava").build();
+
+        assertThat(result.task(":compileJava").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
     }
 
     /**

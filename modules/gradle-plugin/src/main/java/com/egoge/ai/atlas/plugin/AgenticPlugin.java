@@ -107,7 +107,8 @@ public class AgenticPlugin implements Plugin<Project> {
         });
         tasks.named(JavaPlugin.CLASSES_TASK_NAME).configure(task -> task.dependsOn(check));
 
-        // The sources compiled without the contract options, so accepting works while the gate fails
+        // The sources compiled as compileJava compiles them, less the contract options, so accepting
+        // works while the gate fails
         TaskProvider<JavaCompile> acceptCompile = tasks.register(ACCEPT_COMPILE_TASK, JavaCompile.class, task -> {
             JavaCompile main = compileJava.get();
             task.setDescription("Compiles the main sources without the contract gate, for " + ACCEPT_TASK + ".");
@@ -121,6 +122,8 @@ public class AgenticPlugin implements Plugin<Project> {
             task.setTargetCompatibility(main.getTargetCompatibility());
             task.getOptions().getCompilerArgs().addAll(main.getOptions().getCompilerArgs().stream()
                     .filter(arg -> !arg.startsWith(CONTRACT_OPTION_PREFIX)).toList());
+            task.getOptions().getCompilerArgumentProviders().addAll(main.getOptions().getCompilerArgumentProviders()
+                    .stream().filter(provider -> provider != contractArguments).toList());
             task.getOptions().setIncremental(false);
             task.getDestinationDirectory().set(project.getLayout().getBuildDirectory().dir(ACCEPT_DIR + "/classes"));
             task.getOptions().getGeneratedSourceOutputDirectory()

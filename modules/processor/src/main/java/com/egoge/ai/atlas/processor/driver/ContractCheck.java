@@ -38,7 +38,7 @@ final class ContractCheck {
      * @return the check's findings; empty when it does not apply
      */
     static List<Diagnostic> after(boolean success, Path classOutput, Map<String, String> options) {
-        return success && !Files.exists(classOutput.resolve(ContractIr.RESOURCE_PATH)) ? run(options) : List.of();
+        return success && !Files.isRegularFile(classOutput.resolve(ContractIr.RESOURCE_PATH)) ? run(options) : List.of();
     }
 
     /**
