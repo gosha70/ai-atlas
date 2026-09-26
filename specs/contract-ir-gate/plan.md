@@ -229,6 +229,25 @@ Returning `false` from `process` does not help, because the annotations are stil
 element. It names the baseline and the removed element paths instead, as FR-012 already allows
 for elements that no longer exist.
 
+### ADR-9: Aggregate resources are written from the final projection (owner ruling)
+
+**Context**: Review of PR #34 found that commit 25a98e2 moved the OpenAPI documents and the
+deprecation manifest from the first processing round to the end of processing. For a
+compilation where another annotation processor generates an `@AgenticExposed` service or an
+`@AgenticEntity` in a later round, those files now include it. Before this feature they
+silently left it out. That is a change of generated output, which FR-007 otherwise forbids.
+The golden snapshot has no multi-round fixture, so the change was not caught.
+
+**Decision**: Keep the change. On 2026-09-26 the owner ruled it a bug fix. The published
+document must describe every exposed operation, and the gate derives `operationId`s from the
+projection of every round (ADR-7). If the document were written from the first round only, the
+gate would protect identifiers that could differ from the published ones. FR-007 names this as
+its one exception, and the golden snapshot gains a later-round fixture that fixes the new output.
+
+**Consequences**: A consumer whose services come from another processor in a later round sees
+them appear in its OpenAPI document and deprecation manifest. That will be a changelog entry.
+Single-round compilations, which is every existing fixture and the demo, are byte-identical.
+
 ## Project Structure
 
 ```

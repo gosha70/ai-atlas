@@ -13,5 +13,7 @@ Mismatches:
 
 Re-recorded when the owner approved plan.md and finalized verification.yaml (2026-09-25); no content change.
 
+2026-09-26: FR-007 narrowed by owner ruling (ADR-9): aggregate resources are written from the final projection so later-round declarations are included; this serves the epic's constraint that REST, MCP, DTOs and OpenAPI are projections of one model.
+
 Verdict: aligned
 Confidence: high

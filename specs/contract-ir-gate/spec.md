@@ -130,6 +130,14 @@ Owner decisions of 2026-09-25, recorded in the origin transcript:
   - two services each exposing a `find()`, so that shared operation IDs are qualified;
   - a compilation with no ai-atlas annotation, which produces no generated file.
 
+  One deliberate exception (owner ruling of 2026-09-26, ADR-9): the aggregate resources, the
+  OpenAPI documents and the deprecation manifest, are written after the final processing round
+  from the projection of every round's declarations. Before this feature they were written in
+  the first round, so an entity or service first seen in a later round (for example, generated
+  by another annotation processor) was silently missing from them. It is now included, so the
+  published document and the gate's derived identifiers come from the same model. The golden
+  snapshot MUST include a fixture with a later-round service that fixes this output.
+
 ### The compatibility gate (US3)
 
 - **FR-008**: When the processor option `ai.atlas.contract.baseline` names an existing file, the
@@ -307,8 +315,8 @@ Owner decisions of 2026-09-25, recorded in the origin transcript:
 
 ## Constraints / What NOT to Build
 
-- No change to any generated output other than the new IR files (FR-007). The rewire changes
-  where models come from, not what is generated.
+- No change to any generated output other than the new IR files and the later-round fix of
+  ADR-9 (FR-007). The rewire changes where models come from, not what is generated.
 - No constraint model, `@AgenticParam`, behavioural hints, per-channel projections,
   collection-safety policy, explicit REST verb and path metadata, or release snapshots: Phases 3–5.
 - No cross-module contract: the IR covers one compilation; a consumer spanning modules keeps one
