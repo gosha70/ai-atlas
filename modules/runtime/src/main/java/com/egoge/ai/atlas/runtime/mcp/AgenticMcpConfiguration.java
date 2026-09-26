@@ -9,12 +9,15 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.util.ReflectionUtils;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -76,7 +79,16 @@ public class AgenticMcpConfiguration {
             // like mcpSyncServer which would cause circular dependency
             Map<String, Object> serviceBeans = context.getBeansWithAnnotation(Service.class);
             for (Map.Entry<String, Object> entry : serviceBeans.entrySet()) {
-                if (hasToolMethods(entry.getValue())) {
+                if (!hasToolMethods(entry.getValue())) {
+                    continue;
+                }
+                if (AopUtils.isJdkDynamicProxy(entry.getValue())) {
+                    // MethodToolCallback invokes the target class's method on the bean, which
+                    // a JDK interface proxy is not an instance of: every call would fail.
+                    log.warn("AI-ATLAS: Skipped MCP tool bean '{}': it is a JDK interface proxy, "
+                            + "whose @Tool methods cannot be invoked; proxy it by class "
+                            + "(proxyTargetClass=true) to register its tools", entry.getKey());
+                } else {
                     toolBeans.add(entry.getValue());
                     log.info("AI-ATLAS: Registered MCP tool bean: {}", entry.getKey());
                 }
@@ -94,9 +106,16 @@ public class AgenticMcpConfiguration {
                     .getToolCallbacks();
         }
 
+        /**
+         * Decides on the bean's target class, the same way {@link MethodToolCallbackProvider}
+         * does: an AOP proxy's own class (a CGLIB subclass or a JDK interface proxy) does not
+         * carry the {@code @Tool} annotations, so checking it would silently drop the bean.
+         * The proxy itself is still what gets registered, so calls go through its advice.
+         */
         private static boolean hasToolMethods(Object bean) {
-            for (Method method : bean.getClass().getMethods()) {
-                if (method.isAnnotationPresent(Tool.class)) {
+            Class<?> targetClass = AopUtils.getTargetClass(bean);
+            for (Method method : ReflectionUtils.getDeclaredMethods(targetClass)) {
+                if (AnnotationUtils.findAnnotation(method, Tool.class) != null) {
                     return true;
                 }
             }
