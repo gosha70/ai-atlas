@@ -19,7 +19,7 @@ Documented in `docs/contract-governance.md`.
 
 ### Fixed
 - **`compileJava` is relocatable again.** The contract baseline is fingerprinted by content only, so `compileJava` in checkouts at different paths shares build cache entries; its absolute path is passed to javac but is no longer part of the cache key.
-- **`atlasAccept` compiles with `compileJava`'s final configuration.** Compiler arguments and argument providers, encoding, `release`, source and target compatibility, fork options and the Java compiler are read from `compileJava` when the accept compilation runs, so options the build adds later still reach it and the accepted baseline is byte-identical to the IR `compileJava` emits.
+- **`atlasAccept` compiles with `compileJava`'s final configuration.** Compiler arguments and argument providers, encoding, `release`, source and target compatibility, fork options and the Java compiler are read from `compileJava` when the accept compilation runs, so options the build adds later still reach it and the accepted baseline is byte-identical to the IR `compileJava` emits. `compileJava`'s JVM argument providers, memory settings and forked Java home are inputs of the accept compilation, so a change to them re-runs it instead of accepting stale IR.
 - **A processor version the plugin cannot run fails with a clear message.** When `agentic { version }` pins a processor that lacks the API the plugin calls, `atlasContractCheck` and `atlasAccept` fail naming the plugin version, the processor version on the `annotationProcessor` classpath and the remedy, instead of a raw `NoSuchMethodError` or `NoClassDefFoundError`.
 - **An ai-atlas annotation inside an anonymous or local class no longer hides an empty contract.**
 

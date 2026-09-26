@@ -153,6 +153,34 @@ class ContractGateWiringFunctionalTest {
     }
 
     @Test
+    void atlasAcceptCompileRerunsWhenAJvmArgumentProviderOfCompileJavaChanges() throws IOException {
+        append("build.gradle.kts", """
+                abstract class JvmFlag : CommandLineArgumentProvider {
+                    @get:Input abstract val flag: Property<String>
+                    override fun asArguments() = listOf("-Dsome.flag=" + flag.get())
+                }
+                tasks.named<JavaCompile>("compileJava") {
+                    options.isFork = true
+                    options.forkOptions.jvmArgumentProviders.add(objects.newInstance<JvmFlag>().apply {
+                        flag.set(providers.gradleProperty("jvmFlag"))
+                    })
+                }
+                tasks.named<JavaCompile>("atlasAcceptCompile") {
+                    doLast { println("ACCEPT-JVM " + options.forkOptions.allJvmArgs) }
+                }
+                """);
+        run("atlasAccept", "-PjvmFlag=a").build();
+
+        BuildResult changed = run("atlasAccept", "-PjvmFlag=b").build();
+        BuildResult unchanged = run("atlasAccept", "-PjvmFlag=b").build();
+
+        assertThat(changed.task(":atlasAcceptCompile").getOutcome())
+                .isIn(TaskOutcome.SUCCESS, TaskOutcome.FROM_CACHE);
+        assertThat(changed.getOutput()).contains("-Dsome.flag=b");
+        assertThat(unchanged.task(":atlasAcceptCompile").getOutcome()).isEqualTo(TaskOutcome.UP_TO_DATE);
+    }
+
+    @Test
     void aProcessorVersionThePluginCannotRunFailsWithTheRemedy() throws IOException {
         run("atlasAccept").build();
         // An empty module: atlasContractCheck and atlasAccept call EmptyContract
