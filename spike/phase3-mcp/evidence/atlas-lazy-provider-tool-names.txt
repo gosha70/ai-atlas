@@ -1,0 +1,1 @@
+[derived_bean_validation, derived_record_arg, derived_record_jakarta_only, derived_tool_param]
