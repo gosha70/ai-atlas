@@ -400,14 +400,14 @@ public class AgenticProcessor extends AbstractProcessor {
         String description = AttributeResolver.resolveDescription(methodAnnotation, typeAnnotation, methodName);
 
         ClassName returnEntityType = AttributeResolver.resolveReturnEntityType(
-                methodAnnotation, typeAnnotation, processingEnv.getTypeUtils());
+                methodAnnotation, typeAnnotation, method, processingEnv.getTypeUtils());
         ClassName returnDtoType = null;
         TypeName returnType = TypeName.get(method.getReturnType());
         ServiceModel.ReturnKind returnKind = ReturnTypeValidator.resolveReturnKind(
                 method, processingEnv.getTypeUtils(), processingEnv.getElementUtils());
         if (returnEntityType != null) {
             TypeMirror returnEntityMirror = AttributeResolver.resolveReturnEntityTypeMirror(
-                    methodAnnotation, typeAnnotation);
+                    methodAnnotation, typeAnnotation, method);
             if (returnEntityMirror != null) {
                 var compat = ReturnTypeValidator.validateReturnTypeCompat(
                         method, returnEntityMirror, returnKind != ServiceModel.ReturnKind.NONE,
