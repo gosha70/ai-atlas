@@ -1,0 +1,45 @@
+---
+feature_id: constraints-and-hints
+date: 2026-09-26
+status: final
+phase: build
+mode: review
+subject_provider: claude
+peer_provider: deepseek
+peer_profile: deepseek
+runner_fingerprint: ae8dc147cf1264834bab35d116b6ab96b06618f438763cde3a90621d78036dba
+verdict: PASS
+blocking_findings_open: 0
+target_ref: feature/constraints-and-hints
+rounds_completed: 1
+attempt_count: 1
+bypass: false
+---
+
+# Peer Review: constraints-and-hints — Build Phase
+
+**Reviewer**: deepseek
+**Scope**: both
+**Rounds**: 1
+**Verdict**: PASS
+
+## Summary
+
+The change introduces a well-structured constraint model (Bean Validation read by name, intersected order-independently, overridden per key, checked for contradictions) plus a portable-regex translator and IR v2 with migration. The design is careful and the test coverage is broad. I found a few correctness issues in the regex translator and constraint reader that warrant attention, plus some notes on the IR migration and requiredness semantics.
+
+## Findings
+
+- [warning] f-aca2370a: When a `-` appears as the first member of a class (e.g. `[-a]`), the code appends `\-` and sets `first = false`, but the subsequent `classMember()` for `a` is fine. However, when `-` appears after a set member (e.g. `[\d-]`), the branch `if (!first && !(pos < source.length() && source.charAt(pos) == ']'))` throws "ambiguous '-'". Java actually treats a trailing `-` before `]` as literal, which the code handles, but a `-` immediately after a set member followed by a non-`]` char is genuinely ambiguous in Java too (Java treats `[\d-a]` as a range from `\d`'s expansion, which is invalid). Verify the intent matches Java semantics; the current behavior may reject valid Java patterns like `[\d-]` where `-` is the last member before `]` — that case is handled, but `[\d-a]` is rejected, which is correct. No change needed if intentional; add a test for `[\d-]`. (modules/processor/src/main/java/com/egoge/ai/atlas/processor/constraints/PortableRegex.java)
+- [warning] f-e932cf30: The negated form uses `[^members\uD800-\uDFFF]` as the fourth alternative, which excludes all surrogates. But the first three alternatives only cover surrogate pairs and lone surrogates in specific positions. A lone low surrogate preceded by a high surrogate is covered by alternative 1; a lone high surrogate not followed by a low is covered by alternative 2; a lone low not preceded by a high is covered by alternative 3. This looks correct, but the `(?<!...)` lookbehind in alternative 3 is not supported in ECMAScript without the `u` flag in older engines — the doc claims "in both ECMAScript modes". Verify lookbehind availability in the target ECMAScript baseline; if `u`-less mode is required, lookbehind may not be available in all engines. (modules/processor/src/main/java/com/egoge/ai/atlas/processor/constraints/PortableRegex.java)
+- [warning] f-6fd63031: `@Size` on a `CharSequence` subtype that is not `String` (e.g. `StringBuilder`) is treated as `string()` via `assignable(erased, "java.lang.CharSequence", env)`, which is correct. But `@Size` on a `Map` is not handled — `items()` only checks `java.util.Collection`, so `@Size` on a `Map` is silently ignored. Bean Validation's `@Size` applies to `Map` too. This is a correctness gap if `Map` parameters are supported. (modules/processor/src/main/java/com/egoge/ai/atlas/processor/constraints/ConstraintReader.java)
+- [warning] f-d78ade54: `longValue(values.get(A_VALUE))` casts to `Number` and calls `longValue()`. For `@Min`/`@Max` the value is always `long`, so this is fine. But `@DecimalMin`/`@DecimalMax` use `(String) values.get(A_VALUE).getValue()` — if the annotation value is a `String` constant, this works; if it's a `char` or other type, it would fail. Bean Validation requires `String`, so acceptable. (modules/processor/src/main/java/com/egoge/ai/atlas/processor/constraints/ConstraintReader.java)
+- [warning] f-c89a8281: When `override.minimum()` is set but `override.exclusiveMinimum()` is false and the BV constraint had `exclusiveMinimum = true`, the override correctly replaces both. But when `override.minimum()` is empty and `override.exclusiveMinimum()` is true, an error is added — good. However, when `override.minimum()` is set and `override.exclusiveMinimum()` is false, but the BV had an exclusive minimum, the code replaces with inclusive — this is a loosening that should warn. The `looserLower` check compares `replacement` (inclusive) vs `replaced` (exclusive) at the same value: `replaced.tighterLowerThan(replacement)` returns true when values are equal and `replaced.exclusive && !replacement.exclusive`, so it does warn. Correct. (modules/processor/src/main/java/com/egoge/ai/atlas/processor/constraints/ConstraintReader.java)
+- [warning] f-9bde8b2a: `boolean required = true;` is the default for all parameters, including non-input fields. For fields, `readField` calls `read(field, "field", false)` and discards `required`, so this is harmless. But the default `true` for parameters means a parameter with no `@NotNull` and no `@AgenticParam` is marked required. The Javadoc for `Requiredness.DEFAULT` says "otherwise required as REST query parameters are" — REST query params are typically optional unless `required=true`. This may be a semantic mismatch; verify against spec FR-003. (modules/processor/src/main/java/com/egoge/ai/atlas/processor/constraints/ConstraintReader.java)
+- [warning] f-9f8761d8: The migration sets `ContractIr.IR_VERSION` (2) as the version of the parsed document, even when the input was v1. This means a v1 document round-trips to v2 on write. The test `v1DocumentMigratesWithUnknownSlots` asserts `migrated.irVersion()).isEqualTo(ContractIr.IR_VERSION)`, confirming this is intentional. But it means the "unknown" slots (`null`) are preserved in memory yet written as v2 with `null` values — `IrConstraintsJson.write(null)` returns `null`, and `map.put(K_CONSTRAINTS, null)` writes a JSON `null`, not an empty object. This contradicts the v2 invariant that `constraints` must be an object. A migrated v1 document written back would produce invalid v2 JSON. Verify whether `IrJson.write` is ever called on a migrated document; if so, this is a round-trip bug. (modules/processor/src/main/java/com/egoge/ai/atlas/processor/contract/IrJson.java)
+- [warning] f-5fe5f015: When `c` is `null` (unknown), returns `null`, and `IrJson` puts `null` into the map. Jackson will serialize this as JSON `null`. For a v2 document this violates the "must be an object" invariant enforced on read. Either `IrJson.write` should reject `null` slots for v2, or the migration should not be re-serialized as v2. (modules/processor/src/main/java/com/egoge/ai/atlas/processor/contract/IrConstraintsJson.java)
+- [note] f-d3ed2888: The check `if (pos < source.length() && "*+?{".indexOf(source.charAt(pos)) >= 0)` rejects stacked quantifiers like `a**`. Java also rejects these, so this is defensive. But `a{2}{3}` is rejected by Java too. Fine. (modules/processor/src/main/java/com/egoge/ai/atlas/processor/constraints/PortableRegex.java)
+- [note] f-da771184: Outside a class, `\-` is translated to `-`. Java accepts `\-` outside a class as a literal `-`. ECMAScript's `u` mode rejects `\-` outside a class, so emitting `-` is correct. Good. (modules/processor/src/main/java/com/egoge/ai/atlas/processor/constraints/PortableRegex.java)
+- [note] f-2021cdec: The `FLAGS` map uses `getOrDefault(flag, 0)`, silently ignoring unknown flag names. Since flags come from `Pattern.Flag` enum constants, unknown names shouldn't occur, but a defensive error would be better than silent ignore. (modules/processor/src/main/java/com/egoge/ai/atlas/processor/constraints/ConstraintChecks.java)
+- [note] f-da664b48: The test uses `Pattern.compile(PortableRegex.translate(regex).published())` without checking `publishable()`. If a pattern is not publishable, `published()` is `null` and `Pattern.compile(null)` throws NPE. The test patterns are all in the subset, so it passes, but the test would be more robust with an assertion. (modules/processor/src/test/java/com/egoge/ai/atlas/processor/constraints/ConstraintModelTest.java)
+- [note] f-ba5d1f68: `Hints.NONE` is a shared constant with all-`null` fields. The Javadoc says "each is `null` when not declared", but `Hints.NONE` is used as the default in `IrBuilder` for all operations. This conflates "no hints declared" with "hints unknown" (which is `null` for migrated v1). The distinction is preserved by using `null` for the whole `Hints` object vs `Hints.NONE` for a known-empty set. This is subtle but correct per the Javadoc. (modules/processor/src/main/java/com/egoge/ai/atlas/processor/contract/ContractIr.java)
+- [note] f-0e0a5f76: The doc says the translator "relies on Java's own syntax checks for balanced groups and well-formed quantifiers", but the translator does its own group/quantifier parsing and can throw `Unsupported` for unbalanced constructs. The doc should clarify that the input must compile as a Java regex, and the translator re-validates the subset. (modules/processor/src/main/java/com/egoge/ai/atlas/processor/constraints/PortableRegex.java)
