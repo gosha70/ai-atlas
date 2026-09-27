@@ -27,7 +27,7 @@ require_file docs/contract-governance.md || true
 require_file CHANGELOG.md || true
 
 for text in @AgenticParam @AgenticConstraints ai.atlas.constraints readOnlyHint @Validated \
-        spring-boot-starter-validation SYNC; do
+        spring-boot-starter-validation SYNC UTF-16; do
     require_text docs/constraints-and-hints.md "$text"
 done
 for text in "irVersion 2" informational; do

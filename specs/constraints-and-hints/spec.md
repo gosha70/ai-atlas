@@ -323,6 +323,19 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
     - lengths, items and patterns are written as in FR-014 (patterns per FR-004a).
   - `annotations`, holding only the hints declared `TRUE` or `FALSE`.
 
+  The file's top level is `{"tools": [...]}` and MAY gain a `"version"` field later. Its
+  `inputSchema` is the source of the constraint keywords, requiredness and types that the runtime
+  merges into the derived schema (FR-018). It is not a replacement for the derived schema.
+
+  **Length units (owner decision, 2026-09-27).** Bean Validation's `@Size` counts UTF-16 code
+  units, while JSON Schema `minLength`/`maxLength` count code points. The lengths are published
+  as they are:
+  - they are exact for text in the Basic Multilingual Plane;
+  - for other characters, such as U+1F600, the schemas and Bean Validation can disagree, and
+    Bean Validation stays the enforced limit at the MCP boundary;
+  - FR-017a's length cases use BMP inputs, plus one test documenting the known difference;
+  - the docs state it.
+
   The file is deterministic under Phase 2's FR-003 rules. With the flag off, it is not written.
   A test MUST validate every generated `inputSchema` against the JSON Schema 2020-12 metaschema,
   offline. The metaschema is bundled by a test-only validator library, never fetched over the
@@ -376,8 +389,20 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
   - It builds callbacks with `MethodToolCallbackProvider` over the same beans #42's scan selects,
     and keeps #42's JDK-proxy skip and warning.
   - For a tool listed in any `META-INF/ai-atlas/mcp-tools.json` on the classpath, it rebuilds the
-    `McpSchema.Tool` with that `inputSchema` and `annotations`. Every other tool keeps its derived
-    schema, without hints.
+    `McpSchema.Tool` by **merging** that entry into Spring AI's derived input schema, never by
+    replacing the schema (owner decision, 2026-09-27). The derived schema is richer for object,
+    `Map`, DTO-collection and date parameters, and nothing it describes may be lost.
+    - The merge adds, per property: the generated constraint keywords (bounds, exclusives, lengths,
+      items, the `pattern`/`allOf` of FR-004a), and the property's membership in `required`.
+    - It keeps every other keyword of the derived property: `items`, nested `properties`,
+      `format`, `description`, `enum` and the rest.
+    - When a property's derived `type` differs from the generated one, the generated `type` wins for
+      that property, because the constraint keywords need their type. The runtime logs one DEBUG line
+      naming the tool, the property and both types.
+    - The merged schema declares `"$schema": "https://json-schema.org/draft/2020-12/schema"`. A test
+      MUST validate every merged `inputSchema` against the 2020-12 metaschema.
+    - The tool's `annotations` are the entry's hints.
+    - Every other tool keeps its derived schema, without hints.
   - Each tool name is registered exactly once.
   - Two resources listing the same tool name fail startup with a message naming both resources.
   - This applies to the SYNC server type. With ASYNC or STATELESS, the runtime keeps today's
@@ -398,6 +423,8 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
     - precedence and requiredness;
     - the contradiction errors and the looser-override warning;
     - the FR-004a portable regex subset and its translation, why unpublishable patterns are enforced but omitted, and `notBlank`'s Hibernate Validator semantics;
+    - the length-unit difference (UTF-16 units in Bean Validation, code points in JSON Schema);
+    - that the runtime merges constraints into Spring AI's derived MCP schema;
     - `@AgenticParam` and `@AgenticConstraints`;
     - hints, stating that they are client guidance, not authorization;
     - the `ai.atlas.constraints` flag;
