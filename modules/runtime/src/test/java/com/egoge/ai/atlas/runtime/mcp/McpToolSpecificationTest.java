@@ -84,7 +84,7 @@ class McpToolSpecificationTest {
             + "\"attributes\":{},\"deliverOn\":\"2026-01-01\",\"tags\":[\"x\"]}";
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final SchemaRegistry SCHEMAS = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12,
+    static final SchemaRegistry SCHEMAS = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12,
             builder -> builder.schemaLoader(loader -> loader.fetchRemoteResources(false)));
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
@@ -409,7 +409,7 @@ class McpToolSpecificationTest {
         return new URLClassLoader(urls, parent);
     }
 
-    private static Schema metaschema() {
+    static Schema metaschema() {
         return SCHEMAS.getSchema(SchemaLocation.of(AgenticMcpConfiguration.JSON_SCHEMA_2020_12));
     }
 

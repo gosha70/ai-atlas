@@ -29,6 +29,7 @@ final class InputSchemaMerge {
     private static final String K_TYPE = "type";
     private static final String K_PROPERTIES = "properties";
     private static final String K_REQUIRED = "required";
+    private static final String K_ALL_OF = "allOf";
 
     private static final Set<String> NUMERIC_TYPES = Set.of("integer", "number");
     private static final Set<String> STRING_TYPES = Set.of("string");
@@ -42,7 +43,7 @@ final class InputSchemaMerge {
             Map.entry("minLength", STRING_TYPES),
             Map.entry("maxLength", STRING_TYPES),
             Map.entry("pattern", STRING_TYPES),
-            Map.entry("allOf", STRING_TYPES),
+            Map.entry(K_ALL_OF, STRING_TYPES),
             Map.entry("minItems", ARRAY_TYPES),
             Map.entry("maxItems", ARRAY_TYPES));
 
@@ -93,7 +94,7 @@ final class InputSchemaMerge {
                     continue;
                 }
                 if (types.stream().anyMatch(appliesTo::contains)) {
-                    target.set(keyword.getKey(), keyword.getValue().deepCopy());
+                    mergeKeyword(toolName, property, target, keyword.getKey(), keyword.getValue());
                 } else {
                     log.warn("AI-ATLAS: MCP tool '{}': constraint keyword '{}' on property '{}' does not apply "
                             + "to its derived type '{}', so it is left out of the input schema; Bean Validation "
@@ -117,6 +118,44 @@ final class InputSchemaMerge {
         ArrayNode requiredNode = merged.putArray(K_REQUIRED);
         required.forEach(requiredNode::add);
         return merged;
+    }
+
+    /**
+     * Adds one generated constraint keyword to a derived property without losing what the derived
+     * property says: generated {@code allOf} sub-schemas are appended to a derived {@code allOf}; a
+     * keyword the derived property already has with another value keeps the derived value, and the
+     * generated one moves into an {@code allOf} entry, so both apply.
+     */
+    private static void mergeKeyword(String toolName, String property, ObjectNode target, String keyword,
+                                     JsonNode value) {
+        JsonNode existing = target.get(keyword);
+        if (existing == null) {
+            target.set(keyword, value.deepCopy());
+        } else if (K_ALL_OF.equals(keyword)) {
+            ArrayNode allOf = allOf(target);
+            value.forEach(subschema -> allOf.add(subschema.deepCopy()));
+        } else if (!sameValue(existing, value)) {
+            allOf(target).addObject().set(keyword, value.deepCopy());
+            log.debug("AI-ATLAS: MCP tool '{}': property '{}' already has '{}' {} in its derived schema; the "
+                    + "generated {} is added under allOf, so both apply", toolName, property, keyword, existing,
+                    value);
+        }
+    }
+
+    /** The property's {@code allOf} array, created when absent. */
+    private static ArrayNode allOf(ObjectNode target) {
+        if (target.get(K_ALL_OF) instanceof ArrayNode allOf) {
+            return allOf;
+        }
+        return target.putArray(K_ALL_OF);
+    }
+
+    /** Equal values, numbers compared by value ({@code 5} and {@code 5.0} are the same bound). */
+    private static boolean sameValue(JsonNode a, JsonNode b) {
+        if (a.isNumber() && b.isNumber()) {
+            return a.decimalValue().compareTo(b.decimalValue()) == 0;
+        }
+        return a.equals(b);
     }
 
     /** The derived {@code type}: one name, a list of names, or none. */
