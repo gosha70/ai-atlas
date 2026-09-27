@@ -9,7 +9,6 @@ import io.modelcontextprotocol.server.transport.WebMvcSseServerTransportProvider
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.mcp.server.autoconfigure.McpServerSseWebMvcAutoConfiguration;
 import org.springframework.ai.mcp.server.common.autoconfigure.properties.McpServerSseProperties;
-import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -36,6 +35,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.List;
 
@@ -47,14 +47,16 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Pins the three things that make up that path:
  * <ul>
- *   <li>{@link AgenticMcpConfiguration}'s behaviour — the lazy {@link ToolCallbackProvider} is
- *       registered by default, honours {@code ai.atlas.mcp.enabled}, and discovers
- *       {@code @Service} beans with {@code @Tool} methods (the shape of generated MCP tools).</li>
- *   <li>Its wiring contract — the conditional annotations and single bean method, so a change to
- *       the configuration class itself fails here rather than silently altering the SSE path.</li>
+ *   <li>{@link AgenticMcpConfiguration}'s behaviour — the lazy tool specification list is
+ *       registered by default (a SYNC server, FR-018), honours {@code ai.atlas.mcp.enabled}, and
+ *       discovers {@code @Service} beans with {@code @Tool} methods (the shape of generated MCP
+ *       tools).</li>
+ *   <li>Its wiring contract — the conditional annotations and its two bean methods (the SYNC
+ *       specification list and the ASYNC/STATELESS provider), so a change to the configuration
+ *       class itself fails here rather than silently altering the SSE path.</li>
  *   <li>The deployed path end to end — one servlet context started through the auto-configurations
  *       actually registered in the {@code AutoConfiguration.imports} files (the Atlas
- *       auto-configuration plus Spring AI's MCP server stack) wires the Atlas callback provider,
+ *       auto-configuration plus Spring AI's MCP server stack) wires the Atlas tool specifications,
  *       the {@code McpSyncServer} that consumes it, and the SDK's SSE transport provider with its
  *       router serving {@code GET /sse} / {@code POST /mcp/message} — and the default endpoint
  *       properties are unchanged. This module's own wiring registers no STDIO transport
@@ -63,7 +65,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class SseUnchangedTest {
 
+    private static final String SPECIFICATIONS_BEAN_METHOD = "agenticToolSpecifications";
     private static final String PROVIDER_BEAN_METHOD = "agenticToolCallbackProvider";
+    private static final String DECLARED_SCHEMAS_BEAN_METHOD = "agenticDeclaredInputSchemas";
     private static final String ENABLED_PROPERTY_PREFIX = "ai.atlas.mcp";
     private static final String ENABLED_PROPERTY_NAME = "enabled";
     private static final String ATLAS_AUTO_CONFIGURATION =
@@ -81,34 +85,33 @@ class SseUnchangedTest {
             .withConfiguration(AutoConfigurations.of(AgenticMcpConfiguration.class));
 
     @Test
-    void toolCallbackProviderRegisteredByDefault() {
+    void toolSpecificationsRegisteredByDefault() {
         runner.run(context -> {
-            assertThat(context).hasBean(PROVIDER_BEAN_METHOD);
-            assertThat(context).hasSingleBean(ToolCallbackProvider.class);
+            assertThat(context).hasBean(SPECIFICATIONS_BEAN_METHOD);
+            // One registration path per tool name: no provider on a SYNC server
+            assertThat(context).doesNotHaveBean(ToolCallbackProvider.class);
         });
     }
 
     @Test
-    void toolCallbackProviderAbsentWhenDisabled() {
+    void toolSpecificationsAbsentWhenDisabled() {
         runner.withPropertyValues(ENABLED_PROPERTY_PREFIX + "." + ENABLED_PROPERTY_NAME + "=false")
-                .run(context -> assertThat(context).doesNotHaveBean(ToolCallbackProvider.class));
+                .run(context -> {
+                    assertThat(context).doesNotHaveBean(SPECIFICATIONS_BEAN_METHOD);
+                    assertThat(context).doesNotHaveBean(ToolCallbackProvider.class);
+                });
     }
 
     @Test
-    void providerDiscoversServiceBeansWithToolMethods() {
-        runner.withUserConfiguration(EchoToolConfiguration.class).run(context -> {
-            ToolCallback[] callbacks =
-                    context.getBean(ToolCallbackProvider.class).getToolCallbacks();
-            assertThat(callbacks).hasSize(1);
-            assertThat(callbacks[0].getToolDefinition().name()).isEqualTo(TOOL_NAME);
-        });
+    void specificationsDiscoverServiceBeansWithToolMethods() {
+        runner.withUserConfiguration(EchoToolConfiguration.class).run(context ->
+                assertThat(specificationToolNames(context)).containsExactly(TOOL_NAME));
     }
 
     @Test
-    void providerIsEmptyWithoutToolBeans() {
+    void specificationsAreEmptyWithoutToolBeans() {
         runner.withUserConfiguration(PlainServiceConfiguration.class).run(context ->
-                assertThat(context.getBean(ToolCallbackProvider.class).getToolCallbacks())
-                        .isEmpty());
+                assertThat(specificationToolNames(context)).isEmpty());
     }
 
     @Test
@@ -125,15 +128,20 @@ class SseUnchangedTest {
         assertThat(onProperty.name()).containsExactly(ENABLED_PROPERTY_NAME);
         assertThat(onProperty.matchIfMissing()).isTrue();
 
-        // The configuration contributes exactly one bean — the tool callback provider. A second
+        // The configuration contributes exactly two tool beans — the SYNC tool specification list
+        // and the ASYNC/STATELESS tool callback provider, of which exactly one is active — plus the
+        // post-processor that keeps a merged input schema's $schema on the wire (FR-018). Any other
         // bean method (e.g. a transport provider) would mean the runtime wiring grew beyond the
         // frozen SSE path.
         List<Method> beanMethods = Arrays.stream(AgenticMcpConfiguration.class.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(Bean.class))
+                .sorted(Comparator.comparing(Method::getName))
                 .toList();
-        assertThat(beanMethods).hasSize(1);
-        assertThat(beanMethods.get(0).getName()).isEqualTo(PROVIDER_BEAN_METHOD);
-        assertThat(beanMethods.get(0).getReturnType()).isEqualTo(ToolCallbackProvider.class);
+        assertThat(beanMethods).extracting(Method::getName)
+                .containsExactly(DECLARED_SCHEMAS_BEAN_METHOD, PROVIDER_BEAN_METHOD, SPECIFICATIONS_BEAN_METHOD);
+        assertThat(beanMethods.get(0).getReturnType()).isEqualTo(DeclaredInputSchemas.class);
+        assertThat(beanMethods.get(1).getReturnType()).isEqualTo(ToolCallbackProvider.class);
+        assertThat(beanMethods.get(2).getReturnType()).isEqualTo(List.class);
     }
 
     @Test
@@ -157,22 +165,17 @@ class SseUnchangedTest {
                 .run(context -> {
                     // Atlas tool discovery, the MCP server, and the SSE transport — together in
                     // one context, wired through the actually-registered auto-configurations.
-                    assertThat(context).hasBean(PROVIDER_BEAN_METHOD);
+                    assertThat(context).hasBean(SPECIFICATIONS_BEAN_METHOD);
                     assertThat(context).hasSingleBean(McpSyncServer.class);
                     assertThat(context).hasSingleBean(WebMvcSseServerTransportProvider.class);
                     assertThat(context).hasBean(SSE_ROUTER_BEAN);
 
-                    // The Atlas provider discovered the echo tool bean…
-                    ToolCallback[] callbacks = context
-                            .getBean(PROVIDER_BEAN_METHOD, ToolCallbackProvider.class)
-                            .getToolCallbacks();
-                    assertThat(callbacks)
-                            .extracting(callback -> callback.getToolDefinition().name())
-                            .containsExactly(TOOL_NAME);
+                    // The Atlas specifications discovered the echo tool bean…
+                    assertThat(specificationToolNames(context)).containsExactly(TOOL_NAME);
 
-                    // …and the server consumed it: the tool specifications the McpSyncServer was
-                    // built from carry the registered callback.
-                    assertThat(registeredToolNames(context)).contains(TOOL_NAME);
+                    // …and the server consumed them: the tool specifications the McpSyncServer
+                    // was built from carry the echo tool, once.
+                    assertThat(registeredToolNames(context)).containsOnlyOnce(TOOL_NAME);
 
                     // The router still serves GET /sse (and only MCP routes).
                     RouterFunction<?> router = context.getBean(SSE_ROUTER_BEAN, RouterFunction.class);
@@ -211,6 +214,14 @@ class SseUnchangedTest {
             throw new IllegalStateException(
                     "Registered auto-configuration not loadable: " + className, e);
         }
+    }
+
+    /** Names of the tools in the Atlas tool specification list. */
+    private static List<String> specificationToolNames(ApplicationContext context) {
+        @SuppressWarnings("unchecked")
+        List<McpServerFeatures.SyncToolSpecification> specifications =
+                (List<McpServerFeatures.SyncToolSpecification>) context.getBean(SPECIFICATIONS_BEAN_METHOD);
+        return specifications.stream().map(specification -> specification.tool().name()).toList();
     }
 
     /** Names of every tool specification handed to the MCP server in the given context. */

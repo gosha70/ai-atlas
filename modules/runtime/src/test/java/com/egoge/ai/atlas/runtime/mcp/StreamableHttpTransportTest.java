@@ -61,7 +61,7 @@ class StreamableHttpTransportTest {
 
     private static final String PROTOCOL_PROPERTY = "spring.ai.mcp.server.protocol";
     private static final String STREAMABLE = "STREAMABLE";
-    private static final String PROVIDER_BEAN_METHOD = "agenticToolCallbackProvider";
+    private static final String SPECIFICATIONS_BEAN_METHOD = "agenticToolSpecifications";
     private static final String ATLAS_AUTO_CONFIGURATION =
             "com.egoge.ai.atlas.runtime.autoconfigure.AgenticAutoConfiguration";
     private static final String MCP_SERVER_AUTO_CONFIGURATION_PACKAGE =
@@ -84,9 +84,9 @@ class StreamableHttpTransportTest {
             .withUserConfiguration(AtlasToolConfiguration.class);
 
     @Test
-    void streamablePropertySwitchesTransportAndKeepsAtlasProvider() {
+    void streamablePropertySwitchesTransportAndKeepsAtlasSpecifications() {
         runner.withPropertyValues(PROTOCOL_PROPERTY + "=" + STREAMABLE).run(context -> {
-            assertThat(context).hasBean(PROVIDER_BEAN_METHOD);
+            assertThat(context).hasBean(SPECIFICATIONS_BEAN_METHOD);
             assertThat(context).hasSingleBean(McpSyncServer.class);
             assertThat(context).hasSingleBean(WebMvcStreamableServerTransportProvider.class);
             assertThat(context).doesNotHaveBean(WebMvcSseServerTransportProvider.class);

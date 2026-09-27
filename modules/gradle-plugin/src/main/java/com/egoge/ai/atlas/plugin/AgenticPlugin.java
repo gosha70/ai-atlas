@@ -50,7 +50,7 @@ import java.util.stream.Stream;
  *
  * <p>Also configures IntelliJ IDEA to recognize generated source directories, and the contract
  * gate: the {@code contractBaseline} and {@code contractLocked} options of the main
- * {@code compileJava}, the {@value #CONTRACT_CHECK_TASK} task that {@code classes} depends on, and
+ * {@code compileJava}, with the {@code constraints} option next to them, the {@value #CONTRACT_CHECK_TASK} task that {@code classes} depends on, and
  * the {@value #ACCEPT_TASK} task.
  */
 public class AgenticPlugin implements Plugin<Project> {
@@ -91,6 +91,7 @@ public class AgenticPlugin implements Plugin<Project> {
         extension.getContractBaseline().convention(
                 project.getLayout().getProjectDirectory().file(DEFAULT_CONTRACT_BASELINE));
         extension.getContractLocked().convention(false);
+        extension.getConstraints().convention(false);
 
         // Add dependencies and processor options after evaluation (so extension values are resolved)
         project.afterEvaluate(p -> {
@@ -105,8 +106,8 @@ public class AgenticPlugin implements Plugin<Project> {
     }
 
     /**
-     * The contract gate (FR-015, FR-016): the baseline and lock options go to the main
-     * {@code compileJava} only, {@code atlasContractCheck} checks an empty contract before
+     * The contract gate (FR-015, FR-016): the baseline and lock options, and the constraints
+     * option (FR-020), go to the main {@code compileJava} only, {@code atlasContractCheck} checks an empty contract before
      * {@code classes}, and {@code atlasAccept} writes the baseline.
      */
     private void configureContract(Project project, AgenticExtension extension) {
@@ -119,6 +120,7 @@ public class AgenticPlugin implements Plugin<Project> {
         ContractArguments contractArguments = project.getObjects().newInstance(ContractArguments.class);
         contractArguments.getBaseline().from(extension.getContractBaseline());
         contractArguments.getLocked().set(extension.getContractLocked());
+        contractArguments.getConstraints().set(extension.getConstraints());
         compileJava.configure(task -> task.getOptions().getCompilerArgumentProviders().add(contractArguments));
 
         // Named in the message a processor the plugin cannot run fails with

@@ -18,7 +18,7 @@ model, projected at the configured major.
 
 | Key | Meaning |
 |-----|---------|
-| `irVersion` | Version of the document format. This ai-atlas writes `1` |
+| `irVersion` | Version of the document format. This ai-atlas writes `2` |
 | `apiBasePath` | The configured REST base path (`ai.atlas.api.basePath`) |
 | `apiMajor` | The configured major (`ai.atlas.api.major`) the document was emitted for. In a baseline, this is the **published major M** the gate protects |
 | `entities` | Every `@AgenticEntity`, ordered by qualified class name |
@@ -30,15 +30,26 @@ model, projected at the configured major.
 **Field:** `name`, `displayName`, `javaType`, `collectionKind` (`NONE`, `COLLECTION`, `ITERABLE`,
 `ARRAY`), `elementType`, `typeHint` (`@AgenticField(type = …)`), `reference` (the referenced
 `entity` and its `dto`), `enumType`, `allowedValues` (explicit values or the enum constants),
-`openEnum`, `sensitive`, `checkCircularReference`, `description`, and `lifecycle`
-(`sinceVersion`, `removedInVersion`, `deprecatedSinceVersion`, `deprecatedMessage`).
+`openEnum`, `sensitive`, `checkCircularReference`, `description`, `lifecycle`
+(`sinceVersion`, `removedInVersion`, `deprecatedSinceVersion`, `deprecatedMessage`), and
+`constraints`.
 
 **Operation:** `service`, `method`, `toolName`, `channels`, `description`, `rest` (`httpMethod`
 and `path`, without the base path and version prefix; `null` off the API channel), `parameters`
-(`name`, `javaType`, `description`, `enumConstants`), `returns` (`javaType`, `returnKind`, the
+(`name`, `javaType`, `description`, `enumConstants`, `constraints`, `required`), `returns` (`javaType`, `returnKind`, the
 effective `returnType` after method-then-class resolution, and its `reference`), and `lifecycle`
-(`apiSince`, `apiUntil`, `apiDeprecatedSince`, `apiReplacement`). An operation's identity is its
-service, method name and parameter Java types: `service#method(parameter types)`.
+(`apiSince`, `apiUntil`, `apiDeprecatedSince`, `apiReplacement`), and `hints`. An operation's
+identity is its service, method name and parameter Java types: `service#method(parameter types)`.
+
+**Constraints** are ai-atlas's own normalised form of an input's or field's effective constraints
+(see [Constraints and behavioural hints](constraints-and-hints.md)), not a schema dialect. The
+object holds only the keys that are set, in this order: `minimum`, `exclusiveMinimum`, `maximum`,
+`exclusiveMaximum`, `minLength`, `maxLength`, `minItems`, `maxItems`, `patterns`, `notBlank`.
+`minimum`/`maximum` are decimal strings; `exclusiveMinimum`/`exclusiveMaximum` and `notBlank` appear
+only when `true`; `patterns` is a list of `{regex, flags}` objects sorted by regex, then flags.
+A parameter's `required` is its resolved requiredness. **Hints** hold `readOnly`, `destructive`,
+`idempotent` and `openWorld`, each `true`, `false` or absent when undeclared. The IR records
+constraints and hints whether or not `ai.atlas.constraints` is on.
 
 ### Format
 
@@ -65,8 +76,20 @@ The processor reads a baseline as follows:
 
 **Policy:** every future `irVersion` N ships with a documented, in-memory migration from N−1, and
 this guide gains a section describing it. A baseline written by any earlier ai-atlas therefore stays
-readable, by chaining the migrations. `irVersion` 1 is the first version, so no migration exists
-yet.
+readable, by chaining the migrations.
+
+### Migration from `irVersion` 1 to `irVersion 2`
+
+`irVersion 2` adds `Field.constraints`, `Parameter.constraints`, `Parameter.required` and
+`Operation.hints`. A version-1 baseline is migrated in memory with every one of these slots
+**unknown**: JSON `null`, which is distinct from an empty object (known to set nothing). A
+document that declares `irVersion 2` in its file and has a missing or `null` slot is malformed.
+That check applies only when a file is read; a version-1 baseline's unknown slots are the result of
+its migration, and are never rejected.
+
+The gate never reports a change from an unknown baseline value, in gate mode or in lock mode. So
+upgrading ai-atlas does not fail a project, even a locked one, whose baseline is still version 1.
+Run `atlasAccept` to write a version-2 baseline; from then on, constraint changes are compared.
 
 ## Projection at a major
 
@@ -139,13 +162,45 @@ can change while the Java signature stays the same, for example a `List<?>` meth
 
 There is no rename detection: a rename is a removal plus an addition, and is reported as such.
 
+### Constraints, requiredness and hints
+
+A parameter's requiredness and constraints are input rules, compared per parameter at M. **Bounds
+are compared as endpoints**, value and exclusivity together:
+
+- an absent lower bound is −∞, and an absent upper bound is +∞;
+- on an integral Java type (`byte`, `short`, `int`, `long`, their boxes, `BigInteger`), an exclusive
+  bound is first made inclusive: `> 9` becomes `>= 10` and `< 10` becomes `<= 9`, so `> 9` and
+  `>= 10` are no difference;
+- a lower endpoint is tighter when its value is higher, or equal and exclusive; an upper endpoint
+  when its value is lower, or equal and exclusive. `>= 10` → `> 0` widens; `> 0` → `>= 10` narrows;
+  on a decimal, `>= 0` → `> 0` narrows.
+
+| Change | Classification |
+|--------|----------------|
+| A parameter's `required` goes from `false` to `true` | **Breaking** |
+| A lower or upper endpoint becomes tighter | **Breaking** |
+| `minLength` or `minItems` rises or appears; `maxLength` or `maxItems` falls or appears | **Breaking** |
+| A pattern is added to the set, including a changed pattern (a removal plus an addition) | **Breaking** |
+| `notBlank` goes from absent to set | **Breaking** |
+| The reverse of each of these, including a pattern removed from the set | Compatible |
+| An entity field's constraints change | `informational` |
+| An operation's hints change | `informational` |
+| Any change from an unknown baseline value (a migrated version-1 baseline) | No difference |
+
+An **`informational`** difference appears in `contract-diff.json` but produces no diagnostic and
+never fails the build, except in lock mode. Entity fields are always output: an operation's inputs
+are its parameters, bound as query parameters, and ai-atlas generates no request body, so an entity
+field's constraints only describe what responses already satisfy. Hints are client guidance.
+Neither breaks a client.
+
 ### Diagnostics
 
 Each breaking difference is a compile ERROR, reported on the declaration when it still exists in
 the compilation and without an element otherwise. The message names:
 
-- the element path: `entity <qualified class>`, `field <qualified class>#<java name>` or
-  `operation <qualified class>#<method>(<parameter types>)`;
+- the element path: `entity <qualified class>`, `field <qualified class>#<java name>`,
+  `operation <qualified class>#<method>(<parameter types>)` or, for a constraint or requiredness,
+  `parameter <qualified class>#<method>(<parameter types>).<name>` with the constraint key;
 - the change, as before → after;
 - the direction, and why it breaks clients of major M;
 - the declaration that would make it legitimate:
@@ -154,6 +209,7 @@ the compilation and without an element otherwise. The message names:
 |-----------------|---------------------------|
 | Removed or changed field, including its effective schema | `@AgenticField(removedInVersion = M+1)` on the old field, with any replacement as a new field with `sinceVersion = M+1` |
 | Removed or changed operation, including its effective return schema | `@AgenticExposed(apiUntil = M)` on the old operation, plus a replacement with `apiSince = M+1` |
+| Narrowed input constraint or newly required parameter | A replacement operation with `apiSince = M+1` (and `apiUntil = M` on the old one) |
 | Changed `operationId` | Give the operation(s) whose addition caused it a method name that does not collide, or `apiSince = M+1` on them |
 | Changed DTO name, DTO package, `includeTypeInfo` or `apiBasePath` | Restore the previous value |
 | Added value on a closed response enum | `openEnum = true`, if clients tolerate unknown values |
@@ -164,7 +220,8 @@ differences produce no diagnostic.
 
 Whenever a comparison runs, the processor also writes `META-INF/ai-atlas/contract-diff.json` to
 the class output: `publishedMajor` and every difference with its `path`, `change`, `direction`,
-`before`, `after` and `classification`, ordered by element path. The list is empty when nothing
+`before`, `after` and `classification` (`breaking`, `compatible` or `informational`), ordered by
+element path. The list is empty when nothing
 differs.
 
 ## `openEnum`
@@ -201,6 +258,9 @@ compile ERROR), **any** difference between the baseline and the current IR docum
 build, compatible ones included. It covers every declaration and attribute, including elements
 inactive at M and the document's own `apiMajor`. The error lists each differing element path.
 A missing baseline is also an ERROR naming the expected path and `atlasAccept`.
+
+Every constraint, requiredness and hint difference counts in lock mode, `informational` ones
+included, except a change from an unknown value in a migrated version-1 baseline.
 
 Lock mode makes every contract change, even a description edit, go through `atlasAccept`, so each
 one reaches review as a diff of the baseline.
