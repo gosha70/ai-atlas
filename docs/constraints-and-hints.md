@@ -313,7 +313,8 @@ on the classpath, the runtime **merges** the entry into that derived schema rath
   the real Java signature;
 - a keyword that does not fit the derived type (bounds on anything but `integer`/`number`, lengths
   and patterns on anything but `string`, item bounds on anything but `array`) is left out with one
-  WARNING naming the tool, property, type and keyword. Bean Validation still enforces it;
+  WARNING naming the tool, property, type and keyword. Bean Validation still enforces it when method
+  validation is present (see the advisory warning);
 - a generated property that is not in the derived schema is not added, with one WARNING;
 - the merged schema declares `"$schema": "https://json-schema.org/draft/2020-12/schema"`, and the
   tool's annotations are the entry's hints.

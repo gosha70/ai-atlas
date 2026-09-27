@@ -65,6 +65,7 @@ class McpToolSpecificationTest {
 
     private static final String ORDERS_FIXTURE = "mcp-tools/orders/";
     private static final String DUPLICATE_FIXTURE = "mcp-tools/duplicate/";
+    private static final String ORPHAN_FIXTURE = "mcp-tools/orphan/";
     private static final String FIND_ORDERS = McpToolFixtures.FIND_ORDERS;
     private static final String PLACE_ORDER = McpToolFixtures.PLACE_ORDER;
     private static final String PING = McpToolFixtures.PING;
@@ -280,6 +281,17 @@ class McpToolSpecificationTest {
             assertThat(texts(schema.path("required"))).containsExactlyInAnyOrder("limit", "customer");
             assertThat(output).containsOnlyOnce("MCP tool 'find_orders': property 'ghost' of "
                     + AgenticMcpConfiguration.TOOL_SPECIFICATIONS + " is not in the derived input schema");
+        });
+    }
+
+    @Test
+    void listedToolWithNoCallbackIsReportedWithWarning(CapturedOutput output) {
+        runner.withClassLoader(fixtures(ORDERS_FIXTURE, ORPHAN_FIXTURE)).run(context -> {
+            servedSchema(context, FIND_ORDERS);
+            assertThat(output).containsOnlyOnce("MCP tool 'orphan_tool' is listed in ")
+                    .contains(ORPHAN_FIXTURE + AgenticMcpConfiguration.TOOL_SPECIFICATIONS + "] but no @Tool method "
+                            + "registers it")
+                    .doesNotContain("MCP tool '" + FIND_ORDERS + "' is listed in");
         });
     }
 

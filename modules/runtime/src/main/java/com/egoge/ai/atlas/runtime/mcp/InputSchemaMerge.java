@@ -97,8 +97,10 @@ final class InputSchemaMerge {
                     mergeKeyword(toolName, property, target, keyword.getKey(), keyword.getValue());
                 } else {
                     log.warn("AI-ATLAS: MCP tool '{}': constraint keyword '{}' on property '{}' does not apply "
-                            + "to its derived type '{}', so it is left out of the input schema; Bean Validation "
-                            + "still enforces it", toolName, keyword.getKey(), property, String.join(", ", types));
+                            + "to its {}, so it is left out of the input schema; Bean Validation still enforces "
+                            + "it when method validation is present", toolName, keyword.getKey(), property,
+                            types.isEmpty() ? "derived schema without a type"
+                                    : "derived type '" + String.join(", ", types) + "'");
                 }
             }
             if (generatedRequired.contains(property)) {

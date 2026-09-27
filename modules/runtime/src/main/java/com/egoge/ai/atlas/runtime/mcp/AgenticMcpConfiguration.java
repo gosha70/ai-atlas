@@ -41,9 +41,11 @@ import java.io.UncheckedIOException;
 import java.lang.reflect.Method;
 import java.util.AbstractList;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Auto-discovers Spring beans with {@code @Tool}-annotated methods and registers them as MCP
@@ -288,6 +290,11 @@ public class AgenticMcpConfiguration {
                     applied++;
                 }
             }
+            Set<String> registered = new HashSet<>(providedByApplication.keySet());
+            result.forEach(specification -> registered.add(specification.tool().name()));
+            listed.values().stream().filter(entry -> !registered.contains(entry.name())).forEach(entry ->
+                    log.warn("AI-ATLAS: MCP tool '{}' is listed in {} but no @Tool method registers it, so its "
+                            + "input schema and hints are not applied", entry.name(), entry.resource()));
             if (applied > 0) {
                 log.info("AI-ATLAS: Applied generated input schemas and hints to {} MCP tool(s)", applied);
             }

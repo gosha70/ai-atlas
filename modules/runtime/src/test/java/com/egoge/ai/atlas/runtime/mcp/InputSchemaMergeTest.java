@@ -8,6 +8,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.networknt.schema.Schema;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import java.io.IOException;
 
@@ -17,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * FR-018: the merge keeps every keyword of the derived property. A generated keyword the derived
  * property already has never overwrites it; both apply.
  */
+@ExtendWith(OutputCaptureExtension.class)
 class InputSchemaMergeTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -61,5 +65,20 @@ class InputSchemaMergeTest {
         assertThat(schema.validate(JSON.readTree("{\"code\":\"AB\",\"limit\":1}"))).isEmpty();
         assertThat(schema.validate(JSON.readTree("{\"code\":\"A\"}"))).as("the generated pattern applies").isNotEmpty();
         assertThat(schema.validate(JSON.readTree("{\"limit\":0}"))).as("the generated minimum applies").isNotEmpty();
+    }
+
+    @Test
+    void keywordOnADerivedPropertyWithoutATypeIsLeftOutWithWarningSayingSo(CapturedOutput output) throws IOException {
+        String derived = """
+                {"type":"object","properties":{
+                   "when":{"anyOf":[{"type":"string"},{"type":"null"}]}}}""";
+        JsonNode generated = JSON.readTree("""
+                {"type":"object","properties":{"when":{"type":"string","minLength":1}}}""");
+
+        ObjectNode merged = InputSchemaMerge.mergeInputSchema("t", derived, generated);
+
+        assertThat(merged.at("/properties/when").has("minLength")).isFalse();
+        assertThat(output).containsOnlyOnce("MCP tool 't': constraint keyword 'minLength' on property 'when' does "
+                + "not apply to its derived schema without a type").doesNotContain("derived type ''");
     }
 }

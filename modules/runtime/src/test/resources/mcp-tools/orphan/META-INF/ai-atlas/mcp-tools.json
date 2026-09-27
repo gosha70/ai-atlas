@@ -1,0 +1,15 @@
+{
+  "tools": [
+    {
+      "name": "orphan_tool",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {"readOnlyHint": true}
+    }
+  ]
+}
