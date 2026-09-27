@@ -6,6 +6,7 @@ package com.egoge.ai.atlas.processor.contract;
 import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.egoge.ai.atlas.annotations.AgenticExposed;
 import com.egoge.ai.atlas.annotations.AgenticField;
+import com.egoge.ai.atlas.annotations.Hint;
 import com.egoge.ai.atlas.processor.constraints.ConstraintReader;
 import com.egoge.ai.atlas.processor.constraints.EffectiveConstraints;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Entity;
@@ -54,6 +55,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Function;
 
 /**
  * Collects the {@link ContractIr} of a compilation across rounds (FR-001). Entities arrive with
@@ -268,9 +270,34 @@ public final class IrBuilder {
         Operation operation = new Operation(service.getQualifiedName().toString(), methodName, toolName,
                 channels.stream().sorted().toList(),
                 AttributeResolver.resolveDescription(methodAnnotation, typeAnnotation, methodName),
-                rest, parameters, returns, Hints.NONE, lifecycle);
+                rest, parameters, returns, hints(methodAnnotation, typeAnnotation), lifecycle);
         operations.put(operation.id(), operation);
         return operation.id();
+    }
+
+    /**
+     * @param operationId an identity {@link #addOperation} returned
+     * @return the recorded operation, or {@code null} when none has that identity
+     */
+    public Operation operation(String operationId) {
+        return operations.get(operationId);
+    }
+
+    /** The declared hints, each method-level value other than {@code UNSET} overriding the class-level one (FR-013). */
+    private static Hints hints(AgenticExposed methodAnnotation, AgenticExposed typeAnnotation) {
+        return new Hints(hint(methodAnnotation, typeAnnotation, AgenticExposed::readOnly),
+                hint(methodAnnotation, typeAnnotation, AgenticExposed::destructive),
+                hint(methodAnnotation, typeAnnotation, AgenticExposed::idempotent),
+                hint(methodAnnotation, typeAnnotation, AgenticExposed::openWorld));
+    }
+
+    private static Boolean hint(AgenticExposed methodAnnotation, AgenticExposed typeAnnotation,
+                                Function<AgenticExposed, Hint> attribute) {
+        Hint value = methodAnnotation != null ? attribute.apply(methodAnnotation) : Hint.UNSET;
+        if (value == Hint.UNSET && typeAnnotation != null) {
+            value = attribute.apply(typeAnnotation);
+        }
+        return value == Hint.UNSET ? null : value == Hint.TRUE;
     }
 
     /**

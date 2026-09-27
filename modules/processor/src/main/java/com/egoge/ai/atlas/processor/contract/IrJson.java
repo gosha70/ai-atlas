@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -121,9 +122,9 @@ public final class IrJson {
 
     /**
      * Returns the canonical JSON text of a document of plain values: maps (in their iteration
-     * order), lists, strings, integers, booleans and {@code null}.
+     * order), lists, strings, integers, decimals, booleans and {@code null}.
      */
-    static String writeCanonical(Map<String, Object> doc) {
+    public static String writeCanonical(Map<String, Object> doc) {
         StringBuilder out = new StringBuilder();
         writeValue(out, doc, 0);
         return out.append(NEWLINE).toString();
@@ -233,6 +234,8 @@ public final class IrJson {
             writeString(out, s);
         } else if (value instanceof Integer || value instanceof Boolean) {
             out.append(value);
+        } else if (value instanceof BigDecimal decimal) {
+            out.append(decimal.toPlainString());
         } else if (value instanceof Map<?, ?> map) {
             writeObject(out, map, depth);
         } else if (value instanceof List<?> list) {

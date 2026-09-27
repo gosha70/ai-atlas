@@ -4,6 +4,7 @@
 package com.egoge.ai.atlas.processor.util;
 
 import com.egoge.ai.atlas.annotations.AgenticExposed;
+import com.egoge.ai.atlas.processor.contract.ContractIr.Hints;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 
 import javax.annotation.processing.Messager;
@@ -55,6 +56,28 @@ public final class QualityDiagnostics {
                         + " (MCP tool '" + model.toolName() + "') has no description of its own;"
                         + " the tool is described by " + fallback
                         + ". Set description on the method's @AgenticExposed so a model can choose the tool",
+                method);
+    }
+
+    /**
+     * Reports an active AI-channel method that declares none of the four MCP hints, after
+     * method-then-class resolution (FR-013).
+     *
+     * @param hints the method's resolved hints, or {@code null} when {@code ai.atlas.constraints} is
+     *              off and nothing is reported
+     */
+    public static void reportMissingHints(Diagnostic.Kind kind, Messager messager, TypeElement serviceType,
+                                          ExecutableElement method, MethodModel model, Hints hints,
+                                          int apiMajor) {
+        if (hints == null || !hints.equals(Hints.NONE) || !model.channels().contains("AI")
+                || !VersionSelector.isActive(model, apiMajor)) {
+            return;
+        }
+        messager.printMessage(kind,
+                "[ai-atlas] " + serviceType.getQualifiedName() + "#" + model.methodName()
+                        + " (MCP tool '" + model.toolName() + "') declares no behavioural hint;"
+                        + " set readOnly, destructive, idempotent or openWorld on its @AgenticExposed,"
+                        + " or on the class, so a client knows how the tool behaves",
                 method);
     }
 }

@@ -28,6 +28,9 @@ junit = "5.12.2"
 compile-testing = "0.21.0"
 testcontainers = "1.20.4"
 assertj = "3.27.7"
+json-schema-validator = "2.0.0"
+graalvm-polyglot = "23.1.2"
+swagger-parser = "2.1.25"
 
 [libraries]
 # Code generation
@@ -62,6 +65,10 @@ junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 compile-testing = { module = "com.google.testing.compile:compile-testing", version.ref = "compile-testing" }
 testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
+graalvm-polyglot = { module = "org.graalvm.polyglot:polyglot", version.ref = "graalvm-polyglot" }
+graalvm-js = { module = "org.graalvm.polyglot:js-community", version.ref = "graalvm-polyglot" }
+swagger-parser = { module = "io.swagger.parser.v3:swagger-parser-v3", version.ref = "swagger-parser" }
 
 # Jakarta (for @Generated annotation in generated code)
 jakarta-annotation-api = { module = "jakarta.annotation:jakarta.annotation-api", version = "3.0.0" }

@@ -3,6 +3,7 @@
  */
 package com.egoge.ai.atlas.processor.generator;
 
+import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.FieldModel;
@@ -82,14 +83,17 @@ public final class OpenApiGenerator {
    *
    * @param operationIds the operationId of every active API operation, keyed by
    *                     {@link ContractProjection#operationKey}, as the projection assigns them
+   * @param constraints  the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
    */
   public static void generate(
       List<EntityModel> entities,
       List<ServiceModel> services,
       Map<String, String> operationIds,
       String apiBasePath, int apiMajor, String infoVersion,
+      ConstraintSurfaces constraints,
       Filer filer, Messager messager) {
-    OpenAPI openAPI = buildSpec(entities, services, operationIds, apiBasePath, apiMajor, infoVersion);
+    OpenAPI openAPI = buildSpec(entities, services, operationIds, apiBasePath, apiMajor, infoVersion,
+        constraints);
 
     try {
       String json = serializeToJson(openAPI);
@@ -125,7 +129,8 @@ public final class OpenApiGenerator {
       List<EntityModel> entities,
       List<ServiceModel> services,
       Map<String, String> operationIds,
-      String apiBasePath, int apiMajor, String infoVersion) {
+      String apiBasePath, int apiMajor, String infoVersion,
+      ConstraintSurfaces constraints) {
     OpenAPI openAPI = new OpenAPI();
     openAPI.openapi(OPENAPI_VERSION);
     openAPI.info(new Info()
@@ -137,7 +142,7 @@ public final class OpenApiGenerator {
     Components components = new Components();
     Map<String, Schema<?>> schemas = new LinkedHashMap<>();
     for (EntityModel entity : entities) {
-      schemas.put(entity.dtoName(), buildEntitySchema(entity, apiMajor));
+      schemas.put(entity.dtoName(), buildEntitySchema(entity, apiMajor, constraints));
     }
     components.schemas((Map) schemas);
     openAPI.components(components);
@@ -158,8 +163,8 @@ public final class OpenApiGenerator {
         pathItem = new PathItem();
         paths.addPathItem(entry.path(), pathItem);
       }
-      pathItem.operation(entry.httpMethod(),
-          buildOperation(entry.method(), operationId, apiMajor));
+      pathItem.operation(entry.httpMethod(), buildOperation(entry.method(), operationId, apiMajor,
+          constraints != null ? constraints.operation(entry.operationKey()) : null));
     }
     openAPI.paths(paths);
 
@@ -167,7 +172,8 @@ public final class OpenApiGenerator {
   }
 
   @SuppressWarnings({"rawtypes", "unchecked"}) // swagger-models properties() accepts raw Map<String, Schema>
-  private static Schema<?> buildEntitySchema(EntityModel entity, int apiMajor) {
+  private static Schema<?> buildEntitySchema(EntityModel entity, int apiMajor,
+                                             ConstraintSurfaces constraints) {
     Schema<?> schema = new Schema<>().type("object");
     String description = entity.classDescription().isEmpty()
         ? entity.dtoName() + " — PII-safe projection of " + entity.sourceClassName().simpleName()
@@ -175,7 +181,11 @@ public final class OpenApiGenerator {
     schema.description(description);
     Map<String, Schema<?>> properties = new LinkedHashMap<>();
     for (FieldModel field : entity.fields()) {
-      properties.put(field.name(), buildFieldSchema(field, apiMajor));
+      Schema<?> fieldSchema = buildFieldSchema(field, apiMajor);
+      if (constraints != null) {
+        ConstraintSurfaces.applyOpenApi(fieldSchema, constraints.field(entity, field));
+      }
+      properties.put(field.name(), fieldSchema);
     }
     schema.properties((Map) properties);
     return schema;
@@ -243,7 +253,12 @@ public final class OpenApiGenerator {
     }
   }
 
-  private static Operation buildOperation(MethodModel method, String operationId, int apiMajor) {
+  /**
+   * @param irOperation the IR operation whose parameters' requiredness and constraints the
+   *                    parameters carry, or {@code null} when {@code ai.atlas.constraints} is off
+   */
+  private static Operation buildOperation(MethodModel method, String operationId, int apiMajor,
+                                          ContractIr.Operation irOperation) {
     Operation operation = new Operation();
     operation.operationId(operationId);
     operation.summary(method.description());
@@ -252,7 +267,8 @@ public final class OpenApiGenerator {
     }
 
     // Arguments are query parameters, matching the controller's @RequestParam binding
-    for (ParameterModel param : method.parameters()) {
+    for (int i = 0; i < method.parameters().size(); i++) {
+      ParameterModel param = method.parameters().get(i);
       Parameter parameter = new Parameter()
           .in("query")
           .name(param.name())
@@ -260,6 +276,11 @@ public final class OpenApiGenerator {
           .schema(mapJavaTypeToSchema(param.typeName().toString()));
       if (!param.description().isEmpty()) {
         parameter.description(param.description());
+      }
+      if (irOperation != null) {
+        ContractIr.Parameter irParam = irOperation.parameters().get(i);
+        parameter.required(irParam.required());
+        ConstraintSurfaces.applyOpenApi(parameter.getSchema(), irParam.constraints());
       }
       operation.addParametersItem(parameter);
     }

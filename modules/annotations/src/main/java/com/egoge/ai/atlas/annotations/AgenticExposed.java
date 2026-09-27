@@ -119,4 +119,28 @@ public @interface AgenticExposed {
      * Framework default: {@code ""} (no replacement).
      */
     String apiReplacement() default INHERIT_STR;
+
+    /**
+     * MCP hint: the tool does not modify its environment. A method-level value other than
+     * {@link Hint#UNSET} overrides the class-level one; nothing is inferred. Hints are client
+     * guidance, not authorization.
+     */
+    Hint readOnly() default Hint.UNSET;
+
+    /**
+     * MCP hint: the tool may perform destructive updates. Resolved like {@link #readOnly()}.
+     */
+    Hint destructive() default Hint.UNSET;
+
+    /**
+     * MCP hint: calling the tool again with the same arguments has no further effect. Resolved
+     * like {@link #readOnly()}.
+     */
+    Hint idempotent() default Hint.UNSET;
+
+    /**
+     * MCP hint: the tool interacts with entities outside the service's own domain. Resolved like
+     * {@link #readOnly()}.
+     */
+    Hint openWorld() default Hint.UNSET;
 }

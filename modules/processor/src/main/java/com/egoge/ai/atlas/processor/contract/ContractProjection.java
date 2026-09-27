@@ -59,6 +59,8 @@ public final class ContractProjection {
     private final int major;
     private final Map<String, EntityModel> entities = new LinkedHashMap<>();
     private final Map<String, MethodModel> methods = new LinkedHashMap<>();
+    private final Map<String, Operation> activeOperations = new LinkedHashMap<>();
+    private final Map<String, Field> fields = new LinkedHashMap<>();
     private final List<ServiceModel> services = new ArrayList<>();
     private final Map<String, String> operationIds;
 
@@ -68,12 +70,14 @@ public final class ContractProjection {
         TypeParser types = new TypeParser(classNames);
         for (Entity entity : ir.entities()) {
             entities.put(entity.className(), entity(entity, types));
+            entity.fields().forEach(field -> fields.put(entity.className() + "#" + field.name(), field));
         }
         Map<String, List<MethodModel>> byService = new LinkedHashMap<>();
         for (Operation op : ir.operations()) {
             if (isActive(op.lifecycle(), major)) {
                 MethodModel method = method(op, types);
                 methods.put(op.id(), method);
+                activeOperations.put(op.id(), op);
                 byService.computeIfAbsent(op.service(), s -> new ArrayList<>()).add(method);
             }
         }
@@ -177,6 +181,24 @@ public final class ContractProjection {
      */
     public MethodModel method(String operationId) {
         return methods.get(operationId);
+    }
+
+    /**
+     * @param operationId the operation's IR identity, {@link Operation#id()}
+     * @return the IR operation, with its parameters' constraints and its hints, or {@code null}
+     *         when it is absent or inactive at the major
+     */
+    public Operation operation(String operationId) {
+        return activeOperations.get(operationId);
+    }
+
+    /**
+     * @param className qualified name of the entity class
+     * @param fieldName Java field name
+     * @return the IR field, with its constraints, or {@code null} when the IR has no such field
+     */
+    public Field field(String className, String fieldName) {
+        return fields.get(className + "#" + fieldName);
     }
 
     /** The OpenAPI {@code operationId} of every active API operation, keyed by {@link Operation#id()}. */
