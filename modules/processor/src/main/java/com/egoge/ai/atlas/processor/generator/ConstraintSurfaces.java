@@ -3,6 +3,7 @@
  */
 package com.egoge.ai.atlas.processor.generator;
 
+import com.egoge.ai.atlas.processor.constraints.ConstrainedType;
 import com.egoge.ai.atlas.processor.constraints.EffectiveConstraints;
 import com.egoge.ai.atlas.processor.constraints.EffectiveConstraints.PatternConstraint;
 import com.egoge.ai.atlas.processor.constraints.PortableRegex;
@@ -13,7 +14,15 @@ import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
+import com.palantir.javapoet.ArrayTypeName;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.ParameterizedTypeName;
+import com.palantir.javapoet.TypeName;
+import com.palantir.javapoet.WildcardTypeName;
 import io.swagger.v3.oas.models.media.Schema;
+
+import javax.annotation.processing.ProcessingEnvironment;
+import javax.lang.model.element.TypeElement;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -34,8 +43,9 @@ import java.util.Map;
  *
  * @param projection     the projection the generators consume
  * @param beanValidation whether {@code jakarta.validation.constraints.NotNull} resolves
+ * @param env            the processing environment, which resolves parameter types
  */
-public record ConstraintSurfaces(ContractProjection projection, boolean beanValidation) {
+public record ConstraintSurfaces(ContractProjection projection, boolean beanValidation, ProcessingEnvironment env) {
 
     static final String K_MINIMUM = "minimum";
     static final String K_EXCLUSIVE_MINIMUM = "exclusiveMinimum";
@@ -75,6 +85,40 @@ public record ConstraintSurfaces(ContractProjection projection, boolean beanVali
                     + param.name() + "' at position " + index);
         }
         return parameters.get(index);
+    }
+
+    /**
+     * Whether a parameter of {@code type} is a JSON array: an array or any {@code java.util.Collection}
+     * subtype, the test {@link ConstrainedType} applies to item counts (FR-002).
+     *
+     * @param type the parameter's type, raw or parameterized
+     * @return whether it is an array or a collection
+     */
+    boolean collection(TypeName type) {
+        if (type instanceof ArrayTypeName) {
+            return true;
+        }
+        TypeName raw = type instanceof ParameterizedTypeName parameterized ? parameterized.rawType() : type;
+        if (!(raw instanceof ClassName className)) {
+            return false;
+        }
+        TypeElement element = env.getElementUtils().getTypeElement(className.canonicalName());
+        return element != null && ConstrainedType.of(element.asType(), env).items();
+    }
+
+    /**
+     * The element type of an array, or of a collection with one type argument, a wildcard read as
+     * its upper bound; {@code null} when raw.
+     */
+    static TypeName elementType(TypeName type) {
+        if (type instanceof ArrayTypeName array) {
+            return array.componentType();
+        }
+        if (type instanceof ParameterizedTypeName parameterized && parameterized.typeArguments().size() == 1) {
+            TypeName argument = parameterized.typeArguments().get(0);
+            return argument instanceof WildcardTypeName wildcard ? wildcard.upperBounds().get(0) : argument;
+        }
+        return null;
     }
 
     /** The effective constraints of a projected DTO field. */

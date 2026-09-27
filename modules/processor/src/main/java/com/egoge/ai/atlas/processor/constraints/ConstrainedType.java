@@ -18,9 +18,14 @@ import javax.lang.model.type.TypeMirror;
  * @param string   whether lengths apply: a {@link CharSequence}
  * @param items    whether item counts apply: a collection or an array
  */
-record ConstrainedType(TypeMirror type, boolean numeric, boolean integral, boolean string, boolean items) {
+public record ConstrainedType(TypeMirror type, boolean numeric, boolean integral, boolean string, boolean items) {
 
-    static ConstrainedType of(TypeMirror type, ProcessingEnvironment env) {
+    /**
+     * @param type the element's type
+     * @param env  the processing environment
+     * @return what kinds of constraint {@code type} can carry
+     */
+    public static ConstrainedType of(TypeMirror type, ProcessingEnvironment env) {
         TypeKind kind = type.getKind();
         if (kind.isPrimitive()) {
             boolean integral = kind == TypeKind.BYTE || kind == TypeKind.SHORT || kind == TypeKind.INT

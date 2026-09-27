@@ -21,10 +21,12 @@ public final class ConstraintsOption {
 
     private final boolean enabled;
     private final boolean beanValidation;
+    private final ProcessingEnvironment env;
 
-    private ConstraintsOption(boolean enabled, boolean beanValidation) {
+    private ConstraintsOption(boolean enabled, boolean beanValidation, ProcessingEnvironment env) {
         this.enabled = enabled;
         this.beanValidation = beanValidation;
+        this.env = env;
     }
 
     /**
@@ -38,7 +40,7 @@ public final class ConstraintsOption {
     public static ConstraintsOption resolve(String option, ProcessingEnvironment env) {
         String value = env.getOptions().get(option);
         if (value == null || "false".equalsIgnoreCase(value)) {
-            return new ConstraintsOption(false, false);
+            return new ConstraintsOption(false, false, env);
         }
         if (!"true".equalsIgnoreCase(value)) {
             env.getMessager().printMessage(Diagnostic.Kind.ERROR,
@@ -46,7 +48,7 @@ public final class ConstraintsOption {
             return null;
         }
         return new ConstraintsOption(true,
-                env.getElementUtils().getTypeElement(McpToolGenerator.VALIDATION_API_PROBE) != null);
+                env.getElementUtils().getTypeElement(McpToolGenerator.VALIDATION_API_PROBE) != null, env);
     }
 
     /** Whether the option is on. */
@@ -59,7 +61,7 @@ public final class ConstraintsOption {
      * @return the constraint surfaces over {@code projection}, or {@code null} when the option is off
      */
     public ConstraintSurfaces surfaces(ContractProjection projection) {
-        return enabled ? new ConstraintSurfaces(projection, beanValidation) : null;
+        return enabled ? new ConstraintSurfaces(projection, beanValidation, env) : null;
     }
 
     /**

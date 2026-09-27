@@ -11,11 +11,9 @@ import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
 import com.egoge.ai.atlas.processor.util.VersionSelector;
-import com.palantir.javapoet.ArrayTypeName;
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.ParameterizedTypeName;
 import com.palantir.javapoet.TypeName;
-import com.palantir.javapoet.WildcardTypeName;
 
 import javax.annotation.processing.Filer;
 import javax.annotation.processing.Messager;
@@ -78,10 +76,7 @@ public final class McpToolsResourceGenerator {
     private static final String TIME_PACKAGE = "java.time";
     private static final Set<String> INTEGER_TYPES = Set.of("java.math.BigInteger");
     private static final Set<String> NUMBER_TYPES = Set.of("java.math.BigDecimal", "java.lang.Number");
-    private static final Set<String> COLLECTION_TYPES = Set.of("java.lang.Iterable", "java.util.Collection",
-            "java.util.List", "java.util.Set", "java.util.SortedSet", "java.util.NavigableSet", "java.util.Queue",
-            "java.util.Deque", "java.util.ArrayList", "java.util.LinkedList", "java.util.HashSet",
-            "java.util.LinkedHashSet", "java.util.TreeSet");
+    private static final String ITERABLE = "java.lang.Iterable";
 
     private McpToolsResourceGenerator() {
     }
@@ -135,7 +130,7 @@ public final class McpToolsResourceGenerator {
         for (Tool tool : tools) {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put(K_NAME, tool.name());
-            entry.put(K_INPUT_SCHEMA, inputSchema(tool.method(), tool.operation()));
+            entry.put(K_INPUT_SCHEMA, inputSchema(tool.method(), tool.operation(), constraints));
             entry.put(K_ANNOTATIONS, annotations(tool.operation().hints()));
             entries.add(entry);
         }
@@ -144,13 +139,14 @@ public final class McpToolsResourceGenerator {
         return doc;
     }
 
-    private static Map<String, Object> inputSchema(MethodModel method, ContractIr.Operation operation) {
+    private static Map<String, Object> inputSchema(MethodModel method, ContractIr.Operation operation,
+                                                   ConstraintSurfaces constraints) {
         Map<String, Object> properties = new LinkedHashMap<>();
         List<Object> required = new ArrayList<>();
         for (int i = 0; i < method.parameters().size(); i++) {
             ParameterModel param = method.parameters().get(i);
             ContractIr.Parameter irParam = ConstraintSurfaces.parameter(operation, i, param);
-            Map<String, Object> property = type(param.typeName(), irParam.enumConstants());
+            Map<String, Object> property = type(param.typeName(), irParam.enumConstants(), constraints);
             property.put(K_DESCRIPTION, param.description().isEmpty() ? param.name() : param.description());
             ConstraintSurfaces.applyJsonSchema(property, irParam.constraints());
             properties.put(param.name(), property);
@@ -178,7 +174,8 @@ public final class McpToolsResourceGenerator {
     }
 
     /** The JSON type of a Java type; a type with no JSON counterpart is an {@code object}. */
-    private static Map<String, Object> type(TypeName type, List<String> enumConstants) {
+    private static Map<String, Object> type(TypeName type, List<String> enumConstants,
+                                            ConstraintSurfaces constraints) {
         Map<String, Object> schema = new LinkedHashMap<>();
         if (!enumConstants.isEmpty()) {
             schema.put(K_TYPE, T_STRING);
@@ -190,9 +187,9 @@ public final class McpToolsResourceGenerator {
             schema.put(K_TYPE, scalar);
             return schema;
         }
-        if (isArray(type)) {
+        if (isArray(type, constraints)) {
             schema.put(K_TYPE, T_ARRAY);
-            TypeName element = elementType(type);
+            TypeName element = ConstraintSurfaces.elementType(type);
             String elementScalar = element != null ? scalarType(element) : null;
             if (elementScalar != null) {
                 Map<String, Object> items = new LinkedHashMap<>();
@@ -229,28 +226,19 @@ public final class McpToolsResourceGenerator {
         return NUMBER_TYPES.contains(name) ? T_NUMBER : null;
     }
 
-    /** Whether the type is an array or a {@code java.util} collection, raw or parameterized. */
-    private static boolean isArray(TypeName type) {
-        if (type instanceof ArrayTypeName) {
-            return true;
-        }
-        ClassName raw = type instanceof ParameterizedTypeName parameterized ? parameterized.rawType()
-                : type instanceof ClassName className ? className : null;
-        return raw != null && COLLECTION_TYPES.contains(raw.canonicalName());
+    /**
+     * Whether the type is an array, any {@code java.util.Collection} (the test
+     * {@link com.egoge.ai.atlas.processor.constraints.ConstrainedType} applies to item counts), or an
+     * {@code Iterable}.
+     */
+    private static boolean isArray(TypeName type, ConstraintSurfaces constraints) {
+        return isIterable(type) || constraints.collection(type);
     }
 
-    /** The element type of an array or a parameterized {@code java.util} collection; {@code null} when raw. */
-    private static TypeName elementType(TypeName type) {
-        if (type instanceof ArrayTypeName array) {
-            return array.componentType();
-        }
-        if (type instanceof ParameterizedTypeName parameterized
-                && COLLECTION_TYPES.contains(parameterized.rawType().canonicalName())
-                && parameterized.typeArguments().size() == 1) {
-            TypeName argument = parameterized.typeArguments().get(0);
-            return argument instanceof WildcardTypeName wildcard ? wildcard.upperBounds().get(0) : argument;
-        }
-        return null;
+    private static boolean isIterable(TypeName type) {
+        ClassName raw = type instanceof ParameterizedTypeName parameterized ? parameterized.rawType()
+                : type instanceof ClassName className ? className : null;
+        return raw != null && ITERABLE.equals(raw.canonicalName());
     }
 
     private static void putIfSet(Map<String, Object> map, String key, Object value) {
