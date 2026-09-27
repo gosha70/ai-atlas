@@ -82,6 +82,9 @@ public final class IrJson {
     private static final String K_API_UNTIL = "apiUntil";
     private static final String K_API_DEPRECATED_SINCE = "apiDeprecatedSince";
     private static final String K_API_REPLACEMENT = "apiReplacement";
+    private static final String K_REQUIRED = "required";
+    /** The first {@code irVersion} with constraint, requiredness and hint slots. */
+    private static final int CONSTRAINTS_VERSION = 2;
 
     private static final String INDENT = "  ";
     private static final char NEWLINE = '\n';
@@ -158,6 +161,7 @@ public final class IrJson {
         map.put(K_SENSITIVE, field.sensitive());
         map.put(K_CHECK_CIRCULAR_REFERENCE, field.checkCircularReference());
         map.put(K_DESCRIPTION, field.description());
+        map.put(IrConstraintsJson.K_CONSTRAINTS, IrConstraintsJson.write(field.constraints()));
         FieldLifecycle lifecycle = field.lifecycle();
         Map<String, Object> life = new LinkedHashMap<>();
         life.put(K_SINCE_VERSION, lifecycle.sinceVersion());
@@ -200,6 +204,8 @@ public final class IrJson {
             p.put(K_JAVA_TYPE, param.javaType());
             p.put(K_DESCRIPTION, param.description());
             p.put(K_ENUM_CONSTANTS, param.enumConstants());
+            p.put(K_REQUIRED, param.required());
+            p.put(IrConstraintsJson.K_CONSTRAINTS, IrConstraintsJson.write(param.constraints()));
             params.add(p);
         }
         map.put(K_PARAMETERS, params);
@@ -209,6 +215,7 @@ public final class IrJson {
         returns.put(K_RETURN_TYPE, op.returns().returnType());
         returns.put(K_REFERENCE, typeRef(op.returns().reference()));
         map.put(K_RETURNS, returns);
+        map.put(IrConstraintsJson.K_HINTS, IrConstraintsJson.write(op.hints()));
         OperationLifecycle lifecycle = op.lifecycle();
         Map<String, Object> life = new LinkedHashMap<>();
         life.put(K_API_SINCE, lifecycle.apiSince());
@@ -347,8 +354,11 @@ public final class IrJson {
                 throw new IllegalArgumentException("'" + K_IR_VERSION + "' must be at least 1, got "
                         + irVersion);
             }
-            return new ContractIr(irVersion, string(root, K_API_BASE_PATH), integer(root, K_API_MAJOR),
-                    list(root, K_ENTITIES, IrJson::readEntity), list(root, K_OPERATIONS, IrJson::readOperation));
+            // A version-1 document is migrated: its constraint, requiredness and hint slots are unknown (FR-006)
+            boolean v2 = irVersion >= CONSTRAINTS_VERSION;
+            return new ContractIr(ContractIr.IR_VERSION, string(root, K_API_BASE_PATH), integer(root, K_API_MAJOR),
+                    list(root, K_ENTITIES, e -> readEntity(e, v2)),
+                    list(root, K_OPERATIONS, o -> readOperation(o, v2)));
         } catch (IllegalArgumentException e) {
             throw malformed(source, e.getMessage());
         }
@@ -358,19 +368,20 @@ public final class IrJson {
         return new IrReadException("Contract baseline " + source + " is not valid Contract IR JSON: " + detail);
     }
 
-    private static Entity readEntity(JsonNode node) {
+    private static Entity readEntity(JsonNode node, boolean v2) {
         return new Entity(string(node, K_CLASS_NAME), string(node, K_DTO_NAME), string(node, K_DTO_PACKAGE),
                 string(node, K_DISPLAY_NAME), string(node, K_DESCRIPTION), bool(node, K_INCLUDE_TYPE_INFO),
-                list(node, K_FIELDS, IrJson::readField));
+                list(node, K_FIELDS, f -> readField(f, v2)));
     }
 
-    private static Field readField(JsonNode node) {
+    private static Field readField(JsonNode node, boolean v2) {
         JsonNode life = object(node, K_LIFECYCLE);
         return new Field(string(node, K_NAME), string(node, K_DISPLAY_NAME), string(node, K_JAVA_TYPE),
                 string(node, K_COLLECTION_KIND), nullableString(node, K_ELEMENT_TYPE),
                 nullableString(node, K_TYPE_HINT), readTypeRef(node), bool(node, K_ENUM_TYPE),
                 strings(node, K_ALLOWED_VALUES), bool(node, K_OPEN_ENUM), bool(node, K_SENSITIVE),
                 bool(node, K_CHECK_CIRCULAR_REFERENCE), string(node, K_DESCRIPTION),
+                v2 ? IrConstraintsJson.readConstraints(node) : null,
                 new FieldLifecycle(integer(life, K_SINCE_VERSION), integer(life, K_REMOVED_IN_VERSION),
                         integer(life, K_DEPRECATED_SINCE_VERSION), string(life, K_DEPRECATED_MESSAGE)));
     }
@@ -380,7 +391,7 @@ public final class IrJson {
         return ref == null ? null : new TypeRef(string(ref, K_ENTITY), string(ref, K_DTO));
     }
 
-    private static Operation readOperation(JsonNode node) {
+    private static Operation readOperation(JsonNode node, boolean v2) {
         JsonNode restNode = nullableObject(node, K_REST);
         Rest rest = restNode == null ? null
                 : new Rest(string(restNode, K_HTTP_METHOD), string(restNode, K_PATH));
@@ -389,9 +400,11 @@ public final class IrJson {
         return new Operation(string(node, K_SERVICE), string(node, K_METHOD), string(node, K_TOOL_NAME),
                 strings(node, K_CHANNELS), string(node, K_DESCRIPTION), rest,
                 list(node, K_PARAMETERS, p -> new Parameter(string(p, K_NAME), string(p, K_JAVA_TYPE),
-                        string(p, K_DESCRIPTION), strings(p, K_ENUM_CONSTANTS))),
+                        string(p, K_DESCRIPTION), strings(p, K_ENUM_CONSTANTS), v2 ? bool(p, K_REQUIRED) : null,
+                        v2 ? IrConstraintsJson.readConstraints(p) : null)),
                 new Return(string(returns, K_JAVA_TYPE), string(returns, K_RETURN_KIND),
                         nullableString(returns, K_RETURN_TYPE), readTypeRef(returns)),
+                v2 ? IrConstraintsJson.readHints(node) : null,
                 new OperationLifecycle(integer(life, K_API_SINCE), integer(life, K_API_UNTIL),
                         integer(life, K_API_DEPRECATED_SINCE), string(life, K_API_REPLACEMENT)));
     }
@@ -404,7 +417,7 @@ public final class IrJson {
         return value;
     }
 
-    private static String string(JsonNode node, String key) {
+    static String string(JsonNode node, String key) {
         JsonNode value = required(node, key);
         if (!value.isTextual()) {
             throw new IllegalArgumentException("'" + key + "' must be a string");
@@ -416,7 +429,7 @@ public final class IrJson {
         return required(node, key).isNull() ? null : string(node, key);
     }
 
-    private static int integer(JsonNode node, String key) {
+    static int integer(JsonNode node, String key) {
         JsonNode value = required(node, key);
         if (!value.isInt()) {
             throw new IllegalArgumentException("'" + key + "' must be an integer");
@@ -424,7 +437,7 @@ public final class IrJson {
         return value.intValue();
     }
 
-    private static boolean bool(JsonNode node, String key) {
+    static boolean bool(JsonNode node, String key) {
         JsonNode value = required(node, key);
         if (!value.isBoolean()) {
             throw new IllegalArgumentException("'" + key + "' must be a boolean");
@@ -432,7 +445,7 @@ public final class IrJson {
         return value.booleanValue();
     }
 
-    private static JsonNode object(JsonNode node, String key) {
+    static JsonNode object(JsonNode node, String key) {
         JsonNode value = required(node, key);
         if (!value.isObject()) {
             throw new IllegalArgumentException("'" + key + "' must be an object");
@@ -444,7 +457,7 @@ public final class IrJson {
         return required(node, key).isNull() ? null : object(node, key);
     }
 
-    private static <T> List<T> list(JsonNode node, String key, Function<JsonNode, T> reader) {
+    static <T> List<T> list(JsonNode node, String key, Function<JsonNode, T> reader) {
         JsonNode value = required(node, key);
         if (!value.isArray()) {
             throw new IllegalArgumentException("'" + key + "' must be an array");
@@ -459,7 +472,7 @@ public final class IrJson {
         return result;
     }
 
-    private static List<String> strings(JsonNode node, String key) {
+    static List<String> strings(JsonNode node, String key) {
         JsonNode value = required(node, key);
         if (!value.isArray()) {
             throw new IllegalArgumentException("'" + key + "' must be an array");

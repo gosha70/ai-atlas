@@ -6,9 +6,12 @@ package com.egoge.ai.atlas.processor.contract;
 import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.egoge.ai.atlas.annotations.AgenticExposed;
 import com.egoge.ai.atlas.annotations.AgenticField;
+import com.egoge.ai.atlas.processor.constraints.ConstraintReader;
+import com.egoge.ai.atlas.processor.constraints.EffectiveConstraints;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Entity;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Field;
 import com.egoge.ai.atlas.processor.contract.ContractIr.FieldLifecycle;
+import com.egoge.ai.atlas.processor.contract.ContractIr.Hints;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Operation;
 import com.egoge.ai.atlas.processor.contract.ContractIr.OperationLifecycle;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Parameter;
@@ -45,6 +48,7 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -86,10 +90,13 @@ public final class IrBuilder {
     };
 
     private final ProcessingEnvironment env;
+    private final ConstraintReader constraintReader;
     private final Map<String, EntityModel> entities = new TreeMap<>();
     private final Map<String, Operation> operations = new TreeMap<>();
     /** {@code entity#field} of every field declared {@code openEnum = true}. */
     private final Set<String> openEnums = new HashSet<>();
+    /** The effective constraints of each recorded field, by {@code entity#field} (FR-002). */
+    private final Map<String, EffectiveConstraints> fieldConstraints = new HashMap<>();
     private boolean written = false;
 
     /**
@@ -97,6 +104,7 @@ public final class IrBuilder {
      */
     public IrBuilder(ProcessingEnvironment env) {
         this.env = env;
+        this.constraintReader = new ConstraintReader(env);
     }
 
     /**
@@ -125,6 +133,7 @@ public final class IrBuilder {
             if (fieldAnnotation != null && fieldAnnotation.openEnum()) {
                 recordOpenEnum(className, field);
             }
+            fieldConstraints.put(className + "#" + field.model().name(), constraintReader.readField(field.element()));
         }
         String simpleName = entity.getSimpleName().toString();
         String dtoPackage = annotation.packageName().isEmpty()
@@ -231,8 +240,10 @@ public final class IrBuilder {
                 ? methodAnnotation.toolName() : methodName;
         List<Parameter> parameters = new ArrayList<>();
         for (VariableElement param : method.getParameters()) {
-            parameters.add(new Parameter(param.getSimpleName().toString(), typeString(param.asType()), "",
-                    enumConstants(param.asType())));
+            ConstraintReader.ParameterContract contract = constraintReader.readParameter(param);
+            parameters.add(new Parameter(param.getSimpleName().toString(), typeString(param.asType()),
+                    contract.description(), enumConstants(param.asType()), contract.required(),
+                    contract.constraints()));
         }
         Rest rest = null;
         if (channels.contains(API_CHANNEL)) {
@@ -257,7 +268,7 @@ public final class IrBuilder {
         Operation operation = new Operation(service.getQualifiedName().toString(), methodName, toolName,
                 channels.stream().sorted().toList(),
                 AttributeResolver.resolveDescription(methodAnnotation, typeAnnotation, methodName),
-                rest, parameters, returns, lifecycle);
+                rest, parameters, returns, Hints.NONE, lifecycle);
         operations.put(operation.id(), operation);
         return operation.id();
     }
@@ -314,7 +325,9 @@ public final class IrBuilder {
             List<Field> fields = new ArrayList<>();
             String className = entity.sourceClassName().canonicalName();
             for (FieldModel field : entity.fields()) {
-                fields.add(field(field, openEnums.contains(className + "#" + field.name())));
+                String key = className + "#" + field.name();
+                fields.add(field(field, openEnums.contains(key),
+                        fieldConstraints.getOrDefault(key, EffectiveConstraints.NONE)));
             }
             irEntities.add(new Entity(className, entity.dtoName(),
                     entity.dtoPackageName(), entity.displayName(), entity.classDescription(),
@@ -329,20 +342,20 @@ public final class IrBuilder {
             irOperations.add(new Operation(op.service(), op.method(), op.toolName(), op.channels(),
                     op.description(), op.rest(), op.parameters(),
                     new Return(returns.javaType(), returns.returnKind(), returns.returnType(), reference),
-                    op.lifecycle()));
+                    op.hints(), op.lifecycle()));
         }
         irOperations.sort(Comparator.comparing(Operation::service).thenComparing(Operation::signature));
         return new ContractIr(ContractIr.IR_VERSION, apiBasePath, apiMajor, irEntities, irOperations);
     }
 
-    private Field field(FieldModel field, boolean openEnum) {
+    private Field field(FieldModel field, boolean openEnum, EffectiveConstraints constraints) {
         EntityRefResolver.EntityRef ref = EntityRefResolver.resolve(field, entities);
         return new Field(field.name(), field.displayName(), field.typeName().toString(),
                 field.collectionKind().name(), typeString(field.elementTypeName()),
                 typeString(field.hintTypeName()),
                 ref != null ? new TypeRef(ref.entityClass().canonicalName(), ref.dtoClass().canonicalName()) : null,
                 field.enumType(), field.enumValues(), openEnum, field.sensitive(), field.checkCircularReference(),
-                field.description(), new FieldLifecycle(field.sinceVersion(), field.removedInVersion(),
+                field.description(), constraints, new FieldLifecycle(field.sinceVersion(), field.removedInVersion(),
                         field.deprecatedSinceVersion(), field.deprecatedMessage()));
     }
 

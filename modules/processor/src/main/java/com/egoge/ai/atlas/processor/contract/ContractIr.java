@@ -3,6 +3,8 @@
  */
 package com.egoge.ai.atlas.processor.contract;
 
+import com.egoge.ai.atlas.processor.constraints.EffectiveConstraints;
+
 import java.util.List;
 
 /**
@@ -11,6 +13,9 @@ import java.util.List;
  *
  * <p>Plain values only (FR-005): Java types are canonical source-form strings, enums are their
  * names, and absent values are {@code null}. {@link IrJson} writes and reads the canonical form.
+ *
+ * <p>A constraint, requiredness or hint slot is {@code null} only in a document migrated from
+ * {@code irVersion} 1: its value is <em>unknown</em>, which is distinct from "none" (FR-006).
  *
  * @param irVersion   version of this document's format, {@link #IR_VERSION} when written
  * @param apiBasePath configured REST base path, e.g. {@code /api}
@@ -22,7 +27,7 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
                          List<Entity> entities, List<Operation> operations) {
 
     /** The {@code irVersion} this ai-atlas writes and the highest it reads. */
-    public static final int IR_VERSION = 1;
+    public static final int IR_VERSION = 2;
     /** Class-output-relative path of the emitted IR document. */
     public static final String RESOURCE_PATH = "META-INF/ai-atlas/api.ir.json";
 
@@ -66,12 +71,14 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
      * @param sensitive              {@code @AgenticField(sensitive)}
      * @param checkCircularReference {@code @AgenticField(checkCircularReference)}
      * @param description            {@code @AgenticField(description)}
+     * @param constraints            the field's effective constraints, or {@code null} when unknown
      * @param lifecycle              the field's lifecycle
      */
     public record Field(String name, String displayName, String javaType, String collectionKind,
                         String elementType, String typeHint, TypeRef reference, boolean enumType,
                         List<String> allowedValues, boolean openEnum, boolean sensitive,
-                        boolean checkCircularReference, String description, FieldLifecycle lifecycle) {
+                        boolean checkCircularReference, String description, EffectiveConstraints constraints,
+                        FieldLifecycle lifecycle) {
 
         public Field {
             allowedValues = List.copyOf(allowedValues);
@@ -110,11 +117,12 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
      * @param rest        the REST mapping, or {@code null} when the method is not on the API channel
      * @param parameters  parameters in declaration order
      * @param returns     the method's return
+     * @param hints       the declared MCP behavioural hints, or {@code null} when unknown
      * @param lifecycle   the method's lifecycle, after method-then-class resolution
      */
     public record Operation(String service, String method, String toolName, List<String> channels,
                             String description, Rest rest, List<Parameter> parameters, Return returns,
-                            OperationLifecycle lifecycle) {
+                            Hints hints, OperationLifecycle lifecycle) {
 
         public Operation {
             channels = List.copyOf(channels);
@@ -161,8 +169,11 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
      * @param javaType      parameter Java type
      * @param description   parameter description
      * @param enumConstants constants of the parameter's enum type; empty when it is not an enum
+     * @param required      whether clients must pass the parameter, or {@code null} when unknown
+     * @param constraints   the parameter's effective constraints, or {@code null} when unknown
      */
-    public record Parameter(String name, String javaType, String description, List<String> enumConstants) {
+    public record Parameter(String name, String javaType, String description, List<String> enumConstants,
+                            Boolean required, EffectiveConstraints constraints) {
 
         public Parameter {
             enumConstants = List.copyOf(enumConstants);
@@ -180,6 +191,20 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
      *                   names no declared entity
      */
     public record Return(String javaType, String returnKind, String returnType, TypeRef reference) {
+    }
+
+    /**
+     * An operation's declared MCP behavioural hints; each is {@code null} when not declared.
+     *
+     * @param readOnly    whether the tool only reads
+     * @param destructive whether the tool may destroy data
+     * @param idempotent  whether repeating a call has no further effect
+     * @param openWorld   whether the tool reaches outside the service's own domain
+     */
+    public record Hints(Boolean readOnly, Boolean destructive, Boolean idempotent, Boolean openWorld) {
+
+        /** No hint declared. */
+        public static final Hints NONE = new Hints(null, null, null, null);
     }
 
     /**

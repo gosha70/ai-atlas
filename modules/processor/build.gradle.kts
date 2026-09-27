@@ -28,6 +28,8 @@ dependencies {
     testImplementation(platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.spring.boot.get()}"))
     testImplementation("org.springframework:spring-web")
     testImplementation(libs.spring.ai.mcp.server)
+    // Bean Validation annotations for constraint fixtures; the processor reads them by name only
+    testImplementation("jakarta.validation:jakarta.validation-api")
 }
 
 // Inputs for AtlasGeneratorGoldenTest: the demo's annotation-processed output is the golden
