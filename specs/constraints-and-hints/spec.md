@@ -396,9 +396,21 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
       items, the `pattern`/`allOf` of FR-004a), and the property's membership in `required`.
     - It keeps every other keyword of the derived property: `items`, nested `properties`,
       `format`, `description`, `enum` and the rest.
-    - When a property's derived `type` differs from the generated one, the generated `type` wins for
-      that property, because the constraint keywords need their type. The runtime logs one DEBUG line
-      naming the tool, the property and both types.
+    - The merge **never changes the derived `type`**. Spring AI derives it from the real Java
+      signature, so it is authoritative, whereas the processor's generated type can be a fallback
+      (for example `object` for a type it does not recognise). The generated `type` is not merged.
+    - A constraint keyword is merged only when it applies to the derived type:
+      - bounds apply to `integer` or `number`;
+      - lengths, `pattern`, `allOf` patterns and `notBlank` apply to `string`;
+      - item bounds apply to `array`.
+
+      A keyword whose kind does not fit the derived type is left out, and the runtime logs one
+      WARNING naming the tool, the property, the derived type and the keyword. That constraint is
+      then advisory in the schema, and Bean Validation still enforces it. For example, a
+      `Vector<String>` parameter keeps its derived `type: array, items: {type: string}` and gains
+      `minItems`.
+    - A generated property that is absent from the derived schema is not added, and the runtime
+      logs one WARNING.
     - The merged schema declares `"$schema": "https://json-schema.org/draft/2020-12/schema"`. A test
       MUST validate every merged `inputSchema` against the 2020-12 metaschema.
     - The tool's `annotations` are the entry's hints.
