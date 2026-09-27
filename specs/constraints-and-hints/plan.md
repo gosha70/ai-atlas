@@ -3,7 +3,7 @@ spec_mode: full
 feature_id: constraints-and-hints
 risk_category: schema
 justification: "Moves the persisted Contract IR to irVersion 2 with a migration, adds gate rules that can fail consumers' builds, adds two annotations and hint attributes, changes generated OpenAPI/REST/MCP shapes behind a flag, and replaces the runtime MCP registration path — schema-level, multi-module, consumer-visible."
-status: draft
+status: approved
 date: 2026-09-26
 collaboration_mode: single
 origin:
