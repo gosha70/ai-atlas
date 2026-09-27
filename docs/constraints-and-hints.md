@@ -40,7 +40,9 @@ or through a `.List` container such as `@Pattern.List`.
 | `@NotBlank` | Required, and `notBlank` |
 | `@NotEmpty` | Required, and `minLength 1` (string) or `minItems 1` (collection or array) |
 
-- `@Size`'s default bounds (`0` and `Integer.MAX_VALUE`) are not recorded.
+- `@Size`'s default bounds (`0` and `Integer.MAX_VALUE`) are not recorded. So `@Size(min = 3)`
+  records only `minLength 3` and no `maxLength`, and `@Size(max = 10)` records only `maxLength 10`
+  and no `minLength`.
 - The pattern set is unordered; a value must match every pattern, each as a whole-string Java match.
 - `notBlank` means at least one non-whitespace character anywhere, line breaks included. It is not
   translated to a regex (see [`notBlank`](#notblank)).
@@ -96,7 +98,9 @@ A parameter is required, in this order of precedence:
 2. otherwise, when it is a primitive or carries `@NotNull`, `@NotBlank` or `@NotEmpty`;
 3. otherwise, it is still required, as REST query parameters always have been.
 
-So a parameter is optional only when it is declared `Requiredness.OPTIONAL`.
+So a parameter is optional only when it is declared `Requiredness.OPTIONAL`. `Requiredness.REQUIRED`
+is always allowed, including together with `@NotNull`, `@NotBlank` or `@NotEmpty` or on a
+primitive; since a parameter is required by default, it changes nothing.
 
 ## Errors and warnings
 
@@ -117,7 +121,10 @@ A **compile WARNING** is reported:
 
 - on a parameter, when an `@AgenticConstraints` value is **looser** than the Bean Validation
   constraint it replaces: a lower minimum, a higher maximum, a wider length or item range, or a
-  replaced pattern set. It names the key and both values. The override wins in the published
+  replaced pattern set. Whether one regex admits fewer values than another cannot be decided in
+  general, so an `@AgenticConstraints.pattern` warns whenever the Bean Validation pattern set is
+  non-empty and differs from that one pattern, even if the override is in fact tighter. It names
+  the key and both values. The override wins in the published
   schemas, but Bean Validation on the service itself still enforces its own constraint;
 - on an element, when a pattern cannot be published faithfully (see below). It names the pattern
   and the first unsupported construct.
@@ -127,8 +134,11 @@ A **compile WARNING** is reported:
 Java and ECMAScript, which JSON Schema and OpenAPI validators follow, do not agree on regex
 semantics: `\s`, `\d`, `\w` and `.` differ on non-ASCII characters, and ECMAScript without the `u`
 flag matches UTF-16 code units, not code points. ai-atlas therefore publishes a pattern only when
-every value gets the same accept/reject result under Java whole-string matching and under
-ECMAScript matching of the published form, with and without `u`.
+it is written entirely in a conservative syntactic subset, below, whose translation is built so
+that every value gets the same accept/reject result under Java whole-string matching and under
+ECMAScript matching of the published form, with and without `u`. This is not a general
+equivalence check between the two engines: a pattern outside the subset is not published, even if
+it would happen to behave the same.
 
 ### The portable subset
 
@@ -164,6 +174,12 @@ The alternatives match a surrogate pair, a lone high surrogate, a lone low surro
 code point outside `X`, so backtracking can never split one character into two matches. The
 lookbehind requires an **ECMAScript 2018 or later** regex engine on the client.
 
+The same form is valid with and without `u`. With `u`, the escapes `\uD800`–`\uDFFF` in a class
+denote lone surrogate code points, which a well-formed string never contains as units of a pair:
+the pair alternative then never matches, a supplementary character matches the last alternative as
+one code point, and a lone surrogate in the input still matches its own alternative. No `u`-specific
+variant is needed.
+
 The published form of a translated pattern `t` is anchored as `^(?:t)$`. Several published
 patterns on one property, including `notBlank`'s, are written as an `allOf` of single-`pattern`
 schemas inside that property.
@@ -185,13 +201,20 @@ more permissive, and the service still has the last word.
 
 `notBlank` follows Hibernate Validator 8.0.3's `@NotBlank`, which ai-atlas is tested with: the value
 must contain at least one UTF-16 code unit above U+0020. So U+00A0 and U+2003 count as non-blank,
-and U+0000–U+0020 do not. It is published as the unanchored pattern `[^\u0000- ]` together with
+and U+0000–U+0020 do not. It is published as the pattern `[^\u0000- ]` together with
 `minLength 1`. Other Bean Validation providers may define blankness differently.
+
+This pattern is deliberately **not** anchored, the one exception to the `^(?:t)$` rule above. JSON
+Schema and OpenAPI patterns are unanchored searches, so `[^\u0000- ]` accepts a value exactly when
+some code unit anywhere in it is above U+0020, which is `notBlank`. It is not a translated Java
+pattern, so the whole-string anchoring that makes a translated pattern match like Java's
+`matches()` does not apply to it.
 
 ## Length units
 
-Bean Validation's `@Size` counts **UTF-16** code units, while JSON Schema's `minLength`/`maxLength`
-count code points. ai-atlas publishes the lengths as declared:
+Bean Validation's `@Size` counts **UTF-16** code units, while `minLength`/`maxLength` count code
+points in both published schemas: in the MCP JSON Schema 2020-12 dialect, and in OpenAPI 3.0.3,
+whose Schema Object takes them from JSON Schema. ai-atlas publishes the lengths as declared:
 
 - for text in the Basic Multilingual Plane the two agree exactly;
 - for characters outside it, such as U+1F600 (one code point, two UTF-16 units), the schemas and

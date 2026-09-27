@@ -83,7 +83,9 @@ readable, by chaining the migrations.
 `irVersion 2` adds `Field.constraints`, `Parameter.constraints`, `Parameter.required` and
 `Operation.hints`. A version-1 baseline is migrated in memory with every one of these slots
 **unknown**: JSON `null`, which is distinct from an empty object (known to set nothing). A
-version-2 document with a missing or `null` slot is malformed.
+document that declares `irVersion 2` in its file and has a missing or `null` slot is malformed.
+That check applies only when a file is read; a version-1 baseline's unknown slots are the result of
+its migration, and are never rejected.
 
 The gate never reports a change from an unknown baseline value, in gate mode or in lock mode. So
 upgrading ai-atlas does not fail a project, even a locked one, whose baseline is still version 1.
@@ -180,14 +182,16 @@ are compared as endpoints**, value and exclusivity together:
 | `minLength` or `minItems` rises or appears; `maxLength` or `maxItems` falls or appears | **Breaking** |
 | A pattern is added to the set, including a changed pattern (a removal plus an addition) | **Breaking** |
 | `notBlank` goes from absent to set | **Breaking** |
-| The reverse of each of these | Compatible |
+| The reverse of each of these, including a pattern removed from the set | Compatible |
 | An entity field's constraints change | `informational` |
 | An operation's hints change | `informational` |
 | Any change from an unknown baseline value (a migrated version-1 baseline) | No difference |
 
 An **`informational`** difference appears in `contract-diff.json` but produces no diagnostic and
-never fails the build, except in lock mode. Output constraints describe what responses already
-satisfy, and hints are client guidance, so neither breaks a client.
+never fails the build, except in lock mode. Entity fields are always output: an operation's inputs
+are its parameters, bound as query parameters, and ai-atlas generates no request body, so an entity
+field's constraints only describe what responses already satisfy. Hints are client guidance.
+Neither breaks a client.
 
 ### Diagnostics
 
