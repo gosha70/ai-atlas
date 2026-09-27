@@ -3,6 +3,7 @@
  */
 package com.egoge.ai.atlas.processor.generator;
 
+import com.egoge.ai.atlas.processor.constraints.Endpoint;
 import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.model.EntityModel;
@@ -60,6 +61,7 @@ public final class OpenApiGenerator {
   private static final String APPLICATION_JSON = "application/json";
   private static final String TEXT_PLAIN = "text/plain";
   private static final ClassName STRING = ClassName.get(String.class);
+  private static final String BIG_DECIMAL = "java.math.BigDecimal";
   /** Class-output-relative directory the OpenAPI specs are written to. */
   public static final String RESOURCE_DIR = "META-INF/openapi/";
   /** Unversioned alias emitted alongside the versioned spec. */
@@ -164,7 +166,7 @@ public final class OpenApiGenerator {
         paths.addPathItem(entry.path(), pathItem);
       }
       pathItem.operation(entry.httpMethod(), buildOperation(entry.method(), operationId, apiMajor,
-          constraints != null ? constraints.operation(entry.operationKey()) : null));
+          constraints != null ? constraints.operation(entry.operationKey()) : null, constraints));
     }
     openAPI.paths(paths);
 
@@ -256,9 +258,10 @@ public final class OpenApiGenerator {
   /**
    * @param irOperation the IR operation whose parameters' requiredness and constraints the
    *                    parameters carry, or {@code null} when {@code ai.atlas.constraints} is off
+   * @param constraints the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
    */
   private static Operation buildOperation(MethodModel method, String operationId, int apiMajor,
-                                          ContractIr.Operation irOperation) {
+                                          ContractIr.Operation irOperation, ConstraintSurfaces constraints) {
     Operation operation = new Operation();
     operation.operationId(operationId);
     operation.summary(method.description());
@@ -280,6 +283,10 @@ public final class OpenApiGenerator {
       if (irOperation != null) {
         ContractIr.Parameter irParam = ConstraintSurfaces.parameter(irOperation, i, param);
         parameter.required(irParam.required());
+        if (!irParam.constraints().isEmpty()) {
+          // The keywords apply only to the matching JSON type, which the flag-off mapping may not give
+          parameter.schema(constrainedSchema(param.typeName(), constraints));
+        }
         ConstraintSurfaces.applyOpenApi(parameter.getSchema(), irParam.constraints());
       }
       operation.addParametersItem(parameter);
@@ -296,6 +303,28 @@ public final class OpenApiGenerator {
     operation.responses(responses);
 
     return operation;
+  }
+
+  /**
+   * The schema of a constrained parameter, typed as the constraint model types it (FR-014): an
+   * integral type is an {@code integer}, {@code float}, {@code double} and {@code BigDecimal} are a
+   * {@code number}, and an array or any {@code java.util.Collection} is an {@code array} with
+   * {@code items}; anything else keeps its flag-off mapping.
+   */
+  private static Schema<?> constrainedSchema(TypeName type, ConstraintSurfaces constraints) {
+    if (constraints.collection(type)) {
+      TypeName element = ConstraintSurfaces.elementType(type);
+      return new ArraySchema().items(element != null ? constrainedSchema(element, constraints) : new Schema<>());
+    }
+    String name = type.toString();
+    Schema<?> schema = mapJavaTypeToSchema(name);
+    if (Endpoint.integral(name) && !"integer".equals(schema.getType())) {
+      return new Schema<>().type("integer");
+    }
+    if (BIG_DECIMAL.equals(name)) {
+      return new Schema<>().type("number");
+    }
+    return schema;
   }
 
   /** Response content matching what the generated controller returns; {@code null} for void. */

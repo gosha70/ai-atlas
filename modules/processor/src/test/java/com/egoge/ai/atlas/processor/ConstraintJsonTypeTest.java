@@ -8,6 +8,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.testing.compile.Compilation;
 import com.google.testing.compile.JavaFileObjects;
+import io.swagger.v3.parser.OpenAPIV3Parser;
+import io.swagger.v3.parser.core.models.ParseOptions;
+import io.swagger.v3.parser.core.models.SwaggerParseResult;
 import org.junit.jupiter.api.Test;
 
 import javax.tools.JavaFileObject;
@@ -28,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ConstraintJsonTypeTest {
 
     private static final String FLAG_ON = "-Aai.atlas.constraints=true";
+    private static final String OPENAPI = "META-INF/openapi/openapi-v1.json";
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private static final JavaFileObject KINDS = JavaFileObjects.forSourceString("t.Kinds", """
@@ -52,6 +56,34 @@ class ConstraintJsonTypeTest {
             package t;
             public class Tags extends java.util.ArrayList<String> { }
             """);
+
+    @Test
+    void constrainedOpenApiParametersHaveTheJsonTypeTheirKeywordsApplyTo() throws IOException {
+        JsonNode parameters = JSON.readTree(resource(compile(), OPENAPI)).get("paths").get("/api/v1/kinds/bounds")
+                .get("post").get("parameters");
+
+        JsonNode price = parameters.get(0).get("schema");
+        assertThat(price.get("type").asText()).isEqualTo("number");
+        assertThat(price.get("minimum").decimalValue()).isEqualByComparingTo("0");
+        assertThat(price.get("exclusiveMinimum").asBoolean()).isTrue();
+        JsonNode level = parameters.get(1).get("schema");
+        assertThat(level.get("type").asText()).isEqualTo("integer");
+        assertThat(level.get("maximum").decimalValue()).isEqualByComparingTo("10");
+        JsonNode tags = parameters.get(2).get("schema");
+        assertThat(tags.get("type").asText()).isEqualTo("array");
+        assertThat(tags.get("items").get("type").asText()).isEqualTo("string");
+        assertThat(tags.get("minItems").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    void theTypedOpenApiDocumentParsesWithoutMessages() {
+        ParseOptions options = new ParseOptions();
+        options.setResolve(false);
+        SwaggerParseResult result = new OpenAPIV3Parser().readContents(resource(compile(), OPENAPI), null, options);
+
+        assertThat(result.getOpenAPI()).isNotNull();
+        assertThat(result.getMessages()).isEmpty();
+    }
 
     @Test
     void everyCollectionTypeIsAnArrayInTheToolSchema() throws IOException {
