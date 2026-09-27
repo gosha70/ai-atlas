@@ -71,12 +71,14 @@ final class ConstraintComparison {
     }
 
     private void compareConstraints(Parameter old, Parameter now) {
-        EffectiveConstraints c0 = old.constraints();
-        EffectiveConstraints c1 = now.constraints();
+        compareConstraints(old.constraints(), now.constraints(), old.javaType());
+    }
+
+    private void compareConstraints(EffectiveConstraints c0, EffectiveConstraints c1, String javaType) {
         if (c0 == null || c1 == null) {
             return;
         }
-        boolean integral = Endpoint.integral(old.javaType());
+        boolean integral = Endpoint.integral(javaType);
         compareEndpoint(C_MINIMUM, c0.lower(), c1.lower(), integral, true);
         compareEndpoint(C_MAXIMUM, c0.upper(), c1.upper(), integral, false);
         compareMin(C_MIN_LENGTH, c0.minLength(), c1.minLength());
@@ -158,16 +160,37 @@ final class ConstraintComparison {
         return value ? Boolean.TRUE.toString() : null;
     }
 
+    /**
+     * Whether two constraint sets on a value of {@code javaType} differ under FR-008, so that
+     * {@code > 9} and {@code >= 10} on an integral type do not.
+     *
+     * @param old      the baseline constraints, never {@code null}
+     * @param now      the fresh constraints, never {@code null}
+     * @param javaType the value's type as the baseline records it
+     * @return whether any key differs
+     */
+    static boolean differ(EffectiveConstraints old, EffectiveConstraints now, String javaType) {
+        List<Difference> differences = new ArrayList<>();
+        new ConstraintComparison("", null, differences).compareConstraints(old, now, javaType);
+        return !differences.isEmpty();
+    }
+
     // ------------------------------------------------------------ unknown slots in lock mode (FR-010)
 
-    /** {@code now} with the constraints unknown when they are unknown in {@code old}, so they compare equal. */
+    /**
+     * {@code now} with the constraints unknown when they are unknown in {@code old}, and the
+     * baseline's own when FR-008 finds no difference, so they compare equal.
+     */
     static Field knownIn(Field old, Field now) {
-        if (old == null || now == null || old.constraints() != null) {
+        if (old == null || now == null || Objects.equals(old.constraints(), now.constraints())) {
             return now;
         }
+        EffectiveConstraints constraints = old.constraints() == null ? null
+                : now.constraints() != null && !differ(old.constraints(), now.constraints(), old.javaType())
+                        ? old.constraints() : now.constraints();
         return new Field(now.name(), now.displayName(), now.javaType(), now.collectionKind(), now.elementType(),
                 now.typeHint(), now.reference(), now.enumType(), now.allowedValues(), now.openEnum(),
-                now.sensitive(), now.checkCircularReference(), now.description(), null, now.lifecycle());
+                now.sensitive(), now.checkCircularReference(), now.description(), constraints, now.lifecycle());
     }
 
     /** {@code now} with each hint, requiredness and constraint slot unknown where it is unknown in {@code old}. */
@@ -195,8 +218,6 @@ final class ConstraintComparison {
         if (old.constraints() == null || now.constraints() == null) {
             return null;
         }
-        List<Difference> differences = new ArrayList<>();
-        new ConstraintComparison("", null, differences).compareConstraints(old, now);
-        return differences.isEmpty() ? old.constraints() : now.constraints();
+        return differ(old.constraints(), now.constraints(), old.javaType()) ? now.constraints() : old.constraints();
     }
 }

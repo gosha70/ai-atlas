@@ -58,7 +58,10 @@ class ConstraintGateTest {
                     @AgenticEntity(description = "An order")
                     public class Order {
                         @AgenticField(description = "Total") /*total*/ @Max(100) private Long total;
+                        @AgenticField(description = "Lines")
+                        /*lines*/ @DecimalMin(value = "9", inclusive = false) private int lines;
                         public Long getTotal() { return total; }
+                        public int getLines() { return lines; }
                     }
                     """,
             SERVICE, """
@@ -200,6 +203,30 @@ class ConstraintGateTest {
         assertThat(diagnosticsMentioning(compilation, "Order#total")).isEmpty();
         assertThat(entries(compilation)).containsExactly(List.of("field shop.Order#total", "constraints",
                 "output", "{maximum=100}", "{maximum=10}", "informational"));
+    }
+
+    @Test
+    void anIntegralFieldBoundSpelledDifferentlyIsNoDifferenceInGateAndLockMode() throws IOException {
+        // on an int field, > 9 and >= 10 are the same endpoint, in either direction
+        Fixture inclusive = base().with(ENTITY, "/*lines*/ @DecimalMin(value = \"9\", inclusive = false)",
+                "/*lines*/ @Min(10)");
+        assertNoDifference(base(), inclusive);
+        assertNoDifference(inclusive, base());
+        assertPasses(gate(baseline(base()), inclusive, LOCKED));
+        assertPasses(gate(baseline(inclusive), base(), LOCKED));
+    }
+
+    @Test
+    void aRealIntegralFieldBoundChangeStaysInformationalAndFailsLockMode() throws IOException {
+        Fixture raised = base().with(ENTITY, "/*lines*/ @DecimalMin(value = \"9\", inclusive = false)",
+                "/*lines*/ @Min(11)");
+        Compilation compilation = gate(baseline(base()), raised);
+
+        assertPasses(compilation);
+        assertThat(entries(compilation)).containsExactly(List.of("field shop.Order#lines", "constraints",
+                "output", "{minimum=9, exclusiveMinimum=true}", "{minimum=11}", "informational"));
+        assertThat(singleError(gate(baseline(base()), raised, LOCKED))).contains("Lock mode")
+                .contains("field shop.Order#lines");
     }
 
     @Test

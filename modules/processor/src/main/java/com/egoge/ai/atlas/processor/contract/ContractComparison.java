@@ -199,7 +199,8 @@ final class ContractComparison {
                 str(now.checkCircularReference()), false, null, null);
         diff(path, C_DESCRIPTION, Direction.OUTPUT, old.description(), now.description(), false, null, null);
         diff(path, C_LIFECYCLE, Direction.OUTPUT, str(old.lifecycle()), str(now.lifecycle()), false, null, null);
-        if (old.constraints() != null && now.constraints() != null) {
+        if (old.constraints() != null && now.constraints() != null
+                && ConstraintComparison.differ(old.constraints(), now.constraints(), old.javaType())) {
             informational(path, C_CONSTRAINTS, Direction.OUTPUT, render(IrConstraintsJson.write(old.constraints())),
                     render(IrConstraintsJson.write(now.constraints())));
         }
