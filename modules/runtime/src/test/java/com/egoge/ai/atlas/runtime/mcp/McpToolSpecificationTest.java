@@ -201,7 +201,7 @@ class McpToolSpecificationTest {
                    "status":{"type":"string","enum":["OPEN"],"pattern":"^(?:[A-Z]+)$"}},
                  "required":["since","attributes","status"]}""");
 
-        ObjectNode merged = AgenticMcpConfiguration.mergeInputSchema("t", derived, generated);
+        ObjectNode merged = InputSchemaMerge.mergeInputSchema("t", derived, generated);
 
         assertThat(merged.path("$schema").asText()).isEqualTo(AgenticMcpConfiguration.JSON_SCHEMA_2020_12);
         assertThat(merged.path("properties")).isEqualTo(JSON.readTree("""
@@ -266,7 +266,7 @@ class McpToolSpecificationTest {
                     AgenticMcpConfiguration.readToolSpecifications(context);
             assertThat(listed).containsOnlyKeys(FIND_ORDERS, PLACE_ORDER);
             for (AgenticMcpConfiguration.ToolSpecificationEntry entry : listed.values()) {
-                ObjectNode merged = AgenticMcpConfiguration.mergeInputSchema(entry.name(),
+                ObjectNode merged = InputSchemaMerge.mergeInputSchema(entry.name(),
                         derivedSchema(new McpToolFixtures.OrderTools(), entry.name()).toString(), entry.inputSchema());
                 assertThat(merged.path("$schema").asText()).isEqualTo(AgenticMcpConfiguration.JSON_SCHEMA_2020_12);
                 assertThat(metaschema().validate(merged)).as(entry.name()).isEmpty();
