@@ -81,4 +81,41 @@ class InputSchemaMergeTest {
         assertThat(output).containsOnlyOnce("MCP tool 't': constraint keyword 'minLength' on property 'when' does "
                 + "not apply to its derived schema without a type").doesNotContain("derived type ''");
     }
+
+    @Test
+    void exclusiveMinimumAndAllOfPatternsAreMergedWithTheirSemantics() throws IOException {
+        String derived = """
+                {"type":"object","properties":{
+                   "price":{"type":"number","format":"double"},
+                   "code":{"type":"string"}}}""";
+        JsonNode generated = JSON.readTree("""
+                {"type":"object","properties":{
+                   "price":{"type":"number","exclusiveMinimum":0},
+                   "code":{"type":"string","allOf":[{"pattern":"^(?:[A-Z]+)$"},{"pattern":"^(?:.{2,4})$"}]}}}""");
+
+        Schema schema = McpToolSpecificationTest.SCHEMAS.getSchema(
+                InputSchemaMerge.mergeInputSchema("t", derived, generated));
+
+        assertThat(schema.validate(JSON.readTree("{\"price\":0.01,\"code\":\"ABC\"}"))).isEmpty();
+        assertThat(schema.validate(JSON.readTree("{\"price\":0}"))).as("exclusive bound").isNotEmpty();
+        assertThat(schema.validate(JSON.readTree("{\"code\":\"ABCDE\"}"))).as("second pattern").isNotEmpty();
+        assertThat(schema.validate(JSON.readTree("{\"code\":\"abc\"}"))).as("first pattern").isNotEmpty();
+    }
+
+    @Test
+    void itemBoundsOnAnObjectTypedDerivedPropertyAreLeftOutWithWarning(CapturedOutput output) throws IOException {
+        // A @Size-bounded Map: Spring AI derives an object, the generated schema lists item bounds
+        String derived = """
+                {"type":"object","properties":{
+                   "attributes":{"type":"object","additionalProperties":{"type":"string"}}}}""";
+        JsonNode generated = JSON.readTree("""
+                {"type":"object","properties":{"attributes":{"type":"array","minItems":1,"maxItems":5}}}""");
+
+        ObjectNode merged = InputSchemaMerge.mergeInputSchema("t", derived, generated);
+
+        assertThat(merged.at("/properties/attributes")).isEqualTo(JSON.readTree(derived).at("/properties/attributes"));
+        assertThat(output).containsOnlyOnce("constraint keyword 'minItems' on property 'attributes' does not apply to "
+                        + "its derived type 'object'")
+                .containsOnlyOnce("constraint keyword 'maxItems' on property 'attributes' does not apply");
+    }
 }

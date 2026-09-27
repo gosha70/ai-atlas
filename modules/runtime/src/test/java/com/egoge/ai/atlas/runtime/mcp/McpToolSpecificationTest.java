@@ -373,10 +373,12 @@ class McpToolSpecificationTest {
     }
 
     @Test
-    void statelessServerKeepsTheDerivedRegistration() {
+    void statelessServerKeepsTheDerivedRegistration(CapturedOutput output) {
         runner.withPropertyValues(PROTOCOL_PROPERTY + "=STATELESS").run(context -> {
             assertThat(context).hasBean(PROVIDER_BEAN);
             assertThat(context).doesNotHaveBean(SPECIFICATIONS_BEAN);
+            assertThat(output).containsOnlyOnce("The MCP server is ASYNC or STATELESS, so the generated "
+                    + "MCP tool input schemas and hints are not applied");
         });
     }
 
