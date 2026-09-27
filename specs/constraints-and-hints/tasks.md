@@ -76,12 +76,12 @@
 
 | # | [P] | Task | File(s) | Owner | Done |
 |---|-----|------|---------|-------|------|
-| 19 | [P] | `docs/constraints-and-hints.md`: sources and the FR-002 mapping table, precedence and requiredness, errors and the looser-override warning, `@AgenticParam` and `@AgenticConstraints`, hints as client guidance and not authorization, the `ai.atlas.constraints` flag, enforcement and its optional dependency, SYNC-only scope, the UTF-16 versus code-point length difference, and the runtime merge into Spring AI's derived schema. It must name `@AgenticParam`, `@AgenticConstraints`, `ai.atlas.constraints`, `readOnlyHint`, `@Validated`, `spring-boot-starter-validation` and `SYNC` (checked by `scripts/check-constraints-docs.sh`) (FR-021) | `docs/constraints-and-hints.md` | Team Lead / Framework Architect | [ ] |
-| 20 | [P] | `docs/contract-governance.md`: `irVersion` 2, the migration with unknown slots, the new gate rules and `informational`; `CHANGELOG.md` entries under `[Unreleased]` naming `ai.atlas.constraints`, `@AgenticParam`, `irVersion 2` and `mcp-tools.json` (FR-021) | `docs/contract-governance.md`, `CHANGELOG.md` | Team Lead / Framework Architect | [ ] |
+| 19 | [P] | `docs/constraints-and-hints.md`: sources and the FR-002 mapping table, precedence and requiredness, errors and the looser-override warning, `@AgenticParam` and `@AgenticConstraints`, hints as client guidance and not authorization, the `ai.atlas.constraints` flag, enforcement and its optional dependency, SYNC-only scope, the UTF-16 versus code-point length difference, and the runtime merge into Spring AI's derived schema. It must name `@AgenticParam`, `@AgenticConstraints`, `ai.atlas.constraints`, `readOnlyHint`, `@Validated`, `spring-boot-starter-validation` and `SYNC` (checked by `scripts/check-constraints-docs.sh`) (FR-021) | `docs/constraints-and-hints.md` | Team Lead / Framework Architect | [x] |
+| 20 | [P] | `docs/contract-governance.md`: `irVersion` 2, the migration with unknown slots, the new gate rules and `informational`; `CHANGELOG.md` entries under `[Unreleased]` naming `ai.atlas.constraints`, `@AgenticParam`, `irVersion 2` and `mcp-tools.json` (FR-021) | `docs/contract-governance.md`, `CHANGELOG.md` | Team Lead / Framework Architect | [x] |
 
 **Checkpoint US5** — verify before continuing:
-- [ ] `scripts/check-constraints-docs.sh` passes (FR-021)
-- [ ] `scripts/build-on-jdk-matrix.sh` passes (FR-022)
+- [x] `scripts/check-constraints-docs.sh` passes (FR-021)
+- [x] `scripts/build-on-jdk-matrix.sh` passes (FR-022)
 
 ---
 
