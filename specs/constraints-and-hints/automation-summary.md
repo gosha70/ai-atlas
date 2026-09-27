@@ -10,3 +10,7 @@ Review: PASS (see specs/constraints-and-hints/collaboration/build-review.md).
 
 ### Phase 2 complete — US2: The rules are documented (spec US5) (2026-09-27T15:59:38Z)
 Review: PASS (see specs/constraints-and-hints/collaboration/build-review.md).
+
+## Run complete (2026-09-27T16:04:59Z)
+Profile: unattended — will push branch feature/constraints-and-hints and open a PR; merge skipped (merge.enabled=false) — a human reviews and merges. The Outcome line below records what happened.
+Review artifacts: specs/constraints-and-hints/collaboration/.
