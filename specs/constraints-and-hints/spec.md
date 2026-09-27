@@ -167,9 +167,29 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
     | Groups `(...)`, non-capturing `(?:...)`, alternation `\|` | themselves |
     | Quantifiers `*`, `+`, `?`, `{n}`, `{n,}`, `{n,m}`, and their lazy `?` variants | themselves |
 
-  - **Negated form:** a negated class `[^X]` is emitted as
-    `(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|[^X])`. A character outside the BMP is one Java code point but
-    two ECMAScript code units without `u`, so a surrogate pair counts as one character either way.
+  - **Negated form:** Java matches by code point, and ECMAScript without `u` matches by UTF-16 code
+    unit. So every negated atom (`[^X]`, `.`, `\S`, `\D`, `\W`) MUST match **exactly one Java code
+    point** in both ECMAScript modes. It is emitted as a group with four alternatives:
+
+    `(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]|[^X\uD800-\uDFFF])`
+
+    | Alternative | Matches |
+    |---|---|
+    | `[\uD800-\uDBFF][\uDC00-\uDFFF]` | a valid surrogate pair, one astral code point, as one unit (without `u`) |
+    | `[\uD800-\uDBFF](?![\uDC00-\uDFFF])` | a lone high surrogate (Java treats it as one code point) |
+    | `(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]` | a lone low surrogate |
+    | `[^X\uD800-\uDFFF]` | any other code point not in `X` (with `u`, this includes astral code points) |
+
+    The last alternative excludes all surrogates, and the lone-surrogate alternatives refuse a
+    surrogate that belongs to a pair. So no alternative can match half of a valid pair, and
+    backtracking cannot split one character into two matches. For example, `[^a]{2}` rejects a single
+    U+1F600 in both modes, as Java does.
+    - `X` contains only BMP non-surrogate members, so every astral code point and every lone
+      surrogate is outside `X`, as in Java.
+    - Positive atoms (literals and non-negated classes) are BMP non-surrogate only, so they can never
+      match a surrogate code unit.
+    - The emitted lookbehind is part of the translation, not of the accepted input subset. It
+      requires an ECMAScript 2018+ engine, and the docs state this.
   - **Not in the subset, so not publishable:**
     - anything with flags;
     - inline flags, possessive quantifiers, atomic groups, lookarounds, backreferences and named groups;
@@ -304,6 +324,12 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
   - `@Pattern("\\S+")`: accepts U+00A0 and U+2003;
   - `@Pattern(".")`: accepts `"a"`, U+00A0 and U+1F600 (one code point), rejects U+0085, U+2028 and `"\n"`;
   - `@Pattern("[^a]")`: accepts U+1F600;
+  - **Quantified and adjacent negated atoms**, which catch a pair being split under backtracking:
+    - `@Pattern("[^a]{2}")`, `@Pattern(".{2}")` and `@Pattern("\\S{2}")`: reject a single U+1F600, accept U+1F600 U+1F600 and `"xy"`;
+    - `@Pattern("[^a][^b]")` and `@Pattern(".\\S")`: reject a single U+1F600, accept `"x"` + U+1F600;
+    - `@Pattern(".+x")`: accepts U+1F600 + `"x"`, rejects `"x"`;
+    - `@Pattern("[^a]*b")`: accepts U+1F600 U+1F600 `"b"`;
+  - **Lone surrogates**, evaluated as Java strings and as the same UTF-16 sequence on the ECMAScript side: with `@Pattern(".")` and `@Pattern("[^a]")`, a lone high surrogate U+D83D and a lone low surrogate U+DE00 are each accepted; the reversed sequence U+DE00 U+D83D is rejected by `.` and accepted by `.{2}`;
   - `@Pattern("\\d+")` rejects `"٣"` (U+0663), and `@Pattern("\\w+")` rejects `"é"`;
   - `@NotBlank`: accepts `"a\nb"`, `" a "`, U+00A0 and U+2003, rejects `""`, `" "`, `"\n\t"` and U+0000;
   - `@NotBlank @Pattern("[a-z ]+")`: rejects `"   "`, accepts `" ab "`.
