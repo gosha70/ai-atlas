@@ -8,15 +8,17 @@ import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFiles;
+import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.process.CommandLineArgumentProvider;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * The contract options of the main {@code compileJava} task (FR-016): the baseline's absolute
- * path and lock mode, and the constraints flag (FR-020). The baseline is an input, and a missing file is allowed, so creating,
+ * path and lock mode, and the constraints flag (FR-020) when it is set. The baseline is an input, and a missing file is allowed, so creating,
  * editing or accepting it re-runs the compilation and with it the gate. Only its content is
  * fingerprinted: the absolute path appears in the arguments alone, so checkouts in different
  * directories share build cache entries.
@@ -40,14 +42,22 @@ public abstract class ContractArguments implements CommandLineArgumentProvider {
     @Input
     public abstract Property<Boolean> getLocked();
 
-    /** Whether the generated surfaces carry constraints and hints. */
+    /**
+     * Whether the generated surfaces carry constraints and hints. Absent unless set, and then not
+     * passed, so a value in {@code options.compilerArgs} (javac keeps the last {@code -A}) stands.
+     */
     @Input
+    @Optional
     public abstract Property<Boolean> getConstraints();
 
     @Override
     public Iterable<String> asArguments() {
-        return List.of("-A" + OPT_BASELINE + "=" + getBaseline().getSingleFile().getAbsolutePath(),
-                "-A" + OPT_LOCKED + "=" + getLocked().get(),
-                "-A" + OPT_CONSTRAINTS + "=" + getConstraints().get());
+        List<String> arguments = new ArrayList<>();
+        arguments.add("-A" + OPT_BASELINE + "=" + getBaseline().getSingleFile().getAbsolutePath());
+        arguments.add("-A" + OPT_LOCKED + "=" + getLocked().get());
+        if (getConstraints().isPresent()) {
+            arguments.add("-A" + OPT_CONSTRAINTS + "=" + getConstraints().get());
+        }
+        return arguments;
     }
 }

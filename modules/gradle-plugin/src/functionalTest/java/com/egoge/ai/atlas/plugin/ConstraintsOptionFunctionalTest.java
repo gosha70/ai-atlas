@@ -16,9 +16,10 @@ import java.nio.file.StandardOpenOption;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FR-020: {@code agentic { constraints }} defaults to {@code false} and reaches the main
- * {@code compileJava} only, as the processor option {@code ai.atlas.constraints}; turning it on
- * makes the compilation write {@code META-INF/ai-atlas/mcp-tools.json}.
+ * FR-020: {@code agentic { constraints }}, when set, reaches the main {@code compileJava} only, as
+ * the processor option {@code ai.atlas.constraints}; turning it on makes the compilation write
+ * {@code META-INF/ai-atlas/mcp-tools.json}. Unset, it is not passed, so the processor's default
+ * ({@code false}) or a value in {@code options.compilerArgs} applies.
  */
 class ConstraintsOptionFunctionalTest {
 
@@ -46,7 +47,7 @@ class ConstraintsOptionFunctionalTest {
 
         String output = runner("compileTestJava", "atlasAccept").build().getOutput();
 
-        assertThat(line(output, "MAIN-ARGS ")).contains("-A" + OPTION + "=false");
+        assertThat(line(output, "MAIN-ARGS ")).doesNotContain(OPTION);
         assertThat(line(output, "TEST-ARGS ")).doesNotContain(OPTION);
         assertThat(line(output, "ACCEPT-ARGS ")).doesNotContain(OPTION);
         assertThat(new File(projectDir, MCP_TOOLS)).doesNotExist();
@@ -65,6 +66,35 @@ class ConstraintsOptionFunctionalTest {
         File tools = new File(projectDir, MCP_TOOLS);
         assertThat(tools).isFile();
         assertThat(Files.readString(tools.toPath())).contains("\"tools\"").contains("\"inputSchema\"");
+    }
+
+    @Test
+    void aCompilerArgumentTurnsTheOptionOnWhenTheExtensionLeavesItUnset() throws IOException {
+        writeProject("");
+        append("build.gradle.kts", """
+                tasks.named<JavaCompile>("compileJava") {
+                    options.compilerArgs.add("-A%s=true")
+                    doFirst { println("MAIN-ARGS " + options.allCompilerArgs) }
+                }
+                """.formatted(OPTION));
+
+        String output = runner("compileJava").build().getOutput();
+
+        assertThat(line(output, "MAIN-ARGS ")).containsOnlyOnce(OPTION).doesNotContain("-A" + OPTION + "=false");
+        assertThat(new File(projectDir, MCP_TOOLS)).isFile();
+    }
+
+    @Test
+    void settingTheOptionOffPassesFalse() throws IOException {
+        writeProject("constraints.set(false)");
+        append("build.gradle.kts", """
+                tasks.named<JavaCompile>("compileJava") { doFirst { println("MAIN-ARGS " + options.allCompilerArgs) } }
+                """);
+
+        String output = runner("compileJava").build().getOutput();
+
+        assertThat(line(output, "MAIN-ARGS ")).contains("-A" + OPTION + "=false");
+        assertThat(new File(projectDir, MCP_TOOLS)).doesNotExist();
     }
 
     private static String line(String output, String prefix) {

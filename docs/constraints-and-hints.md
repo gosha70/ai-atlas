@@ -259,7 +259,8 @@ agentic {
 }
 ```
 
-The Gradle plugin passes it to the main `compileJava` only. Other build tools pass
+The Gradle plugin passes it to the main `compileJava` only, and only when `constraints` is set, so
+a value added to `options.compilerArgs` stands otherwise. Other build tools pass
 `-Aai.atlas.constraints=true` to javac.
 
 **With the flag off**, every generated source and resource is byte-identical to earlier releases,

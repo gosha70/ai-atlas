@@ -93,7 +93,9 @@ public abstract class AgenticExtension {
     public abstract Property<Boolean> getContractLocked();
 
     /**
-     * Constraints and hints in the generated surfaces. Defaults to false. When true, the OpenAPI
+     * Constraints and hints in the generated surfaces. Unset by default, and then not passed to the
+     * compilation, whose processor defaults to false; a value set here overrides one in
+     * {@code options.compilerArgs}. When true, the OpenAPI
      * document, the REST controllers and the MCP tool classes carry the contract's constraints, and
      * {@code META-INF/ai-atlas/mcp-tools.json} is generated with each tool's input schema and hints.
      */
