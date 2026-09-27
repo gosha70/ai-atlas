@@ -149,7 +149,7 @@ public final class McpToolsResourceGenerator {
         List<Object> required = new ArrayList<>();
         for (int i = 0; i < method.parameters().size(); i++) {
             ParameterModel param = method.parameters().get(i);
-            ContractIr.Parameter irParam = operation.parameters().get(i);
+            ContractIr.Parameter irParam = ConstraintSurfaces.parameter(operation, i, param);
             Map<String, Object> property = type(param.typeName(), irParam.enumConstants());
             property.put(K_DESCRIPTION, param.description().isEmpty() ? param.name() : param.description());
             ConstraintSurfaces.applyJsonSchema(property, irParam.constraints());

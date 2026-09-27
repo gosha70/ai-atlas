@@ -278,7 +278,7 @@ public final class OpenApiGenerator {
         parameter.description(param.description());
       }
       if (irOperation != null) {
-        ContractIr.Parameter irParam = irOperation.parameters().get(i);
+        ContractIr.Parameter irParam = ConstraintSurfaces.parameter(irOperation, i, param);
         parameter.required(irParam.required());
         ConstraintSurfaces.applyOpenApi(parameter.getSchema(), irParam.constraints());
       }

@@ -13,7 +13,9 @@ import java.util.List;
 /**
  * The {@code ai.atlas.constraints} option of a compilation (FR-012): {@code true} or {@code false}
  * in any case, default {@code false}. With it on, the generated surfaces carry the constraints and
- * declared hints; with it off, generation is exactly what it was before this feature.
+ * declared hints; with it off, generation is exactly what it was before this feature. With it on,
+ * an AI-channel method with no declared hint gets a WARNING, an ERROR under {@code ai.atlas.strict}
+ * ({@link com.egoge.ai.atlas.processor.util.QualityDiagnostics#reportMissingHints}).
  */
 public final class ConstraintsOption {
 

@@ -62,7 +62,7 @@ public final class McpToolGenerator {
      * @param constraints the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
      */
     public static void generate(ServiceModel model, String packageName, int apiMajor,
-                                   ConstraintSurfaces constraints, Filer filer, Messager messager) {
+                                ConstraintSurfaces constraints, Filer filer, Messager messager) {
         String toolClassName = model.serviceClassName().simpleName() + "McpTool";
         TypeSpec toolSpec = buildToolSpec(model, toolClassName, apiMajor, constraints);
         if (toolSpec == null) {
@@ -176,7 +176,7 @@ public final class McpToolGenerator {
             AnnotationSpec.Builder toolParam = AnnotationSpec.builder(TOOL_PARAM)
                     .addMember("description", "$S", paramDesc);
             if (irOperation != null) {
-                ContractIr.Parameter irParam = irOperation.parameters().get(i);
+                ContractIr.Parameter irParam = ConstraintSurfaces.parameter(irOperation, i, param);
                 toolParam.addMember("required", "$L", irParam.required());
                 paramBuilder.addAnnotation(toolParam.build());
                 if (enforce) {

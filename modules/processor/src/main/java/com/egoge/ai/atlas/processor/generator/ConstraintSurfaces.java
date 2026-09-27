@@ -8,9 +8,11 @@ import com.egoge.ai.atlas.processor.constraints.EffectiveConstraints.PatternCons
 import com.egoge.ai.atlas.processor.constraints.PortableRegex;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Field;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Operation;
+import com.egoge.ai.atlas.processor.contract.ContractIr.Parameter;
 import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.FieldModel;
+import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
 import io.swagger.v3.oas.models.media.Schema;
 
 import java.math.BigDecimal;
@@ -57,6 +59,22 @@ public record ConstraintSurfaces(ContractProjection projection, boolean beanVali
             throw new IllegalStateException("No IR operation projected for " + operationKey);
         }
         return operation;
+    }
+
+    /**
+     * @param operation the IR operation of the method declaring {@code param}
+     * @param index     {@code param}'s position in the method's parameters
+     * @param param     the generator's parameter
+     * @return the IR parameter at {@code index}
+     * @throws IllegalStateException when the IR has no parameter of that name at {@code index}
+     */
+    static Parameter parameter(Operation operation, int index, ParameterModel param) {
+        List<Parameter> parameters = operation.parameters();
+        if (index >= parameters.size() || !parameters.get(index).name().equals(param.name())) {
+            throw new IllegalStateException("IR operation " + operation.id() + " has no parameter '"
+                    + param.name() + "' at position " + index);
+        }
+        return parameters.get(index);
     }
 
     /** The effective constraints of a projected DTO field. */
@@ -106,10 +124,19 @@ public record ConstraintSurfaces(ContractProjection projection, boolean beanVali
                 schema.exclusiveMaximum(true);
             }
         }
-        schema.minLength(minLength(c));
-        schema.maxLength(c.maxLength());
-        schema.minItems(c.minItems());
-        schema.maxItems(c.maxItems());
+        Integer minLength = minLength(c);
+        if (minLength != null) {
+            schema.minLength(minLength);
+        }
+        if (c.maxLength() != null) {
+            schema.maxLength(c.maxLength());
+        }
+        if (c.minItems() != null) {
+            schema.minItems(c.minItems());
+        }
+        if (c.maxItems() != null) {
+            schema.maxItems(c.maxItems());
+        }
         List<String> patterns = publishedPatterns(c);
         if (patterns.size() == 1) {
             schema.pattern(patterns.get(0));

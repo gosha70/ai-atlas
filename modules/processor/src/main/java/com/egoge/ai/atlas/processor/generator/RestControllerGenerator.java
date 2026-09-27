@@ -168,7 +168,7 @@ public final class RestControllerGenerator {
         for (int i = 0; i < method.parameters().size(); i++) {
             ParameterModel param = method.parameters().get(i);
             ParameterSpec.Builder paramBuilder = ParameterSpec.builder(param.typeName(), param.name());
-            if (irOperation != null && !irOperation.parameters().get(i).required()) {
+            if (irOperation != null && !ConstraintSurfaces.parameter(irOperation, i, param).required()) {
                 // An OPTIONAL parameter (FR-015); required ones keep the plain binding
                 paramBuilder.addAnnotation(AnnotationSpec.builder(REQUEST_PARAM)
                         .addMember("required", "$L", false)
