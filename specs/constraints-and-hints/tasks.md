@@ -3,8 +3,11 @@
 <!-- One owner per file. [P] = parallelizable within the story group. [US#] traces to spec.md. -->
 <!-- Each `## US<n>:` group is one auto-build phase (fresh session). -->
 <!-- Build sessions: tick a task's Done box in the same commit that completes it. -->
+<!-- Spec US1–US3 were built and merged in PR #46. The remaining groups are numbered US1..US2 so
+     the auto-build driver runs them as phases 1..2; each heading names the spec user story it
+     implements. Task numbers and FR references are unchanged. -->
 
-## US1: Constraints are one contract model
+## Done (PR #46) — spec US1: Constraints are one contract model
 
 | # | [P] | Task | File(s) | Owner | Done |
 |---|-----|------|---------|-------|------|
@@ -21,7 +24,7 @@
 
 ---
 
-## US2: The gate sees constraint changes
+## Done (PR #46) — spec US2: The gate sees constraint changes
 
 | # | [P] | Task | File(s) | Owner | Done |
 |---|-----|------|---------|-------|------|
@@ -35,7 +38,7 @@
 
 ---
 
-## US3: With the flag, generated surfaces carry constraints and hints
+## Done (PR #46) — spec US3: With the flag, generated surfaces carry constraints and hints
 
 | # | [P] | Task | File(s) | Owner | Done |
 |---|-----|------|---------|-------|------|
@@ -53,13 +56,13 @@
 
 ---
 
-## US4: The runtime serves and enforces them
+## US1: The runtime serves and enforces them (spec US4)
 
 | # | [P] | Task | File(s) | Owner | Done |
 |---|-----|------|---------|-------|------|
-| 15 | | Replace `LazyToolCallbackProvider` with a lazy `List<SyncToolSpecification>` bean (ADR-5):<br>- keep #42's scan, target-class check and JDK-proxy skip;<br>- callbacks through `MethodToolCallbackProvider`, wrapped with `McpToolUtils.toSyncToolSpecification`;<br>- tools listed in any `META-INF/ai-atlas/mcp-tools.json` (all classpath copies) rebuilt with that `inputSchema` and `ToolAnnotations`;<br>- no other registration path, so every name is registered once;<br>- two resources listing the same name fail startup, naming both;<br>- ASYNC and STATELESS keep the old provider and log one INFO line (FR-018) | `modules/runtime/src/main/java/com/egoge/ai/atlas/runtime/mcp/AgenticMcpConfiguration.java` | Team Lead / Framework Architect | [ ] |
+| 15 | | Replace `LazyToolCallbackProvider` with a lazy `List<SyncToolSpecification>` bean (ADR-5):<br>- keep #42's scan, target-class check and JDK-proxy skip;<br>- callbacks through `MethodToolCallbackProvider`, wrapped with `McpToolUtils.toSyncToolSpecification`;<br>- tools listed in any `META-INF/ai-atlas/mcp-tools.json` (all classpath copies) rebuilt by **merging** the entry's constraint keywords and requiredness into Spring AI's derived `inputSchema` (keeping every derived keyword, including `type`, `items`, nested `properties`, `format`, `description` and `enum`; the derived `type` is never replaced; a keyword that does not fit the derived type, or a property absent from the derived schema, is skipped with one WARNING; `$schema` 2020-12), plus `ToolAnnotations` from the hints;<br>- no other registration path, so every name is registered once;<br>- two resources listing the same name fail startup, naming both;<br>- ASYNC and STATELESS keep the old provider and log one INFO line (FR-018) | `modules/runtime/src/main/java/com/egoge/ai/atlas/runtime/mcp/AgenticMcpConfiguration.java` | Team Lead / Framework Architect | [ ] |
 | 16 | | Advisory WARNING when any `mcp-tools.json` is present and no `MethodValidationPostProcessor` bean exists; no production dependency on `spring-boot-starter-validation` (FR-019) | `modules/runtime/src/main/java/com/egoge/ai/atlas/runtime/mcp/AgenticMcpConfiguration.java` | Team Lead / Framework Architect | [ ] |
-| 17 | | Tests, over SSE and Streamable HTTP:<br>- `tools/list` shows a spec-listed tool's constraint keywords and declared annotations verbatim, and a tool with no spec keeps its derived schema without annotations;<br>- a call violating `maximum` on a `@Validated` tool returns `isError: true` and the service is not invoked;<br>- a valid call succeeds;<br>- duplicate names across two resources fail startup naming both;<br>- the advisory WARNING without method validation;<br>- ASYNC keeps the old registration;<br>- `ProxiedToolBeanTest`, `SseUnchangedTest` and `StreamableHttpTransportTest` stay green (FR-018, FR-019) | `modules/runtime/src/test/java/com/egoge/ai/atlas/runtime/mcp/McpToolSpecificationTest.java` | Team Lead / Framework Architect | [ ] |
+| 17 | | Tests, over SSE and Streamable HTTP:<br>- `tools/list` shows a spec-listed tool's constraint keywords and declared annotations, and a tool with no spec keeps its derived schema without annotations;<br>- merge keeps derived detail: a DTO-list parameter keeps its `items` object schema, a `Map` parameter its `additionalProperties`, a `LocalDate` its `format`, while gaining `minItems`/`required`;<br>- a `Vector<String>` parameter with `@Size(min = 1)` keeps the derived `type: array, items: {type: string}` and gains `minItems: 1`; an array input is accepted and an empty one rejected by a 2020-12 validator (checks the semantics, not only the metaschema);<br>- a keyword that does not fit the derived type (for example a bound where the derived type is `string`) is left out with the WARNING, and the derived `type` is unchanged;<br>- a generated property absent from the derived schema is not added, with the WARNING;<br>- every merged `inputSchema` validates against the 2020-12 metaschema;<br>- a call violating `maximum` on a `@Validated` tool returns `isError: true` and the service is not invoked;<br>- a valid call succeeds;<br>- duplicate names across two resources fail startup naming both;<br>- the advisory WARNING without method validation;<br>- ASYNC keeps the old registration;<br>- `ProxiedToolBeanTest`, `SseUnchangedTest` and `StreamableHttpTransportTest` stay green (FR-018, FR-019) | `modules/runtime/src/test/java/com/egoge/ai/atlas/runtime/mcp/McpToolSpecificationTest.java` | Team Lead / Framework Architect | [ ] |
 | 18 | | Plugin: `agentic { constraints }` (default `false`), passed to the main `compileJava` as `ai.atlas.constraints`; the functional test asserts the option reaches `compileJava` only, and that turning it on writes `mcp-tools.json` (FR-020) | `modules/gradle-plugin/src/main/java/com/egoge/ai/atlas/plugin/{AgenticExtension,AgenticPlugin,ContractArguments}.java`, `modules/gradle-plugin/src/functionalTest/java/com/egoge/ai/atlas/plugin/ConstraintsOptionFunctionalTest.java` | Team Lead / Framework Architect | [ ] |
 
 **Checkpoint US4** — verify before continuing:
@@ -69,11 +72,11 @@
 
 ---
 
-## US5: The rules are documented
+## US2: The rules are documented (spec US5)
 
 | # | [P] | Task | File(s) | Owner | Done |
 |---|-----|------|---------|-------|------|
-| 19 | [P] | `docs/constraints-and-hints.md`: sources and the FR-002 mapping table, precedence and requiredness, errors and the looser-override warning, `@AgenticParam` and `@AgenticConstraints`, hints as client guidance and not authorization, the `ai.atlas.constraints` flag, enforcement and its optional dependency, SYNC-only scope. It must name `@AgenticParam`, `@AgenticConstraints`, `ai.atlas.constraints`, `readOnlyHint`, `@Validated`, `spring-boot-starter-validation` and `SYNC` (checked by `scripts/check-constraints-docs.sh`) (FR-021) | `docs/constraints-and-hints.md` | Team Lead / Framework Architect | [ ] |
+| 19 | [P] | `docs/constraints-and-hints.md`: sources and the FR-002 mapping table, precedence and requiredness, errors and the looser-override warning, `@AgenticParam` and `@AgenticConstraints`, hints as client guidance and not authorization, the `ai.atlas.constraints` flag, enforcement and its optional dependency, SYNC-only scope, the UTF-16 versus code-point length difference, and the runtime merge into Spring AI's derived schema. It must name `@AgenticParam`, `@AgenticConstraints`, `ai.atlas.constraints`, `readOnlyHint`, `@Validated`, `spring-boot-starter-validation` and `SYNC` (checked by `scripts/check-constraints-docs.sh`) (FR-021) | `docs/constraints-and-hints.md` | Team Lead / Framework Architect | [ ] |
 | 20 | [P] | `docs/contract-governance.md`: `irVersion` 2, the migration with unknown slots, the new gate rules and `informational`; `CHANGELOG.md` entries under `[Unreleased]` naming `ai.atlas.constraints`, `@AgenticParam`, `irVersion 2` and `mcp-tools.json` (FR-021) | `docs/contract-governance.md`, `CHANGELOG.md` | Team Lead / Framework Architect | [ ] |
 
 **Checkpoint US5** — verify before continuing:

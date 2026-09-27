@@ -164,7 +164,13 @@ Registering the same name through two paths fails startup.
 - The bean builds callbacks with `MethodToolCallbackProvider`.
 - It wraps each callback with `McpToolUtils.toSyncToolSpecification`.
 - For each tool found in `mcp-tools.json` (all classpath copies, through `getResources`), it rebuilds
-  the `McpSchema.Tool` with the generated `inputSchema` and `ToolAnnotations`.
+  the `McpSchema.Tool` by **merging** the generated constraint keywords and requiredness into
+  Spring AI's derived `inputSchema`, and sets the `ToolAnnotations`. The derived `type` is never
+  replaced, because it comes from the Java signature, while a generated type can be a fallback such
+  as `object` for an unrecognised type. A keyword that does not fit the derived type is left out,
+  with a WARNING, and Bean Validation still enforces it. This was the second review of PR #47. The review of PR #46
+  showed that the generated schema is poorer than the derived one for object, `Map`, DTO-collection
+  and date parameters. The owner chose to merge, not replace, on 2026-09-27.
 - No `ToolCallbackProvider` bean remains, so every name comes from one path.
 - ASYNC and STATELESS keep the old provider behaviour: registered only under those server types.
 
