@@ -67,6 +67,7 @@ class SseUnchangedTest {
 
     private static final String SPECIFICATIONS_BEAN_METHOD = "agenticToolSpecifications";
     private static final String PROVIDER_BEAN_METHOD = "agenticToolCallbackProvider";
+    private static final String DECLARED_SCHEMAS_BEAN_METHOD = "agenticDeclaredInputSchemas";
     private static final String ENABLED_PROPERTY_PREFIX = "ai.atlas.mcp";
     private static final String ENABLED_PROPERTY_NAME = "enabled";
     private static final String ATLAS_AUTO_CONFIGURATION =
@@ -127,18 +128,20 @@ class SseUnchangedTest {
         assertThat(onProperty.name()).containsExactly(ENABLED_PROPERTY_NAME);
         assertThat(onProperty.matchIfMissing()).isTrue();
 
-        // The configuration contributes exactly two beans — the SYNC tool specification list and
-        // the ASYNC/STATELESS tool callback provider, of which exactly one is active. A third bean
-        // method (e.g. a transport provider) would mean the runtime wiring grew beyond the frozen
-        // SSE path.
+        // The configuration contributes exactly two tool beans — the SYNC tool specification list
+        // and the ASYNC/STATELESS tool callback provider, of which exactly one is active — plus the
+        // post-processor that keeps a merged input schema's $schema on the wire (FR-018). Any other
+        // bean method (e.g. a transport provider) would mean the runtime wiring grew beyond the
+        // frozen SSE path.
         List<Method> beanMethods = Arrays.stream(AgenticMcpConfiguration.class.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(Bean.class))
                 .sorted(Comparator.comparing(Method::getName))
                 .toList();
         assertThat(beanMethods).extracting(Method::getName)
-                .containsExactly(PROVIDER_BEAN_METHOD, SPECIFICATIONS_BEAN_METHOD);
-        assertThat(beanMethods.get(0).getReturnType()).isEqualTo(ToolCallbackProvider.class);
-        assertThat(beanMethods.get(1).getReturnType()).isEqualTo(List.class);
+                .containsExactly(DECLARED_SCHEMAS_BEAN_METHOD, PROVIDER_BEAN_METHOD, SPECIFICATIONS_BEAN_METHOD);
+        assertThat(beanMethods.get(0).getReturnType()).isEqualTo(DeclaredInputSchemas.class);
+        assertThat(beanMethods.get(1).getReturnType()).isEqualTo(ToolCallbackProvider.class);
+        assertThat(beanMethods.get(2).getReturnType()).isEqualTo(List.class);
     }
 
     @Test

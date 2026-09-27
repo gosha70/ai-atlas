@@ -114,6 +114,8 @@ class McpToolSpecificationTest {
             assertThat(names).containsExactlyInAnyOrder(FIND_ORDERS, PLACE_ORDER, PING);
 
             JsonNode findOrders = tools.get(FIND_ORDERS);
+            assertThat(findOrders.at("/inputSchema/$schema").asText())
+                    .isEqualTo(AgenticMcpConfiguration.JSON_SCHEMA_2020_12);
             JsonNode limit = findOrders.at("/inputSchema/properties/limit");
             assertThat(limit.path("type").asText()).isEqualTo("integer");
             assertThat(limit.path("maximum").asInt()).isEqualTo(100);
@@ -134,6 +136,7 @@ class McpToolSpecificationTest {
             // A tool with no specification keeps its derived schema, without annotations
             JsonNode ping = tools.get(PING);
             assertThat(ping.has("annotations")).isFalse();
+            assertThat(ping.path("inputSchema").has("$schema")).as("only merged schemas are re-declared").isFalse();
             assertThat(ping.at("/inputSchema/properties/message")).isEqualTo(
                     derivedSchema(new McpToolFixtures.PingTools(), PING).at("/properties/message"));
 

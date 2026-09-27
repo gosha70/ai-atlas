@@ -119,11 +119,19 @@ public class AgenticMcpConfiguration {
     @Bean
     @Conditional(SyncServerCondition.class)
     public List<SyncToolSpecification> agenticToolSpecifications(
-            ApplicationContext context, ObjectProvider<McpServerProperties> serverProperties) {
+            ApplicationContext context, ObjectProvider<McpServerProperties> serverProperties,
+            DeclaredInputSchemas declaredInputSchemas) {
         warnIfConstraintsAdvisory(context);
         // A lazy list — no bean scanning at creation time, which breaks the circular dep with
         // McpServerAutoConfiguration
-        return new LazyToolSpecifications(context, serverProperties);
+        return new LazyToolSpecifications(context, serverProperties, declaredInputSchemas);
+    }
+
+    /** Keeps each merged input schema's {@code $schema} on the wire (FR-018); static, as a post-processor. */
+    @Bean
+    @Conditional(SyncServerCondition.class)
+    static DeclaredInputSchemas agenticDeclaredInputSchemas() {
+        return new DeclaredInputSchemas();
     }
 
     @Bean
@@ -325,11 +333,14 @@ public class AgenticMcpConfiguration {
 
         private final ApplicationContext context;
         private final ObjectProvider<McpServerProperties> serverProperties;
+        private final DeclaredInputSchemas declaredInputSchemas;
         private volatile List<SyncToolSpecification> specifications;
 
-        LazyToolSpecifications(ApplicationContext context, ObjectProvider<McpServerProperties> serverProperties) {
+        LazyToolSpecifications(ApplicationContext context, ObjectProvider<McpServerProperties> serverProperties,
+                               DeclaredInputSchemas declaredInputSchemas) {
             this.context = context;
             this.serverProperties = serverProperties;
+            this.declaredInputSchemas = declaredInputSchemas;
         }
 
         @Override
@@ -377,8 +388,8 @@ public class AgenticMcpConfiguration {
             return List.copyOf(result);
         }
 
-        private static SyncToolSpecification apply(ToolSpecificationEntry entry, ToolCallback callback,
-                                                   SyncToolSpecification derived) {
+        private SyncToolSpecification apply(ToolSpecificationEntry entry, ToolCallback callback,
+                                            SyncToolSpecification derived) {
             ObjectNode inputSchema = mergeInputSchema(entry.name(), callback.getToolDefinition().inputSchema(),
                     entry.inputSchema());
             McpSchema.Tool base = derived.tool();
@@ -391,6 +402,7 @@ public class AgenticMcpConfiguration {
                     .annotations(toolAnnotations(entry.annotations()))
                     .meta(base.meta())
                     .build();
+            declaredInputSchemas.register(tool.inputSchema(), inputSchema);
             return SyncToolSpecification.builder().tool(tool).callHandler(derived.callHandler()).build();
         }
     }
