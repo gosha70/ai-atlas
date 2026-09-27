@@ -54,7 +54,9 @@ import java.util.Map;
  * {@code META-INF/ai-atlas/mcp-tools.json} on the classpath is served with the listed constraint
  * keywords and requiredness merged into Spring AI's derived input schema, and with the listed
  * behavioural hints as its MCP {@code annotations}. Every other tool keeps its derived schema.
- * No {@link ToolCallbackProvider} is registered then, so every tool name comes from one path.
+ * No {@link ToolCallbackProvider} is registered then, so every tool name comes from one path. A tool
+ * the application's own {@code ToolCallbackProvider} bean also provides is left to that provider,
+ * with a WARNING, so each name is registered once.
  *
  * <p>On an ASYNC or STATELESS server the tools are registered through a lazy
  * {@link ToolCallbackProvider}, with Spring AI's derived schemas only.
@@ -260,11 +262,21 @@ public class AgenticMcpConfiguration {
 
         private List<SyncToolSpecification> resolveSpecifications() {
             Map<String, ToolSpecificationEntry> listed = readToolSpecifications(context);
+            Map<String, String> providedByApplication = applicationProvidedToolNames(context);
             McpServerProperties properties = serverProperties.getIfAvailable();
             List<SyncToolSpecification> result = new ArrayList<>();
             int applied = 0;
             for (ToolCallback callback : resolveCallbacks(context)) {
                 String name = callback.getToolDefinition().name();
+                String provider = providedByApplication.get(name);
+                if (provider != null) {
+                    // Spring AI registers the application's providers itself; a second registration of
+                    // the same name fails startup
+                    log.warn("AI-ATLAS: MCP tool '{}' is registered by the application's own ToolCallbackProvider "
+                            + "bean '{}', so AI-ATLAS does not register it and its generated constraints and "
+                            + "hints are not applied", name, provider);
+                    continue;
+                }
                 String mimeType = properties != null ? properties.getToolResponseMimeType().get(name) : null;
                 SyncToolSpecification derived = McpToolUtils.toSyncToolSpecification(callback,
                         mimeType != null ? MimeType.valueOf(mimeType) : null);
@@ -326,6 +338,21 @@ public class AgenticMcpConfiguration {
             }
             return callbacks;
         }
+    }
+
+    /**
+     * The tool names the application's own {@link ToolCallbackProvider} beans register, each with the
+     * first bean that provides it. On a SYNC server AI-ATLAS registers no provider, so every one found
+     * belongs to the application, and Spring AI registers its tools itself.
+     */
+    private static Map<String, String> applicationProvidedToolNames(ApplicationContext context) {
+        Map<String, String> names = new LinkedHashMap<>();
+        context.getBeansOfType(ToolCallbackProvider.class).forEach((bean, provider) -> {
+            for (ToolCallback callback : provider.getToolCallbacks()) {
+                names.putIfAbsent(callback.getToolDefinition().name(), bean);
+            }
+        });
+        return names;
     }
 
     private static ToolCallback[] resolveCallbacks(ApplicationContext context) {

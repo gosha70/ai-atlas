@@ -7,8 +7,11 @@ import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.stereotype.Service;
@@ -43,6 +46,21 @@ final class McpToolFixtures {
     @Configuration(proxyBeanMethods = false)
     @Import({OrderTools.class, PingTools.class})
     static class ToolBeans {
+    }
+
+    /**
+     * The real application, which also registers {@link PingTools} through its own provider, the usual
+     * Spring AI pattern.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @EnableAutoConfiguration
+    @Import({OrderTools.class, PingTools.class})
+    static class OwnProviderApplication {
+
+        @Bean
+        ToolCallbackProvider pingToolProvider(PingTools tools) {
+            return MethodToolCallbackProvider.builder().toolObjects(tools).build();
+        }
     }
 
     public record LineItem(String sku, int quantity) {
