@@ -28,6 +28,20 @@ dependencies {
     testImplementation(platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.spring.boot.get()}"))
     testImplementation("org.springframework:spring-web")
     testImplementation(libs.spring.ai.mcp.server)
+    // Bean Validation annotations for constraint fixtures; the processor reads them by name only
+    testImplementation("jakarta.validation:jakarta.validation-api")
+    // FR-017a consistency and FR-014/FR-017 schema validity — test-only, never on the processor's
+    // runtime classpath: Hibernate Validator runs the generated MCP tool class's constraints, the
+    // JSON-Schema validator bundles the 2020-12 metaschema, GraalJS evaluates schema regexes as
+    // ECMAScript, and the OpenAPI parser validates the generated document.
+    testImplementation("org.hibernate.validator:hibernate-validator")
+    testImplementation(libs.json.schema.validator)
+    testImplementation(libs.graalvm.polyglot)
+    testImplementation(libs.graalvm.js)
+    testImplementation(libs.swagger.parser) {
+        // The jakarta variant of swagger-models is already on the classpath, same packages
+        exclude(group = "io.swagger.core.v3", module = "swagger-models")
+    }
 }
 
 // Inputs for AtlasGeneratorGoldenTest: the demo's annotation-processed output is the golden

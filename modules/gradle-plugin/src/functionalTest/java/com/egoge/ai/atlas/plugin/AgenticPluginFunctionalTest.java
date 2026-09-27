@@ -32,7 +32,7 @@ class AgenticPluginFunctionalTest {
     /** The canonical IR of a compilation that declares nothing, at the default options. */
     private static final String EMPTY_CONTRACT = """
             {
-              "irVersion": 1,
+              "irVersion": 2,
               "apiBasePath": "/api",
               "apiMajor": 1,
               "entities": [],

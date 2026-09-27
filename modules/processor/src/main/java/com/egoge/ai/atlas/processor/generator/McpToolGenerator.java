@@ -3,6 +3,10 @@
  */
 package com.egoge.ai.atlas.processor.generator;
 
+import com.egoge.ai.atlas.processor.constraints.EffectiveConstraints;
+import com.egoge.ai.atlas.processor.constraints.EffectiveConstraints.PatternConstraint;
+import com.egoge.ai.atlas.processor.contract.ContractIr;
+import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
@@ -37,17 +41,30 @@ public final class McpToolGenerator {
     private static final ClassName SERVICE = ClassName.get("org.springframework.stereotype", "Service");
     private static final ClassName TOOL = ClassName.get("org.springframework.ai.tool.annotation", "Tool");
     private static final ClassName TOOL_PARAM = ClassName.get("org.springframework.ai.tool.annotation", "ToolParam");
+    private static final ClassName VALIDATED = ClassName.get("org.springframework.validation.annotation", "Validated");
+    private static final String BV_PACKAGE = "jakarta.validation.constraints";
+    private static final ClassName NOT_NULL = ClassName.get(BV_PACKAGE, "NotNull");
+    private static final ClassName NOT_BLANK = ClassName.get(BV_PACKAGE, "NotBlank");
+    private static final ClassName DECIMAL_MIN = ClassName.get(BV_PACKAGE, "DecimalMin");
+    private static final ClassName DECIMAL_MAX = ClassName.get(BV_PACKAGE, "DecimalMax");
+    private static final ClassName SIZE = ClassName.get(BV_PACKAGE, "Size");
+    private static final ClassName PATTERN = ClassName.get(BV_PACKAGE, "Pattern");
+    private static final ClassName PATTERN_FLAG = PATTERN.nestedClass("Flag");
+    /** The Bean Validation annotation whose resolution enables enforcement (FR-016). */
+    public static final String VALIDATION_API_PROBE = BV_PACKAGE + ".NotNull";
 
     private McpToolGenerator() {
     }
 
     /**
      * Generates an MCP tool wrapper class and writes it to the filer.
+     *
+     * @param constraints the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
      */
     public static void generate(ServiceModel model, String packageName, int apiMajor,
-                                Filer filer, Messager messager) {
+                                ConstraintSurfaces constraints, Filer filer, Messager messager) {
         String toolClassName = model.serviceClassName().simpleName() + "McpTool";
-        TypeSpec toolSpec = buildToolSpec(model, toolClassName, apiMajor);
+        TypeSpec toolSpec = buildToolSpec(model, toolClassName, apiMajor, constraints);
         if (toolSpec == null) {
             messager.printMessage(Diagnostic.Kind.NOTE,
                     "[ai-atlas] Skipped MCP tool for " + model.serviceClassName().simpleName()
@@ -69,7 +86,8 @@ public final class McpToolGenerator {
         }
     }
 
-    static TypeSpec buildToolSpec(ServiceModel model, String toolClassName, int apiMajor) {
+    static TypeSpec buildToolSpec(ServiceModel model, String toolClassName, int apiMajor,
+                                  ConstraintSurfaces constraints) {
         // Filter to AI-channel methods that are active for the configured major
         var aiMethods = model.methods().stream()
                 .filter(m -> m.channels().contains("AI") && VersionSelector.isActive(m, apiMajor))
@@ -86,6 +104,11 @@ public final class McpToolGenerator {
                         .addMember("value", "$S", "com.egoge.ai.atlas.processor")
                         .build())
                 .addAnnotation(SERVICE);
+        boolean enforce = constraints != null && constraints.beanValidation();
+        if (enforce) {
+            // Spring's method validation rejects a violating call before it reaches the service (ADR-6)
+            classBuilder.addAnnotation(VALIDATED);
+        }
 
         // Private final service field
         classBuilder.addField(FieldSpec.builder(serviceType, "service", Modifier.PRIVATE, Modifier.FINAL)
@@ -100,13 +123,21 @@ public final class McpToolGenerator {
 
         // @Tool methods
         for (MethodModel method : aiMethods) {
-            classBuilder.addMethod(buildToolMethod(method, apiMajor));
+            ContractIr.Operation irOperation = constraints != null
+                    ? constraints.operation(ContractProjection.operationKey(serviceType, method)) : null;
+            classBuilder.addMethod(buildToolMethod(method, apiMajor, irOperation, enforce));
         }
 
         return classBuilder.build();
     }
 
-    private static MethodSpec buildToolMethod(MethodModel method, int apiMajor) {
+    /**
+     * @param irOperation the IR operation whose parameters' contracts the parameters carry, or
+     *                    {@code null} when {@code ai.atlas.constraints} is off
+     * @param enforce     whether to emit the contracts as Bean Validation annotations
+     */
+    private static MethodSpec buildToolMethod(MethodModel method, int apiMajor,
+                                              ContractIr.Operation irOperation, boolean enforce) {
         // Enrich description with version/deprecation metadata
         String desc = method.description();
         if (VersionSelector.isDeprecated(method, apiMajor)) {
@@ -138,12 +169,22 @@ public final class McpToolGenerator {
         }
 
         // Parameters with @ToolParam
-        for (ParameterModel param : method.parameters()) {
+        for (int i = 0; i < method.parameters().size(); i++) {
+            ParameterModel param = method.parameters().get(i);
             ParameterSpec.Builder paramBuilder = ParameterSpec.builder(param.typeName(), param.name());
             String paramDesc = param.description().isEmpty() ? param.name() : param.description();
-            paramBuilder.addAnnotation(AnnotationSpec.builder(TOOL_PARAM)
-                    .addMember("description", "$S", paramDesc)
-                    .build());
+            AnnotationSpec.Builder toolParam = AnnotationSpec.builder(TOOL_PARAM)
+                    .addMember("description", "$S", paramDesc);
+            if (irOperation != null) {
+                ContractIr.Parameter irParam = ConstraintSurfaces.parameter(irOperation, i, param);
+                toolParam.addMember("required", "$L", irParam.required());
+                paramBuilder.addAnnotation(toolParam.build());
+                if (enforce) {
+                    addBeanValidation(paramBuilder, param.typeName(), irParam);
+                }
+            } else {
+                paramBuilder.addAnnotation(toolParam.build());
+            }
             methodBuilder.addParameter(paramBuilder.build());
         }
 
@@ -159,6 +200,65 @@ public final class McpToolGenerator {
         }
 
         return methodBuilder.build();
+    }
+
+    /**
+     * Carries a parameter's effective contract (FR-003) as Bean Validation annotations: never the
+     * source annotations, so the MCP boundary enforces exactly the published contract (FR-016).
+     */
+    private static void addBeanValidation(ParameterSpec.Builder paramBuilder, TypeName type,
+                                          ContractIr.Parameter irParam) {
+        EffectiveConstraints c = irParam.constraints();
+        if (irParam.required() && !type.isPrimitive()) {
+            paramBuilder.addAnnotation(NOT_NULL);
+        }
+        if (c.minimum() != null) {
+            paramBuilder.addAnnotation(AnnotationSpec.builder(DECIMAL_MIN)
+                    .addMember("value", "$S", c.minimum())
+                    .addMember("inclusive", "$L", !c.exclusiveMinimum())
+                    .build());
+        }
+        if (c.maximum() != null) {
+            paramBuilder.addAnnotation(AnnotationSpec.builder(DECIMAL_MAX)
+                    .addMember("value", "$S", c.maximum())
+                    .addMember("inclusive", "$L", !c.exclusiveMaximum())
+                    .build());
+        }
+        // ConstraintChecks rejects lengths off a CharSequence and item counts off a collection or
+        // array, so at most one pair is set and never on a primitive: one @Size carries either.
+        // Checked again here so a broken invariant fails loudly instead of emitting a bad @Size.
+        boolean hasLength = c.minLength() != null || c.maxLength() != null;
+        boolean hasItems = c.minItems() != null || c.maxItems() != null;
+        if (hasLength && hasItems) {
+            throw new IllegalStateException("Parameter '" + irParam.name()
+                    + "' carries both length and item constraints");
+        }
+        Integer min = hasLength ? c.minLength() : c.minItems();
+        Integer max = hasLength ? c.maxLength() : c.maxItems();
+        if ((min != null || max != null) && type.isPrimitive()) {
+            throw new IllegalStateException("Parameter '" + irParam.name()
+                    + "' is primitive " + type + " but carries a length or item constraint");
+        }
+        if (min != null || max != null) {
+            AnnotationSpec.Builder size = AnnotationSpec.builder(SIZE);
+            if (min != null) {
+                size.addMember("min", "$L", min);
+            }
+            if (max != null) {
+                size.addMember("max", "$L", max);
+            }
+            paramBuilder.addAnnotation(size.build());
+        }
+        for (PatternConstraint pattern : c.patterns()) {
+            AnnotationSpec.Builder annotation = AnnotationSpec.builder(PATTERN).addMember("regexp", "$S", pattern.regex());
+            for (String flag : pattern.flags()) {
+                annotation.addMember("flags", "$T.$L", PATTERN_FLAG, flag);
+            }
+            paramBuilder.addAnnotation(annotation.build());
+        }
+        if (c.notBlank()) {
+            paramBuilder.addAnnotation(NOT_BLANK);
+        }
     }
 
     private static void addMappingStatement(MethodSpec.Builder methodBuilder,

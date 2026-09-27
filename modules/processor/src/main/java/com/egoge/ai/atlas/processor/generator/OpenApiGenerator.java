@@ -3,6 +3,8 @@
  */
 package com.egoge.ai.atlas.processor.generator;
 
+import com.egoge.ai.atlas.processor.constraints.Endpoint;
+import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.FieldModel;
@@ -59,6 +61,7 @@ public final class OpenApiGenerator {
   private static final String APPLICATION_JSON = "application/json";
   private static final String TEXT_PLAIN = "text/plain";
   private static final ClassName STRING = ClassName.get(String.class);
+  private static final String BIG_DECIMAL = "java.math.BigDecimal";
   /** Class-output-relative directory the OpenAPI specs are written to. */
   public static final String RESOURCE_DIR = "META-INF/openapi/";
   /** Unversioned alias emitted alongside the versioned spec. */
@@ -82,14 +85,17 @@ public final class OpenApiGenerator {
    *
    * @param operationIds the operationId of every active API operation, keyed by
    *                     {@link ContractProjection#operationKey}, as the projection assigns them
+   * @param constraints  the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
    */
   public static void generate(
       List<EntityModel> entities,
       List<ServiceModel> services,
       Map<String, String> operationIds,
       String apiBasePath, int apiMajor, String infoVersion,
+      ConstraintSurfaces constraints,
       Filer filer, Messager messager) {
-    OpenAPI openAPI = buildSpec(entities, services, operationIds, apiBasePath, apiMajor, infoVersion);
+    OpenAPI openAPI = buildSpec(entities, services, operationIds, apiBasePath, apiMajor, infoVersion,
+        constraints);
 
     try {
       String json = serializeToJson(openAPI);
@@ -125,7 +131,8 @@ public final class OpenApiGenerator {
       List<EntityModel> entities,
       List<ServiceModel> services,
       Map<String, String> operationIds,
-      String apiBasePath, int apiMajor, String infoVersion) {
+      String apiBasePath, int apiMajor, String infoVersion,
+      ConstraintSurfaces constraints) {
     OpenAPI openAPI = new OpenAPI();
     openAPI.openapi(OPENAPI_VERSION);
     openAPI.info(new Info()
@@ -137,7 +144,7 @@ public final class OpenApiGenerator {
     Components components = new Components();
     Map<String, Schema<?>> schemas = new LinkedHashMap<>();
     for (EntityModel entity : entities) {
-      schemas.put(entity.dtoName(), buildEntitySchema(entity, apiMajor));
+      schemas.put(entity.dtoName(), buildEntitySchema(entity, apiMajor, constraints));
     }
     components.schemas((Map) schemas);
     openAPI.components(components);
@@ -158,8 +165,8 @@ public final class OpenApiGenerator {
         pathItem = new PathItem();
         paths.addPathItem(entry.path(), pathItem);
       }
-      pathItem.operation(entry.httpMethod(),
-          buildOperation(entry.method(), operationId, apiMajor));
+      pathItem.operation(entry.httpMethod(), buildOperation(entry.method(), operationId, apiMajor,
+          constraints != null ? constraints.operation(entry.operationKey()) : null, constraints));
     }
     openAPI.paths(paths);
 
@@ -167,7 +174,8 @@ public final class OpenApiGenerator {
   }
 
   @SuppressWarnings({"rawtypes", "unchecked"}) // swagger-models properties() accepts raw Map<String, Schema>
-  private static Schema<?> buildEntitySchema(EntityModel entity, int apiMajor) {
+  private static Schema<?> buildEntitySchema(EntityModel entity, int apiMajor,
+                                             ConstraintSurfaces constraints) {
     Schema<?> schema = new Schema<>().type("object");
     String description = entity.classDescription().isEmpty()
         ? entity.dtoName() + " — PII-safe projection of " + entity.sourceClassName().simpleName()
@@ -175,7 +183,11 @@ public final class OpenApiGenerator {
     schema.description(description);
     Map<String, Schema<?>> properties = new LinkedHashMap<>();
     for (FieldModel field : entity.fields()) {
-      properties.put(field.name(), buildFieldSchema(field, apiMajor));
+      Schema<?> fieldSchema = buildFieldSchema(field, apiMajor);
+      if (constraints != null) {
+        ConstraintSurfaces.applyOpenApi(fieldSchema, constraints.field(entity, field));
+      }
+      properties.put(field.name(), fieldSchema);
     }
     schema.properties((Map) properties);
     return schema;
@@ -243,7 +255,13 @@ public final class OpenApiGenerator {
     }
   }
 
-  private static Operation buildOperation(MethodModel method, String operationId, int apiMajor) {
+  /**
+   * @param irOperation the IR operation whose parameters' requiredness and constraints the
+   *                    parameters carry, or {@code null} when {@code ai.atlas.constraints} is off
+   * @param constraints the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
+   */
+  private static Operation buildOperation(MethodModel method, String operationId, int apiMajor,
+                                          ContractIr.Operation irOperation, ConstraintSurfaces constraints) {
     Operation operation = new Operation();
     operation.operationId(operationId);
     operation.summary(method.description());
@@ -252,7 +270,8 @@ public final class OpenApiGenerator {
     }
 
     // Arguments are query parameters, matching the controller's @RequestParam binding
-    for (ParameterModel param : method.parameters()) {
+    for (int i = 0; i < method.parameters().size(); i++) {
+      ParameterModel param = method.parameters().get(i);
       Parameter parameter = new Parameter()
           .in("query")
           .name(param.name())
@@ -260,6 +279,15 @@ public final class OpenApiGenerator {
           .schema(mapJavaTypeToSchema(param.typeName().toString()));
       if (!param.description().isEmpty()) {
         parameter.description(param.description());
+      }
+      if (irOperation != null) {
+        ContractIr.Parameter irParam = ConstraintSurfaces.parameter(irOperation, i, param);
+        parameter.required(irParam.required());
+        if (!irParam.constraints().isEmpty()) {
+          // The keywords apply only to the matching JSON type, which the flag-off mapping may not give
+          parameter.schema(constrainedSchema(param.typeName(), constraints));
+        }
+        ConstraintSurfaces.applyOpenApi(parameter.getSchema(), irParam.constraints());
       }
       operation.addParametersItem(parameter);
     }
@@ -275,6 +303,28 @@ public final class OpenApiGenerator {
     operation.responses(responses);
 
     return operation;
+  }
+
+  /**
+   * The schema of a constrained parameter, typed as the constraint model types it (FR-014): an
+   * integral type is an {@code integer}, {@code float}, {@code double} and {@code BigDecimal} are a
+   * {@code number}, and an array or any {@code java.util.Collection} is an {@code array} with
+   * {@code items}; anything else keeps its flag-off mapping.
+   */
+  private static Schema<?> constrainedSchema(TypeName type, ConstraintSurfaces constraints) {
+    if (constraints.collection(type)) {
+      TypeName element = ConstraintSurfaces.elementType(type);
+      return new ArraySchema().items(element != null ? constrainedSchema(element, constraints) : new Schema<>());
+    }
+    String name = type.toString();
+    Schema<?> schema = mapJavaTypeToSchema(name);
+    if (Endpoint.integral(name) && !"integer".equals(schema.getType())) {
+      return new Schema<>().type("integer");
+    }
+    if (BIG_DECIMAL.equals(name)) {
+      return new Schema<>().type("number");
+    }
+    return schema;
   }
 
   /** Response content matching what the generated controller returns; {@code null} for void. */

@@ -9,6 +9,7 @@ import com.egoge.ai.atlas.processor.contract.ContractGate;
 import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.contract.IrBuilder;
 import com.egoge.ai.atlas.processor.generator.ApiVersionPropertiesGenerator;
+import com.egoge.ai.atlas.processor.generator.ConstraintsOption;
 import com.egoge.ai.atlas.processor.generator.DeprecationManifestGenerator;
 import com.egoge.ai.atlas.processor.generator.DtoGenerator;
 import com.egoge.ai.atlas.processor.generator.McpToolGenerator;
@@ -27,6 +28,7 @@ import com.egoge.ai.atlas.processor.util.QualityDiagnostics;
 import com.egoge.ai.atlas.processor.util.RestMappingRegistry;
 import com.egoge.ai.atlas.processor.util.ReturnTypeValidator;
 import com.egoge.ai.atlas.processor.util.ToolNameRegistry;
+import com.egoge.ai.atlas.processor.util.VersionSelector;
 import com.google.auto.service.AutoService;
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.TypeName;
@@ -62,7 +64,7 @@ import java.util.Set;
 @SupportedOptions({
         "ai.atlas.pii.patterns", "ai.atlas.pii.patterns.file",
         "ai.atlas.api.basePath", "ai.atlas.api.major", "ai.atlas.openapi.infoVersion",
-        "ai.atlas.strict", "ai.atlas.contract.baseline", "ai.atlas.contract.locked"
+        "ai.atlas.strict", "ai.atlas.contract.baseline", "ai.atlas.contract.locked", "ai.atlas.constraints"
 })
 public class AgenticProcessor extends AbstractProcessor {
 
@@ -72,6 +74,7 @@ public class AgenticProcessor extends AbstractProcessor {
     public static final String OPT_STRICT = "ai.atlas.strict";
     public static final String OPT_CONTRACT_BASELINE = "ai.atlas.contract.baseline";
     public static final String OPT_CONTRACT_LOCKED = "ai.atlas.contract.locked";
+    public static final String OPT_CONSTRAINTS = "ai.atlas.constraints";
     private final Map<String, EntityModel> entityRegistry = new HashMap<>();
     private final Set<String> dtoSkippedKeys = new HashSet<>();
     private final List<ServiceModel> serviceRegistry = new ArrayList<>();
@@ -88,6 +91,7 @@ public class AgenticProcessor extends AbstractProcessor {
     private boolean versionConfigValid;
     /** Kind of the quality diagnostics that are warnings by default and errors under {@code ai.atlas.strict}. */
     private Diagnostic.Kind qualityKind;
+    private ConstraintsOption constraints;
 
     @Override public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
     @Override
@@ -98,6 +102,8 @@ public class AgenticProcessor extends AbstractProcessor {
         qualityKind = QualityDiagnostics.resolveKind(OPT_STRICT,
                 processingEnv.getOptions().get(OPT_STRICT), processingEnv.getMessager());
         versionConfigValid &= qualityKind != null;
+        constraints = ConstraintsOption.resolve(OPT_CONSTRAINTS, processingEnv);
+        versionConfigValid &= constraints != null;
     }
 
     private void resolveVersionConfig() {
@@ -153,13 +159,15 @@ public class AgenticProcessor extends AbstractProcessor {
             contractIr.write(apiBasePath, apiMajor); // every round's declarations, including later rounds'
             ContractGate.run(processingEnv, contractIr.build(apiBasePath, apiMajor)); // FR-008..014
             // Phase 3: Generate aggregate artifacts after all rounds, from the projection the gate checked
+            ContractProjection projection = contractIr.project(apiBasePath, apiMajor);
             if (!openApiGenerated && (!entityRegistry.isEmpty() || !serviceRegistry.isEmpty())) {
                 OpenApiGenerator.generate(new ArrayList<>(entityRegistry.values()),
-                        serviceRegistry, contractIr.project(apiBasePath, apiMajor).operationIds(),
-                        apiBasePath, apiMajor, openApiInfoVersion,
+                        serviceRegistry, projection.operationIds(),
+                        apiBasePath, apiMajor, openApiInfoVersion, constraints.surfaces(projection),
                         processingEnv.getFiler(), processingEnv.getMessager());
                 openApiGenerated = true;
             }
+            constraints.generateToolSpecifications(serviceRegistry, apiMajor, projection, processingEnv);
             if (!apiVersionPropertiesGenerated) {
                 ApiVersionPropertiesGenerator.generate(apiBasePath, apiMajor,
                         processingEnv.getFiler(), processingEnv.getMessager());
@@ -371,6 +379,8 @@ public class AgenticProcessor extends AbstractProcessor {
                 toolNames.record(serviceType, method, methodModel, apiMajor);
                 QualityDiagnostics.reportMissingDescription(qualityKind, processingEnv.getMessager(),
                         serviceType, method, methodModel, typeAnnotation, apiMajor);
+                QualityDiagnostics.reportMissingHints(qualityKind, processingEnv.getMessager(), serviceType, method,
+                        methodModel, constraints.enabled() ? contractIr.operation(operationId).hints() : null, apiMajor);
             }
         }
         return operationIds;
@@ -382,10 +392,10 @@ public class AgenticProcessor extends AbstractProcessor {
                 .getPackageOf(serviceType).getQualifiedName() + ".generated";
         ServiceModel model = projection.service(ClassName.get(serviceType), operationIds);
         serviceRegistry.add(model);
-        McpToolGenerator.generate(model, generatedPackage, apiMajor,
+        McpToolGenerator.generate(model, generatedPackage, apiMajor, constraints.surfaces(projection),
                 processingEnv.getFiler(), processingEnv.getMessager());
         RestControllerGenerator.generate(model, generatedPackage, apiBasePath, apiMajor,
-                processingEnv.getFiler(), processingEnv.getMessager());
+                constraints.surfaces(projection), processingEnv.getFiler(), processingEnv.getMessager());
     }
 
     private MethodModel buildMethodModel(ExecutableElement method, AgenticExposed typeAnnotation) {
@@ -465,32 +475,8 @@ public class AgenticProcessor extends AbstractProcessor {
         String apiReplacement = AttributeResolver.resolveStringAttr(
                 methodAnnotation, typeAnnotation, AgenticExposed::apiReplacement, "");
 
-        if (apiSince < 1) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                    "[ai-atlas] apiSince must be >= 1 on method '" + methodName + "'. Got: " + apiSince, method);
-            return null;
-        }
-        if (apiDeprecatedSince < 0) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                    "[ai-atlas] apiDeprecatedSince must be >= 0 on '" + methodName + "'. Got: " + apiDeprecatedSince, method);
-            return null;
-        }
-        if (apiSince > apiUntil) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                    "[ai-atlas] apiSince (" + apiSince + ") must be <= apiUntil (" + apiUntil
-                            + ") on method '" + methodName + "'", method);
-            return null;
-        }
-        if (apiDeprecatedSince > 0 && apiDeprecatedSince < apiSince) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                    "[ai-atlas] apiDeprecatedSince (" + apiDeprecatedSince + ") must be >= apiSince ("
-                            + apiSince + ") on '" + methodName + "'", method);
-            return null;
-        }
-        if (apiDeprecatedSince > apiUntil) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                    "[ai-atlas] apiDeprecatedSince (" + apiDeprecatedSince + ") must be <= apiUntil ("
-                            + apiUntil + ") on method '" + methodName + "'", method);
+        if (!VersionSelector.validateLifecycle(methodName, apiSince, apiUntil, apiDeprecatedSince, method,
+                processingEnv.getMessager())) {
             return null;
         }
 

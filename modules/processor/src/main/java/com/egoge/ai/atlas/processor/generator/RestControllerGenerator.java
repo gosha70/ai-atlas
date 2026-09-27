@@ -3,6 +3,8 @@
  */
 package com.egoge.ai.atlas.processor.generator;
 
+import com.egoge.ai.atlas.processor.contract.ContractIr;
+import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
@@ -46,12 +48,14 @@ public final class RestControllerGenerator {
 
     /**
      * Generates a REST controller class and writes it to the filer.
+     *
+     * @param constraints the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
      */
     public static void generate(ServiceModel model, String packageName,
-                                String apiBasePath, int apiMajor,
+                                String apiBasePath, int apiMajor, ConstraintSurfaces constraints,
                                 Filer filer, Messager messager) {
         String controllerName = model.serviceClassName().simpleName() + "RestController";
-        TypeSpec controllerSpec = buildControllerSpec(model, controllerName, apiBasePath, apiMajor);
+        TypeSpec controllerSpec = buildControllerSpec(model, controllerName, apiBasePath, apiMajor, constraints);
         if (controllerSpec == null) {
             messager.printMessage(Diagnostic.Kind.NOTE,
                     "[ai-atlas] Skipped REST controller for " + model.serviceClassName().simpleName()
@@ -74,7 +78,7 @@ public final class RestControllerGenerator {
     }
 
     static TypeSpec buildControllerSpec(ServiceModel model, String controllerName,
-                                        String apiBasePath, int apiMajor) {
+                                        String apiBasePath, int apiMajor, ConstraintSurfaces constraints) {
         // Filter to API-channel methods only
         var apiMethods = model.methods().stream()
                 .filter(m -> m.channels().contains("API") && VersionSelector.isActive(m, apiMajor))
@@ -110,13 +114,20 @@ public final class RestControllerGenerator {
 
         // Endpoint methods
         for (MethodModel method : apiMethods) {
-            classBuilder.addMethod(buildEndpointMethod(method, apiMajor));
+            ContractIr.Operation irOperation = constraints != null
+                    ? constraints.operation(ContractProjection.operationKey(serviceType, method)) : null;
+            classBuilder.addMethod(buildEndpointMethod(method, apiMajor, irOperation));
         }
 
         return classBuilder.build();
     }
 
-    private static MethodSpec buildEndpointMethod(MethodModel method, int apiMajor) {
+    /**
+     * @param irOperation the IR operation whose parameters' requiredness the bindings follow, or
+     *                    {@code null} when {@code ai.atlas.constraints} is off
+     */
+    private static MethodSpec buildEndpointMethod(MethodModel method, int apiMajor,
+                                                  ContractIr.Operation irOperation) {
         String path = "/" + toKebabCase(method.methodName());
         boolean hasParams = !method.parameters().isEmpty();
 
@@ -154,9 +165,17 @@ public final class RestControllerGenerator {
         }
 
         // Parameters with @RequestParam
-        for (ParameterModel param : method.parameters()) {
+        for (int i = 0; i < method.parameters().size(); i++) {
+            ParameterModel param = method.parameters().get(i);
             ParameterSpec.Builder paramBuilder = ParameterSpec.builder(param.typeName(), param.name());
-            paramBuilder.addAnnotation(REQUEST_PARAM);
+            if (irOperation != null && !ConstraintSurfaces.parameter(irOperation, i, param).required()) {
+                // An OPTIONAL parameter (FR-015); required ones keep the plain binding
+                paramBuilder.addAnnotation(AnnotationSpec.builder(REQUEST_PARAM)
+                        .addMember("required", "$L", false)
+                        .build());
+            } else {
+                paramBuilder.addAnnotation(REQUEST_PARAM);
+            }
             methodBuilder.addParameter(paramBuilder.build());
         }
 

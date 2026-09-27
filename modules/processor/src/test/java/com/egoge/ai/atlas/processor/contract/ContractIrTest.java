@@ -4,6 +4,7 @@
 package com.egoge.ai.atlas.processor.contract;
 
 import com.egoge.ai.atlas.processor.AgenticProcessor;
+import com.egoge.ai.atlas.processor.constraints.EffectiveConstraints;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Entity;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Field;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Operation;
@@ -164,7 +165,8 @@ class ContractIrTest {
         assertThat(find.channels()).containsExactly("AI", "API");
         assertThat(find.rest()).isEqualTo(new ContractIr.Rest("POST", "/catalog-service/find"));
         assertThat(find.parameters()).containsExactly(
-                new ContractIr.Parameter("id", "java.lang.Long", "", List.of()));
+                new ContractIr.Parameter("id", "java.lang.Long", "", List.of(), true,
+                        EffectiveConstraints.NONE));
         assertThat(operation(ir, "shop.CatalogService#find()").toolName()).isEqualTo("findFeatured");
         assertThat(operation(ir, "shop.CatalogService#find()").rest())
                 .isEqualTo(new ContractIr.Rest("GET", "/catalog-service/find"));
@@ -182,7 +184,8 @@ class ContractIrTest {
         assertThat(count.toolName()).isEqualTo("countProducts");
         assertThat(count.returns()).isEqualTo(new ContractIr.Return("long", "NONE", null, null));
         assertThat(count.parameters()).containsExactly(
-                new ContractIr.Parameter("status", "shop.Status", "", List.of("ACTIVE", "RETIRED")));
+                new ContractIr.Parameter("status", "shop.Status", "", List.of("ACTIVE", "RETIRED"), true,
+                        EffectiveConstraints.NONE));
         assertThat(operation(ir, "shop.AdminService#refresh()").returns().javaType()).isEqualTo("void");
         assertThat(operation(ir, "shop.AdminService#label(java.lang.Long,boolean)").channels())
                 .containsExactly("API");
@@ -198,7 +201,7 @@ class ContractIrTest {
         assertThat(second.getBytes(StandardCharsets.UTF_8)).isEqualTo(first.getBytes(StandardCharsets.UTF_8));
         assertThat(IrJson.write(IrJson.parse(first, "api.ir.json"))).isEqualTo(first);
 
-        assertThat(first).startsWith("{\n  \"irVersion\": 1,\n  \"apiBasePath\": \"/api\",\n  \"apiMajor\": 2,\n")
+        assertThat(first).startsWith("{\n  \"irVersion\": 2,\n  \"apiBasePath\": \"/api\",\n  \"apiMajor\": 2,\n")
                 .endsWith("}\n").doesNotContain("\r").doesNotContain("\t");
         assertThat(first.lines()).allSatisfy(line ->
                 assertThat(line.length() - line.stripLeading().length()).isEven());
@@ -243,7 +246,7 @@ class ContractIrTest {
 
         assertThat(json).isEqualTo("""
                 {
-                  "irVersion": 1,
+                  "irVersion": 2,
                   "apiBasePath": "/api",
                   "apiMajor": 3,
                   "entities": [],
@@ -309,7 +312,7 @@ class ContractIrTest {
 
         assertMalformed(valid + "{}", "Trailing token");
         assertMalformed(valid + "x", "Unrecognized token");
-        assertMalformed(valid.replaceFirst("\"irVersion\": 1,", "\"irVersion\": 1, \"irVersion\": 1,"),
+        assertMalformed(valid.replaceFirst("\"irVersion\": 2,", "\"irVersion\": 2, \"irVersion\": 2,"),
                 "Duplicate field 'irVersion'");
         assertMalformed(valid.replaceFirst("\"sensitive\": (true|false),", "\"sensitive\": true, \"sensitive\": $1,"),
                 "Duplicate field 'sensitive'");

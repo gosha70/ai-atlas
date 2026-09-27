@@ -1,5 +1,5 @@
 {
-  "irVersion": 1,
+  "irVersion": 2,
   "apiBasePath": "/api",
   "apiMajor": 2,
   "entities": [
@@ -25,6 +25,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Unique address identifier",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -46,6 +47,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Street line",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -67,6 +69,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "City name",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -88,6 +91,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "State or province code",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -109,6 +113,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Postal / ZIP code",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -130,6 +135,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "ISO 3166-1 country code",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 2,
             "removedInVersion": 2147483647,
@@ -161,6 +167,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Unique customer identifier",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -182,6 +189,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Customer display name",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -206,6 +214,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Customer mailing addresses",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -237,6 +246,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Unique order identifier",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -264,6 +274,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Current order status",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -285,6 +296,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Total order amount in cents",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -306,6 +318,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Total amount — whole currency units (e.g. dollars)",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 2,
             "removedInVersion": 2147483647,
@@ -327,6 +340,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Total amount — fractional currency units (e.g. cents)",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 2,
             "removedInVersion": 2147483647,
@@ -348,6 +362,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Number of items in the order",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -372,6 +387,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Actions performed on this order",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -393,6 +409,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Legacy free-text notes (removed in v2)",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2,
@@ -424,6 +441,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Unique action identifier",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -452,6 +470,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Type of action performed",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -473,6 +492,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Human-readable action description",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -494,6 +514,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "When the action occurred (ISO-8601)",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -518,6 +539,7 @@
           "sensitive": false,
           "checkCircularReference": true,
           "description": "Parent order this action belongs to",
+          "constraints": {},
           "lifecycle": {
             "sinceVersion": 1,
             "removedInVersion": 2147483647,
@@ -552,6 +574,7 @@
           "dto": "com.egoge.ai.atlas.demo.entity.generated.CustomerDto"
         }
       },
+      "hints": {},
       "lifecycle": {
         "apiSince": 1,
         "apiUntil": 2147483647,
@@ -582,6 +605,7 @@
           "dto": "com.egoge.ai.atlas.demo.entity.generated.CustomerDto"
         }
       },
+      "hints": {},
       "lifecycle": {
         "apiSince": 2,
         "apiUntil": 2147483647,
@@ -608,7 +632,9 @@
           "name": "id",
           "javaType": "java.lang.Long",
           "description": "",
-          "enumConstants": []
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
         }
       ],
       "returns": {
@@ -620,6 +646,7 @@
           "dto": "com.egoge.ai.atlas.demo.entity.generated.OrderDto"
         }
       },
+      "hints": {},
       "lifecycle": {
         "apiSince": 1,
         "apiUntil": 2147483647,
@@ -646,7 +673,9 @@
           "name": "id",
           "javaType": "java.lang.Long",
           "description": "",
-          "enumConstants": []
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
         }
       ],
       "returns": {
@@ -658,6 +687,7 @@
           "dto": "com.egoge.ai.atlas.demo.entity.generated.OrderDto"
         }
       },
+      "hints": {},
       "lifecycle": {
         "apiSince": 2,
         "apiUntil": 2147483647,
@@ -684,7 +714,9 @@
           "name": "priority",
           "javaType": "java.lang.String",
           "description": "",
-          "enumConstants": []
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
         }
       ],
       "returns": {
@@ -696,6 +728,7 @@
           "dto": "com.egoge.ai.atlas.demo.entity.generated.OrderDto"
         }
       },
+      "hints": {},
       "lifecycle": {
         "apiSince": 3,
         "apiUntil": 2147483647,
@@ -722,7 +755,9 @@
           "name": "status",
           "javaType": "java.lang.String",
           "description": "",
-          "enumConstants": []
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
         }
       ],
       "returns": {
@@ -734,6 +769,7 @@
           "dto": "com.egoge.ai.atlas.demo.entity.generated.OrderDto"
         }
       },
+      "hints": {},
       "lifecycle": {
         "apiSince": 1,
         "apiUntil": 2147483647,

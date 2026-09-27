@@ -27,7 +27,9 @@ import static com.egoge.ai.atlas.processor.contract.ContractGate.OPERATION_PATH;
 
 /**
  * One comparison of a baseline and a fresh IR, both projected at the baseline's published major
- * M, classifying every difference by direction (FR-009, FR-010). Used through
+ * M, classifying every difference by direction (FR-009, FR-010), with input constraints and
+ * requiredness compared by narrowing and output constraints and hints informational
+ * (constraints-and-hints FR-008, FR-009). Used through
  * {@link ContractGate#compare}.
  */
 final class ContractComparison {
@@ -60,6 +62,8 @@ final class ContractComparison {
     private static final String C_RETURN = "returns.";
     private static final String C_RETURN_KIND = "returnKind";
     private static final String C_RETURN_TYPE = "returnType";
+    private static final String C_CONSTRAINTS = "constraints";
+    private static final String C_HINTS = "hints";
 
     private final ContractIr baseline;
     private final ContractIr fresh;
@@ -195,6 +199,11 @@ final class ContractComparison {
                 str(now.checkCircularReference()), false, null, null);
         diff(path, C_DESCRIPTION, Direction.OUTPUT, old.description(), now.description(), false, null, null);
         diff(path, C_LIFECYCLE, Direction.OUTPUT, str(old.lifecycle()), str(now.lifecycle()), false, null, null);
+        if (old.constraints() != null && now.constraints() != null
+                && ConstraintComparison.differ(old.constraints(), now.constraints(), old.javaType())) {
+            informational(path, C_CONSTRAINTS, Direction.OUTPUT, render(IrConstraintsJson.write(old.constraints())),
+                    render(IrConstraintsJson.write(now.constraints())));
+        }
     }
 
     private String fieldRemedy() {
@@ -276,6 +285,8 @@ final class ContractComparison {
         }
         for (int i = 0; i < old.parameters().size(); i++) {
             compareParameter(path, i, old.parameters().get(i), now.parameters().get(i));
+            ConstraintComparison.compare(old, old.parameters().get(i), now.parameters().get(i), operationRemedy(),
+                    differences);
         }
         String returns = "The operation's response schema changes";
         ContractIr.Return r0 = old.returns();
@@ -290,6 +301,10 @@ final class ContractComparison {
                 "The DTO the operation returns changes", operationRemedy());
         diff(path, C_DESCRIPTION, Direction.INPUT, old.description(), now.description(), false, null, null);
         diff(path, C_LIFECYCLE, Direction.INPUT, str(old.lifecycle()), str(now.lifecycle()), false, null, null);
+        if (old.hints() != null && now.hints() != null) {
+            informational(path, C_HINTS, Direction.INPUT, render(IrConstraintsJson.write(old.hints())),
+                    render(IrConstraintsJson.write(now.hints())));
+        }
     }
 
     /** Parameters at the same index; the operation identity already fixes their number and types. */
@@ -340,6 +355,19 @@ final class ContractComparison {
     private void compatible(String path, String change, Direction direction, String before, String after) {
         differences.add(new Difference(path, change, direction, before, after, Classification.COMPATIBLE,
                 null, null));
+    }
+
+    /** A difference that never fails the build outside lock mode (FR-009); nothing when the values are equal. */
+    private void informational(String path, String change, Direction direction, String before, String after) {
+        if (!Objects.equals(before, after)) {
+            differences.add(new Difference(path, change, direction, before, after, Classification.INFORMATIONAL,
+                    null, null));
+        }
+    }
+
+    /** The IR's own form of a constraints or hints object, {@code null} when it sets nothing. */
+    private static String render(Map<String, Object> slot) {
+        return slot.isEmpty() ? null : slot.toString();
     }
 
     private static String str(Object value) {

@@ -47,6 +47,11 @@ public final class ContractGate {
     public static final String FIELD_PATH = "field ";
     /** Element path prefix of an operation: {@code operation <qualified class>#<method>(<parameter types>)}. */
     public static final String OPERATION_PATH = "operation ";
+    /**
+     * Element path prefix of an operation parameter:
+     * {@code parameter <qualified class>#<method>(<parameter types>).<name>} (FR-011).
+     */
+    public static final String PARAMETER_PATH = "parameter ";
     /** Element path of document-level attributes. */
     public static final String DOCUMENT_PATH = "document";
     /** The Gradle task that accepts the current contract as the new baseline. */
@@ -82,10 +87,14 @@ public final class ContractGate {
         }
     }
 
-    /** Whether a difference breaks clients of the published major. */
+    /**
+     * Whether a difference breaks clients of the published major. Output constraints and hints are
+     * {@code INFORMATIONAL}: reported, and never failing the build outside lock mode (FR-009).
+     */
     public enum Classification {
         BREAKING,
-        COMPATIBLE;
+        COMPATIBLE,
+        INFORMATIONAL;
 
         String label() {
             return name().toLowerCase(Locale.ROOT);
@@ -100,9 +109,9 @@ public final class ContractGate {
      * @param direction      input or output
      * @param before         the baseline value, {@code null} when absent
      * @param after          the fresh value, {@code null} when absent
-     * @param classification breaking or compatible
-     * @param reason         why it breaks clients of M; {@code null} when compatible
-     * @param remedy         the declaration that would legitimise it; {@code null} when compatible
+     * @param classification breaking, compatible or informational
+     * @param reason         why it breaks clients of M; {@code null} unless breaking
+     * @param remedy         the declaration that would legitimise it; {@code null} unless breaking
      */
     public record Difference(String path, String change, Direction direction, String before, String after,
                              Classification classification, String reason, String remedy) {
@@ -255,7 +264,8 @@ public final class ContractGate {
      * The element paths at which two IR documents differ in any declaration or attribute, whatever
      * the major, as lock mode compares them (FR-014): {@value #DOCUMENT_PATH} for the document's
      * own attributes, an entity for its attributes or field order, and each differing field and
-     * operation. An element present on one side only is listed, with each of its fields.
+     * operation. An element present on one side only is listed, with each of its fields. A
+     * constraint, requiredness or hint slot that is unknown in the baseline is not compared (FR-010).
      *
      * @param baseline the committed baseline
      * @param fresh    the current IR
@@ -281,7 +291,8 @@ public final class ContractGate {
             Map<String, ContractIr.Field> newFields = byKey(now != null ? now.fields() : List.of(),
                     ContractIr.Field::name);
             for (String name : union(oldFields.keySet(), newFields.keySet())) {
-                if (!Objects.equals(oldFields.get(name), newFields.get(name))) {
+                ContractIr.Field oldField = oldFields.get(name);
+                if (!Objects.equals(oldField, ConstraintComparison.knownIn(oldField, newFields.get(name)))) {
                     paths.add(FIELD_PATH + className + "#" + name);
                 }
             }
@@ -289,7 +300,8 @@ public final class ContractGate {
         Map<String, ContractIr.Operation> oldOps = byKey(baseline.operations(), ContractIr.Operation::id);
         Map<String, ContractIr.Operation> newOps = byKey(fresh.operations(), ContractIr.Operation::id);
         for (String id : union(oldOps.keySet(), newOps.keySet())) {
-            if (!Objects.equals(oldOps.get(id), newOps.get(id))) {
+            ContractIr.Operation oldOp = oldOps.get(id);
+            if (!Objects.equals(oldOp, ConstraintComparison.knownIn(oldOp, newOps.get(id)))) {
                 paths.add(OPERATION_PATH + id);
             }
         }
@@ -336,7 +348,8 @@ public final class ContractGate {
 
     /**
      * The {@link #DIFF_RESOURCE_PATH} document: every difference with its element path, attribute,
-     * direction, before and after values and classification, in the given order (FR-013).
+     * direction, before and after values and classification, in the given order (FR-013). The
+     * classification is {@code breaking}, {@code compatible} or {@code informational} (FR-009).
      *
      * @param publishedMajor the baseline's major M
      * @param differences    the differences, ordered by element path
@@ -429,6 +442,9 @@ public final class ContractGate {
         if (path.startsWith(ENTITY_PATH)) {
             return env.getElementUtils().getTypeElement(path.substring(ENTITY_PATH.length()));
         }
+        if (path.startsWith(PARAMETER_PATH)) {
+            return locateParameter(env, path.substring(PARAMETER_PATH.length()));
+        }
         boolean field = path.startsWith(FIELD_PATH);
         if (!field && !path.startsWith(OPERATION_PATH)) {
             return null;
@@ -444,6 +460,21 @@ public final class ContractGate {
                         : enclosed.getKind() == ElementKind.METHOD
                         && member.equals(signature((ExecutableElement) enclosed))) {
                     return enclosed;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** The parameter {@code <class>#<method>(<types>).<name>} names, or {@code null} when it no longer exists. */
+    private static Element locateParameter(ProcessingEnvironment env, String target) {
+        int close = target.lastIndexOf(')');
+        Element method = locate(env, OPERATION_PATH + target.substring(0, close + 1));
+        String name = target.substring(close + 2);
+        if (method instanceof ExecutableElement executable) {
+            for (Element parameter : executable.getParameters()) {
+                if (parameter.getSimpleName().contentEquals(name)) {
+                    return parameter;
                 }
             }
         }
