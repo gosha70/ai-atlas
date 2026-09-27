@@ -5,6 +5,11 @@ package com.egoge.ai.atlas.processor.constraints;
 
 import com.egoge.ai.atlas.processor.constraints.EffectiveConstraints.PatternConstraint;
 
+import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.TypeKind;
+import javax.lang.model.type.TypeMirror;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -46,7 +51,7 @@ final class ConstraintChecks {
         Endpoint lower = c.lower();
         Endpoint upper = c.upper();
         if ((lower != null || upper != null) && !type.numeric()) {
-            errors.add("Bounds on " + what + " of non-numeric type " + type.type());
+            errors.add("Bounds on " + what + " of non-numeric type " + typeName(type));
         }
         if (lower != null && upper != null) {
             Endpoint lo = type.integral() ? lower.integralLower() : lower;
@@ -60,10 +65,16 @@ final class ConstraintChecks {
         checkRange(K_MIN_LENGTH, c.minLength(), K_MAX_LENGTH, c.maxLength(), what, errors);
         checkRange(K_MIN_ITEMS, c.minItems(), K_MAX_ITEMS, c.maxItems(), what, errors);
         if ((c.minLength() != null || c.maxLength() != null) && !type.string()) {
-            errors.add("Length constraints on " + what + " of non-string type " + type.type());
+            errors.add("Length constraints on " + what + " of non-string type " + typeName(type));
+        }
+        if (!c.patterns().isEmpty() && !type.string()) {
+            errors.add("Pattern constraints on " + what + " of non-string type " + typeName(type));
+        }
+        if (c.notBlank() && !type.string()) {
+            errors.add("notBlank on " + what + " of non-string type " + typeName(type));
         }
         if ((c.minItems() != null || c.maxItems() != null) && !type.items()) {
-            errors.add("Item constraints on " + what + " of type " + type.type()
+            errors.add("Item constraints on " + what + " of type " + typeName(type)
                     + ", which is neither a collection nor an array");
         }
         for (PatternConstraint pattern : c.patterns()) {
@@ -78,6 +89,15 @@ final class ConstraintChecks {
                         + e.getDescription());
             }
         }
+    }
+
+    /** The type as declared, without the type-use annotations {@code @Pattern} and others put on it. */
+    private static String typeName(ConstrainedType type) {
+        TypeMirror mirror = type.type();
+        if (mirror.getKind() == TypeKind.DECLARED) {
+            return ((TypeElement) ((DeclaredType) mirror).asElement()).getQualifiedName().toString();
+        }
+        return mirror.getKind().isPrimitive() ? mirror.getKind().name().toLowerCase(Locale.ROOT) : mirror.toString();
     }
 
     private static void checkRange(String minKey, Integer min, String maxKey, Integer max, String what,

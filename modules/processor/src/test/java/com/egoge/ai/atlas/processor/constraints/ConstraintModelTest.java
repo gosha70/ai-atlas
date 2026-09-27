@@ -242,6 +242,27 @@ class ConstraintModelTest {
     }
 
     @Test
+    void aPatternOrNotBlankOnANonStringErrors() {
+        // Hibernate Validator would throw HV000030 on every call to a generated tool
+        assertErrorOnParameter("@AgenticConstraints(pattern = \"[0-9]+\") Integer x",
+                "Pattern constraints on parameter 'x' of non-string type java.lang.Integer");
+        assertErrorOnParameter("@Pattern(regexp = \"[0-9]+\") Integer x",
+                "Pattern constraints on parameter 'x' (Bean Validation) of non-string type java.lang.Integer");
+        assertErrorOnParameter("@NotBlank Long x",
+                "notBlank on parameter 'x' (Bean Validation) of non-string type java.lang.Long");
+        assertErrorOnParameter("@NotBlank java.util.List<String> x", "notBlank on parameter 'x'");
+        JavaFileObject source = entity("@Pattern(regexp = \"a+\") int count");
+        CompilationSubject.assertThat(compile(source)).hadErrorContaining("Pattern constraints on field 'count'")
+                .inFile(source).onLineContaining("int count");
+    }
+
+    @Test
+    void aPatternOrNotBlankOnACharSequenceIsAccepted() {
+        assertThat(constraints("@NotBlank @Pattern(regexp = \"a+\") CharSequence x").patterns()).hasSize(1);
+        assertThat(constraints("@AgenticConstraints(pattern = \"a+\") String x").patterns()).hasSize(1);
+    }
+
+    @Test
     void optionalContradictingTheTypeOrBeanValidationErrors() {
         assertErrorOnParameter("@AgenticParam(required = Requiredness.OPTIONAL) int x", "primitive");
         assertErrorOnParameter("@NotNull @AgenticParam(required = Requiredness.OPTIONAL) Integer x",
