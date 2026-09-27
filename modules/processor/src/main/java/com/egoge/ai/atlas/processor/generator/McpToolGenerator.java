@@ -226,8 +226,19 @@ public final class McpToolGenerator {
         }
         // ConstraintChecks rejects lengths off a CharSequence and item counts off a collection or
         // array, so at most one pair is set and never on a primitive: one @Size carries either.
-        Integer min = c.minLength() != null ? c.minLength() : c.minItems();
-        Integer max = c.maxLength() != null ? c.maxLength() : c.maxItems();
+        // Checked again here so a broken invariant fails loudly instead of emitting a bad @Size.
+        boolean hasLength = c.minLength() != null || c.maxLength() != null;
+        boolean hasItems = c.minItems() != null || c.maxItems() != null;
+        if (hasLength && hasItems) {
+            throw new IllegalStateException("Parameter '" + irParam.name()
+                    + "' carries both length and item constraints");
+        }
+        Integer min = hasLength ? c.minLength() : c.minItems();
+        Integer max = hasLength ? c.maxLength() : c.maxItems();
+        if ((min != null || max != null) && type.isPrimitive()) {
+            throw new IllegalStateException("Parameter '" + irParam.name()
+                    + "' is primitive " + type + " but carries a length or item constraint");
+        }
         if (min != null || max != null) {
             AnnotationSpec.Builder size = AnnotationSpec.builder(SIZE);
             if (min != null) {
