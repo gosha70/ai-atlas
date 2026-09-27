@@ -320,9 +320,12 @@ on the classpath, the runtime **merges** the entry into that derived schema rath
   tool's annotations are the entry's hints.
 
 Tools without an entry keep their derived schema, without hints. Each tool name is registered once;
-two resources listing the same tool name fail startup, naming both. An application's own `ToolCallbackProvider` bean takes
-precedence: a tool it also provides is registered through it alone, without the generated
-constraints and hints, and the runtime logs one WARNING naming the tool and the provider bean.
+two resources listing the same tool name fail startup, naming both. While Spring AI's tool-callback
+conversion is on (`spring.ai.mcp.server.tool-callback-converter`, `true` by default), an
+application's own `ToolCallbackProvider` bean takes precedence: a tool it also provides is
+registered through it alone, without the generated constraints and hints, and the runtime logs one
+WARNING naming the tool and the provider bean. With the conversion off, Spring AI registers no
+provider's tools, so AI-ATLAS registers the tool itself, with its generated schema and hints.
 
 ### SYNC servers only
 
