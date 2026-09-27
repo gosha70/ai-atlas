@@ -13,15 +13,19 @@ import com.egoge.ai.atlas.processor.contract.ContractIr.Operation;
 import com.egoge.ai.atlas.processor.contract.ContractIr.OperationLifecycle;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Parameter;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Return;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.testing.compile.Compilation;
 import com.google.testing.compile.JavaFileObjects;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import javax.tools.JavaFileObject;
 import javax.tools.StandardLocation;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static com.google.testing.compile.Compiler.javac;
@@ -201,6 +205,50 @@ class IrVersion2Test {
                 "'readOnly' must be a boolean");
     }
 
+    @Test
+    void surrogatesAndOtherNonAsciiTextRoundTripExactly() throws Exception {
+        // Lone high, lone low, a reversed pair, a real pair (U+1F600), é and U+2028
+        String regex = "[^\uD800-\uDFFF]\uDC00x\uD800\uDC00\uD83D\uD83D\uDE00\u00e9\u2028";
+        ContractIr ir = document(new EffectiveConstraints(null, false, null, false, null, null, null, null,
+                List.of(new PatternConstraint(regex, List.of())), false), true, Hints.NONE);
+
+        byte[] bytes = IrJson.writeBytes(ir);
+        String json = new String(bytes, StandardCharsets.UTF_8);
+
+        assertThat(IrJson.parse(json, "api.ir.json")).isEqualTo(ir);
+        assertThat(json).contains("\"[^\\ud800-\\udfff]\\udc00x\\ud800\\udc00\\ud83d\\ud83d\\ude00\u00e9\u2028\"")
+                .doesNotContain("?");
+    }
+
+    @Test
+    void aPatternWithLoneSurrogatesGatesAgainstItsOwnBaselineWithNoDifference(@TempDir Path dir)
+            throws Exception {
+        JavaFileObject service = JavaFileObjects.forSourceString("shop.Lookup", """
+                package shop;
+                import com.egoge.ai.atlas.annotations.*;
+                import jakarta.validation.constraints.*;
+                @AgenticExposed(description = "Lookup")
+                public class Lookup {
+                    @AgenticExposed(description = "Find by code")
+                    public String find(@Pattern(regexp = "[^\\uD800-\\uDFFF]+") String code) { return null; }
+                }
+                """);
+        String first = compile(service);
+        assertThat(IrJson.parse(first, "api.ir.json").operations().get(0).parameters().get(0).constraints()
+                .patterns()).extracting(PatternConstraint::regex).containsExactly("[^\uD800-\uDFFF]+");
+        Path baseline = Files.writeString(dir.resolve("api.ir.json"), first, StandardCharsets.UTF_8);
+
+        Compilation gated = javac().withProcessors(new AgenticProcessor())
+                .withOptions("-A" + AgenticProcessor.OPT_CONTRACT_BASELINE + "=" + baseline,
+                        "-A" + AgenticProcessor.OPT_CONTRACT_LOCKED + "=true")
+                .compile(service);
+
+        assertThat(gated.status()).as(gated.diagnostics().toString()).isEqualTo(Compilation.Status.SUCCESS);
+        assertThat(new ObjectMapper().readTree(GateFixtures.generated(gated, ContractGate.DIFF_RESOURCE_PATH))
+                .get("differences")).isEmpty();
+        assertThat(GateFixtures.irOf(gated)).isEqualTo(first);
+    }
+
     // ------------------------------------------------------------ helpers
 
     /** {@code json} with each line's indentation removed, to compare nested snippets. */
@@ -238,7 +286,11 @@ class IrVersion2Test {
     }
 
     private static String compile() {
-        Compilation compilation = javac().withProcessors(new AgenticProcessor()).compile(ENTITY, SERVICE);
+        return compile(ENTITY, SERVICE);
+    }
+
+    private static String compile(JavaFileObject... sources) {
+        Compilation compilation = javac().withProcessors(new AgenticProcessor()).compile(sources);
         assertThat(compilation.status()).as(compilation.diagnostics().toString())
                 .isEqualTo(Compilation.Status.SUCCESS);
         JavaFileObject file = compilation.generatedFile(StandardLocation.CLASS_OUTPUT, ContractIr.RESOURCE_PATH)

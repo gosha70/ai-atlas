@@ -32,7 +32,8 @@ import java.util.function.Function;
 /**
  * Canonical JSON form of the {@link ContractIr} (FR-003, FR-004): a fixed key order in every
  * object, two-space indentation, {@code \n} line endings, a trailing newline, UTF-8, and every
- * key always present ({@code null} when absent), so equal documents are equal bytes.
+ * key always present ({@code null} when absent), so equal documents are equal bytes. Every
+ * surrogate is escaped as {@code \\uxxxx}, so a lone one in a regex survives the UTF-8 encoding.
  */
 public final class IrJson {
 
@@ -295,7 +296,8 @@ public final class IrJson {
                 case '\b' -> out.append("\\b");
                 case '\f' -> out.append("\\f");
                 default -> {
-                    if (c < 0x20) {
+                    // A surrogate is escaped: a lone one has no UTF-8 encoding and would become '?'
+                    if (c < 0x20 || Character.isSurrogate(c)) {
                         out.append(String.format("\\u%04x", (int) c));
                     } else {
                         out.append(c);
