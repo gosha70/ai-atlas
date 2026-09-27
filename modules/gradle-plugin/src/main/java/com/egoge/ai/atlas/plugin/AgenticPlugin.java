@@ -91,7 +91,6 @@ public class AgenticPlugin implements Plugin<Project> {
         extension.getContractBaseline().convention(
                 project.getLayout().getProjectDirectory().file(DEFAULT_CONTRACT_BASELINE));
         extension.getContractLocked().convention(false);
-        extension.getConstraints().convention(false);
 
         // Add dependencies and processor options after evaluation (so extension values are resolved)
         project.afterEvaluate(p -> {

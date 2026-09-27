@@ -259,7 +259,8 @@ agentic {
 }
 ```
 
-The Gradle plugin passes it to the main `compileJava` only. Other build tools pass
+The Gradle plugin passes it to the main `compileJava` only, and only when `constraints` is set, so
+a value added to `options.compilerArgs` stands otherwise. Other build tools pass
 `-Aai.atlas.constraints=true` to javac.
 
 **With the flag off**, every generated source and resource is byte-identical to earlier releases,
@@ -312,13 +313,19 @@ on the classpath, the runtime **merges** the entry into that derived schema rath
   the real Java signature;
 - a keyword that does not fit the derived type (bounds on anything but `integer`/`number`, lengths
   and patterns on anything but `string`, item bounds on anything but `array`) is left out with one
-  WARNING naming the tool, property, type and keyword. Bean Validation still enforces it;
+  WARNING naming the tool, property, type and keyword. Bean Validation still enforces it when method
+  validation is present (see the advisory warning);
 - a generated property that is not in the derived schema is not added, with one WARNING;
 - the merged schema declares `"$schema": "https://json-schema.org/draft/2020-12/schema"`, and the
   tool's annotations are the entry's hints.
 
 Tools without an entry keep their derived schema, without hints. Each tool name is registered once;
-two resources listing the same tool name fail startup, naming both.
+two resources listing the same tool name fail startup, naming both. While Spring AI's tool-callback
+conversion is on (`spring.ai.mcp.server.tool-callback-converter`, `true` by default), an
+application's own `ToolCallbackProvider` bean takes precedence: a tool it also provides is
+registered through it alone, without the generated constraints and hints, and the runtime logs one
+WARNING naming the tool and the provider bean. With the conversion off, Spring AI registers no
+provider's tools, so AI-ATLAS registers the tool itself, with its generated schema and hints.
 
 ### SYNC servers only
 

@@ -5,7 +5,6 @@ package com.egoge.ai.atlas.runtime.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;
@@ -13,6 +12,7 @@ import io.modelcontextprotocol.spec.McpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.McpToolUtils;
+import org.springframework.ai.mcp.server.common.autoconfigure.ToolCallbackConverterAutoConfiguration;
 import org.springframework.ai.mcp.server.common.autoconfigure.properties.McpServerProperties;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -42,9 +42,8 @@ import java.io.UncheckedIOException;
 import java.lang.reflect.Method;
 import java.util.AbstractList;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -58,7 +57,11 @@ import java.util.Set;
  * {@code META-INF/ai-atlas/mcp-tools.json} on the classpath is served with the listed constraint
  * keywords and requiredness merged into Spring AI's derived input schema, and with the listed
  * behavioural hints as its MCP {@code annotations}. Every other tool keeps its derived schema.
- * No {@link ToolCallbackProvider} is registered then, so every tool name comes from one path.
+ * No {@link ToolCallbackProvider} is registered then, so every tool name comes from one path. A tool
+ * the application's own {@code ToolCallbackProvider} bean also provides is left to that provider,
+ * with a WARNING, so each name is registered once, while Spring AI's tool-callback conversion
+ * ({@code spring.ai.mcp.server.tool-callback-converter}, on by default) registers that provider's
+ * tools. With the conversion off, nothing registers them, so AI-ATLAS registers the tool itself.
  *
  * <p>On an ASYNC or STATELESS server the tools are registered through a lazy
  * {@link ToolCallbackProvider}, with Spring AI's derived schemas only.
@@ -89,30 +92,10 @@ public class AgenticMcpConfiguration {
     private static final String K_NAME = "name";
     private static final String K_INPUT_SCHEMA = "inputSchema";
     private static final String K_ANNOTATIONS = "annotations";
-    private static final String K_SCHEMA = "$schema";
-    private static final String K_TYPE = "type";
-    private static final String K_PROPERTIES = "properties";
-    private static final String K_REQUIRED = "required";
     private static final String K_READ_ONLY_HINT = "readOnlyHint";
     private static final String K_DESTRUCTIVE_HINT = "destructiveHint";
     private static final String K_IDEMPOTENT_HINT = "idempotentHint";
     private static final String K_OPEN_WORLD_HINT = "openWorldHint";
-
-    private static final Set<String> NUMERIC_TYPES = Set.of("integer", "number");
-    private static final Set<String> STRING_TYPES = Set.of("string");
-    private static final Set<String> ARRAY_TYPES = Set.of("array");
-    /** The constraint keywords merged from a tool specification, each with the derived types it applies to. */
-    private static final Map<String, Set<String>> CONSTRAINT_KEYWORDS = Map.ofEntries(
-            Map.entry("minimum", NUMERIC_TYPES),
-            Map.entry("maximum", NUMERIC_TYPES),
-            Map.entry("exclusiveMinimum", NUMERIC_TYPES),
-            Map.entry("exclusiveMaximum", NUMERIC_TYPES),
-            Map.entry("minLength", STRING_TYPES),
-            Map.entry("maxLength", STRING_TYPES),
-            Map.entry("pattern", STRING_TYPES),
-            Map.entry("allOf", STRING_TYPES),
-            Map.entry("minItems", ARRAY_TYPES),
-            Map.entry("maxItems", ARRAY_TYPES));
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -226,88 +209,6 @@ public class AgenticMcpConfiguration {
         return entries;
     }
 
-    /**
-     * Merges a tool specification's input schema into Spring AI's derived one (FR-018). The derived
-     * schema is kept whole, including every property's {@code type}; each listed property gains the
-     * listed constraint keywords that apply to its derived type, and its membership in
-     * {@code required} follows the listing. A keyword that does not apply, or a listed property the
-     * derived schema does not have, is left out with a WARNING.
-     *
-     * @return the merged schema, declaring JSON Schema 2020-12
-     */
-    static ObjectNode mergeInputSchema(String toolName, String derivedSchema, JsonNode generatedSchema) {
-        ObjectNode derived;
-        try {
-            derived = (ObjectNode) JSON.readTree(derivedSchema);
-        } catch (IOException e) {
-            throw new UncheckedIOException("AI-ATLAS: Unreadable derived input schema of MCP tool '"
-                    + toolName + "'", e);
-        }
-        JsonNode derivedProperties = derived.path(K_PROPERTIES);
-        Set<String> required = new LinkedHashSet<>();
-        derived.path(K_REQUIRED).forEach(name -> required.add(name.asText()));
-        Set<String> generatedRequired = new LinkedHashSet<>();
-        generatedSchema.path(K_REQUIRED).forEach(name -> generatedRequired.add(name.asText()));
-
-        Iterator<Map.Entry<String, JsonNode>> generatedProperties = generatedSchema.path(K_PROPERTIES).fields();
-        while (generatedProperties.hasNext()) {
-            Map.Entry<String, JsonNode> generated = generatedProperties.next();
-            String property = generated.getKey();
-            if (!(derivedProperties.get(property) instanceof ObjectNode target)) {
-                log.warn("AI-ATLAS: MCP tool '{}': property '{}' of {} is not in the derived input schema, so "
-                        + "it is not added and its constraints are not published", toolName, property,
-                        TOOL_SPECIFICATIONS);
-                continue;
-            }
-            Set<String> types = types(target.get(K_TYPE));
-            Iterator<Map.Entry<String, JsonNode>> keywords = generated.getValue().fields();
-            while (keywords.hasNext()) {
-                Map.Entry<String, JsonNode> keyword = keywords.next();
-                Set<String> appliesTo = CONSTRAINT_KEYWORDS.get(keyword.getKey());
-                if (appliesTo == null) {
-                    continue;
-                }
-                if (types.stream().anyMatch(appliesTo::contains)) {
-                    target.set(keyword.getKey(), keyword.getValue().deepCopy());
-                } else {
-                    log.warn("AI-ATLAS: MCP tool '{}': constraint keyword '{}' on property '{}' does not apply "
-                            + "to its derived type '{}', so it is left out of the input schema; Bean Validation "
-                            + "still enforces it", toolName, keyword.getKey(), property, String.join(", ", types));
-                }
-            }
-            if (generatedRequired.contains(property)) {
-                required.add(property);
-            } else {
-                required.remove(property);
-            }
-        }
-
-        ObjectNode merged = JSON.createObjectNode();
-        merged.put(K_SCHEMA, JSON_SCHEMA_2020_12);
-        derived.fields().forEachRemaining(field -> {
-            if (!K_SCHEMA.equals(field.getKey())) {
-                merged.set(field.getKey(), field.getValue());
-            }
-        });
-        ArrayNode requiredNode = merged.putArray(K_REQUIRED);
-        required.forEach(requiredNode::add);
-        return merged;
-    }
-
-    /** The derived {@code type}: one name, a list of names, or none. */
-    private static Set<String> types(JsonNode type) {
-        Set<String> types = new LinkedHashSet<>();
-        if (type == null) {
-            return types;
-        }
-        if (type.isArray()) {
-            type.forEach(t -> types.add(t.asText()));
-        } else {
-            types.add(type.asText());
-        }
-        return types;
-    }
-
     /** The declared hints as MCP tool annotations, or {@code null} when none is declared. */
     static McpSchema.ToolAnnotations toolAnnotations(JsonNode annotations) {
         Boolean readOnly = hint(annotations, K_READ_ONLY_HINT);
@@ -366,11 +267,24 @@ public class AgenticMcpConfiguration {
 
         private List<SyncToolSpecification> resolveSpecifications() {
             Map<String, ToolSpecificationEntry> listed = readToolSpecifications(context);
+            // Only Spring AI's tool-callback conversion registers the application's providers; without it,
+            // a tool left to them would not be served at all
+            Map<String, String> providedByApplication = toolCallbackConversionActive(context)
+                    ? applicationProvidedToolNames(context) : Map.of();
             McpServerProperties properties = serverProperties.getIfAvailable();
             List<SyncToolSpecification> result = new ArrayList<>();
             int applied = 0;
             for (ToolCallback callback : resolveCallbacks(context)) {
                 String name = callback.getToolDefinition().name();
+                String provider = providedByApplication.get(name);
+                if (provider != null) {
+                    // Spring AI registers the application's providers itself; a second registration of
+                    // the same name fails startup
+                    log.warn("AI-ATLAS: MCP tool '{}' is registered by the application's own ToolCallbackProvider "
+                            + "bean '{}', so AI-ATLAS does not register it and its generated constraints and "
+                            + "hints are not applied", name, provider);
+                    continue;
+                }
                 String mimeType = properties != null ? properties.getToolResponseMimeType().get(name) : null;
                 SyncToolSpecification derived = McpToolUtils.toSyncToolSpecification(callback,
                         mimeType != null ? MimeType.valueOf(mimeType) : null);
@@ -382,6 +296,11 @@ public class AgenticMcpConfiguration {
                     applied++;
                 }
             }
+            Set<String> registered = new HashSet<>(providedByApplication.keySet());
+            result.forEach(specification -> registered.add(specification.tool().name()));
+            listed.values().stream().filter(entry -> !registered.contains(entry.name())).forEach(entry ->
+                    log.warn("AI-ATLAS: MCP tool '{}' is listed in {} but no @Tool method registers it, so its "
+                            + "input schema and hints are not applied", entry.name(), entry.resource()));
             if (applied > 0) {
                 log.info("AI-ATLAS: Applied generated input schemas and hints to {} MCP tool(s)", applied);
             }
@@ -390,7 +309,7 @@ public class AgenticMcpConfiguration {
 
         private SyncToolSpecification apply(ToolSpecificationEntry entry, ToolCallback callback,
                                             SyncToolSpecification derived) {
-            ObjectNode inputSchema = mergeInputSchema(entry.name(), callback.getToolDefinition().inputSchema(),
+            ObjectNode inputSchema = InputSchemaMerge.mergeInputSchema(entry.name(), callback.getToolDefinition().inputSchema(),
                     entry.inputSchema());
             McpSchema.Tool base = derived.tool();
             McpSchema.Tool tool = McpSchema.Tool.builder()
@@ -432,6 +351,32 @@ public class AgenticMcpConfiguration {
             }
             return callbacks;
         }
+    }
+
+    /**
+     * Whether Spring AI's MCP server converts the {@link ToolCallbackProvider} beans into tool
+     * specifications, as {@link ToolCallbackConverterAutoConfiguration} does when it is active: the
+     * MCP server is enabled and {@code spring.ai.mcp.server.tool-callback-converter} is not
+     * {@code false}. Read from the context, so it follows Spring AI's own conditions.
+     */
+    static boolean toolCallbackConversionActive(ApplicationContext context) {
+        return context.getBeanNamesForType(ToolCallbackConverterAutoConfiguration.class, false, false).length > 0;
+    }
+
+    /**
+     * The tool names the application's own {@link ToolCallbackProvider} beans register, each with the
+     * first bean that provides it. On a SYNC server AI-ATLAS registers no provider, so every one found
+     * belongs to the application, and Spring AI registers its tools itself while its tool-callback
+     * conversion is active.
+     */
+    private static Map<String, String> applicationProvidedToolNames(ApplicationContext context) {
+        Map<String, String> names = new LinkedHashMap<>();
+        context.getBeansOfType(ToolCallbackProvider.class).forEach((bean, provider) -> {
+            for (ToolCallback callback : provider.getToolCallbacks()) {
+                names.putIfAbsent(callback.getToolDefinition().name(), bean);
+            }
+        });
+        return names;
     }
 
     private static ToolCallback[] resolveCallbacks(ApplicationContext context) {

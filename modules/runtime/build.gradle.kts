@@ -24,4 +24,6 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-validation")
     // JSON Schema 2020-12 validator with a bundled metaschema, for McpToolSpecificationTest (test only)
     testImplementation(libs.json.schema.validator)
+    // The real processor, for ProcessorOutputMergeTest's generated mcp-tools.json (test only)
+    testImplementation(project(":modules:processor"))
 }

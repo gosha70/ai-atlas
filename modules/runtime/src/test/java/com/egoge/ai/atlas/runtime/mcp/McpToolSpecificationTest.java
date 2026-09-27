@@ -65,6 +65,7 @@ class McpToolSpecificationTest {
 
     private static final String ORDERS_FIXTURE = "mcp-tools/orders/";
     private static final String DUPLICATE_FIXTURE = "mcp-tools/duplicate/";
+    private static final String ORPHAN_FIXTURE = "mcp-tools/orphan/";
     private static final String FIND_ORDERS = McpToolFixtures.FIND_ORDERS;
     private static final String PLACE_ORDER = McpToolFixtures.PLACE_ORDER;
     private static final String PING = McpToolFixtures.PING;
@@ -84,7 +85,7 @@ class McpToolSpecificationTest {
             + "\"attributes\":{},\"deliverOn\":\"2026-01-01\",\"tags\":[\"x\"]}";
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final SchemaRegistry SCHEMAS = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12,
+    static final SchemaRegistry SCHEMAS = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12,
             builder -> builder.schemaLoader(loader -> loader.fetchRemoteResources(false)));
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
@@ -201,7 +202,7 @@ class McpToolSpecificationTest {
                    "status":{"type":"string","enum":["OPEN"],"pattern":"^(?:[A-Z]+)$"}},
                  "required":["since","attributes","status"]}""");
 
-        ObjectNode merged = AgenticMcpConfiguration.mergeInputSchema("t", derived, generated);
+        ObjectNode merged = InputSchemaMerge.mergeInputSchema("t", derived, generated);
 
         assertThat(merged.path("$schema").asText()).isEqualTo(AgenticMcpConfiguration.JSON_SCHEMA_2020_12);
         assertThat(merged.path("properties")).isEqualTo(JSON.readTree("""
@@ -260,13 +261,24 @@ class McpToolSpecificationTest {
     }
 
     @Test
+    void listedToolWithNoCallbackIsReportedWithWarning(CapturedOutput output) {
+        runner.withClassLoader(fixtures(ORDERS_FIXTURE, ORPHAN_FIXTURE)).run(context -> {
+            servedSchema(context, FIND_ORDERS);
+            assertThat(output).containsOnlyOnce("MCP tool 'orphan_tool' is listed in ")
+                    .contains(ORPHAN_FIXTURE + AgenticMcpConfiguration.TOOL_SPECIFICATIONS + "] but no @Tool method "
+                            + "registers it")
+                    .doesNotContain("MCP tool '" + FIND_ORDERS + "' is listed in");
+        });
+    }
+
+    @Test
     void everyMergedInputSchemaValidatesAgainstTheDraft202012Metaschema() {
         runner.withClassLoader(fixtures(ORDERS_FIXTURE)).run(context -> {
             Map<String, AgenticMcpConfiguration.ToolSpecificationEntry> listed =
                     AgenticMcpConfiguration.readToolSpecifications(context);
             assertThat(listed).containsOnlyKeys(FIND_ORDERS, PLACE_ORDER);
             for (AgenticMcpConfiguration.ToolSpecificationEntry entry : listed.values()) {
-                ObjectNode merged = AgenticMcpConfiguration.mergeInputSchema(entry.name(),
+                ObjectNode merged = InputSchemaMerge.mergeInputSchema(entry.name(),
                         derivedSchema(new McpToolFixtures.OrderTools(), entry.name()).toString(), entry.inputSchema());
                 assertThat(merged.path("$schema").asText()).isEqualTo(AgenticMcpConfiguration.JSON_SCHEMA_2020_12);
                 assertThat(metaschema().validate(merged)).as(entry.name()).isEmpty();
@@ -337,10 +349,12 @@ class McpToolSpecificationTest {
     }
 
     @Test
-    void statelessServerKeepsTheDerivedRegistration() {
+    void statelessServerKeepsTheDerivedRegistration(CapturedOutput output) {
         runner.withPropertyValues(PROTOCOL_PROPERTY + "=STATELESS").run(context -> {
             assertThat(context).hasBean(PROVIDER_BEAN);
             assertThat(context).doesNotHaveBean(SPECIFICATIONS_BEAN);
+            assertThat(output).containsOnlyOnce("The MCP server is ASYNC or STATELESS, so the generated "
+                    + "MCP tool input schemas and hints are not applied");
         });
     }
 
@@ -375,7 +389,7 @@ class McpToolSpecificationTest {
     // ---- helpers ------------------------------------------------------------------------------------
 
     /** A class loader that adds the given fixture directories to the test class path. */
-    private static ClassLoader fixtures(String... directories) {
+    static ClassLoader fixtures(String... directories) {
         ClassLoader parent = McpToolSpecificationTest.class.getClassLoader();
         URL[] urls = new URL[directories.length];
         for (int i = 0; i < directories.length; i++) {
@@ -385,7 +399,7 @@ class McpToolSpecificationTest {
         return new URLClassLoader(urls, parent);
     }
 
-    private static Schema metaschema() {
+    static Schema metaschema() {
         return SCHEMAS.getSchema(SchemaLocation.of(AgenticMcpConfiguration.JSON_SCHEMA_2020_12));
     }
 
@@ -425,7 +439,7 @@ class McpToolSpecificationTest {
         return texts;
     }
 
-    private static String baseUrl(ApplicationContext context) {
+    static String baseUrl(ApplicationContext context) {
         return "http://localhost:" + context.getEnvironment().getProperty("local.server.port");
     }
 
