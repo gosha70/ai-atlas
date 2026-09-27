@@ -8,7 +8,6 @@ import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
-import java.util.Set;
 
 /**
  * What kinds of constraint a constrained element's type can carry (FR-002, FR-004).
@@ -20,9 +19,6 @@ import java.util.Set;
  * @param items    whether item counts apply: a collection or an array
  */
 record ConstrainedType(TypeMirror type, boolean numeric, boolean integral, boolean string, boolean items) {
-
-    private static final Set<String> INTEGRAL_BOXES = Set.of("java.lang.Byte", "java.lang.Short",
-            "java.lang.Integer", "java.lang.Long", "java.math.BigInteger");
 
     static ConstrainedType of(TypeMirror type, ProcessingEnvironment env) {
         TypeKind kind = type.getKind();
@@ -42,7 +38,7 @@ record ConstrainedType(TypeMirror type, boolean numeric, boolean integral, boole
         String name = ((TypeElement) ((DeclaredType) type).asElement()).getQualifiedName().toString();
         return new ConstrainedType(type,
                 assignable(erased, "java.lang.Number", env),
-                INTEGRAL_BOXES.contains(name),
+                Endpoint.INTEGRAL_BOXES.contains(name),
                 assignable(erased, "java.lang.CharSequence", env),
                 assignable(erased, "java.util.Collection", env));
     }

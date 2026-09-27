@@ -5,6 +5,7 @@ package com.egoge.ai.atlas.processor.constraints;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Set;
 
 /**
  * A bound's value together with its exclusivity, compared as a whole (FR-003, FR-008).
@@ -13,6 +14,21 @@ import java.math.RoundingMode;
  * @param exclusive whether the bound itself is excluded
  */
 public record Endpoint(BigDecimal value, boolean exclusive) {
+
+    /** Qualified names of the boxed and big integral types whose bounds are compared over integers. */
+    static final Set<String> INTEGRAL_BOXES = Set.of("java.lang.Byte", "java.lang.Short",
+            "java.lang.Integer", "java.lang.Long", "java.math.BigInteger");
+    private static final Set<String> INTEGRAL_PRIMITIVES = Set.of("byte", "short", "int", "long");
+
+    /**
+     * Whether bounds on the type are compared over integers (FR-008).
+     *
+     * @param javaType a canonical Java type, as the Contract IR records it
+     * @return whether it is an integral primitive, its box, or {@code BigInteger}
+     */
+    public static boolean integral(String javaType) {
+        return INTEGRAL_PRIMITIVES.contains(javaType) || INTEGRAL_BOXES.contains(javaType);
+    }
 
     /**
      * Whether this lower endpoint admits fewer values than {@code other}: a higher value, or an
