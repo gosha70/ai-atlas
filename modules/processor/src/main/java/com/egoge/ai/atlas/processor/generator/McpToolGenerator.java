@@ -224,6 +224,8 @@ public final class McpToolGenerator {
                     .addMember("inclusive", "$L", !c.exclusiveMaximum())
                     .build());
         }
+        // ConstraintChecks rejects lengths off a CharSequence and item counts off a collection or
+        // array, so at most one pair is set and never on a primitive: one @Size carries either.
         Integer min = c.minLength() != null ? c.minLength() : c.minItems();
         Integer max = c.maxLength() != null ? c.maxLength() : c.maxItems();
         if (min != null || max != null) {

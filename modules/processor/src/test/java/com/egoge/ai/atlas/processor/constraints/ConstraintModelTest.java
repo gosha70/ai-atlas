@@ -235,6 +235,8 @@ class ConstraintModelTest {
     void attributesOnTheWrongTypeError() {
         assertErrorOnParameter("@AgenticConstraints(minLength = 1) Integer x", "Length constraints on parameter 'x'");
         assertErrorOnParameter("@AgenticConstraints(minItems = 1) String x", "Item constraints on parameter 'x'");
+        assertErrorOnParameter("@AgenticConstraints(maxLength = 1) int x", "Length constraints on parameter 'x'");
+        assertErrorOnParameter("@AgenticConstraints(maxItems = 1) long x", "Item constraints on parameter 'x'");
         assertErrorOnParameter("@AgenticConstraints(minimum = \"1\") String x", "Bounds on parameter 'x'");
         assertErrorOnParameter("@AgenticConstraints(minimum = \"one\") Integer x", "is not a decimal number");
     }
