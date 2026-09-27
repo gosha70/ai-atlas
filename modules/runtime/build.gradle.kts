@@ -22,4 +22,6 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     // Bean Validation for ProxiedToolBeanTest's @Validated tool service (test only)
     testImplementation("org.springframework.boot:spring-boot-starter-validation")
+    // JSON Schema 2020-12 validator with a bundled metaschema, for McpToolSpecificationTest (test only)
+    testImplementation(libs.json.schema.validator)
 }

@@ -1,0 +1,35 @@
+{
+  "tools": [
+    {
+      "name": "find_orders",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "limit": {"type": "integer", "description": "limit", "maximum": 100},
+          "customer": {"type": "object", "description": "customer", "maxLength": 5, "minimum": 1},
+          "ghost": {"type": "string", "description": "ghost", "minLength": 1}
+        },
+        "required": ["limit", "customer", "ghost"],
+        "additionalProperties": false
+      },
+      "annotations": {"readOnlyHint": true, "openWorldHint": false}
+    },
+    {
+      "name": "place_order",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {"type": "array", "description": "items", "minItems": 1},
+          "attributes": {"type": "object", "description": "attributes"},
+          "deliverOn": {"type": "string", "description": "deliverOn"},
+          "tags": {"type": "array", "items": {"type": "string"}, "description": "tags", "minItems": 1}
+        },
+        "required": ["items", "attributes", "deliverOn", "tags"],
+        "additionalProperties": false
+      },
+      "annotations": {"destructiveHint": false}
+    }
+  ]
+}

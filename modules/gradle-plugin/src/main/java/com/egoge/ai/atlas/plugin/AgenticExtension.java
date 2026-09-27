@@ -91,4 +91,11 @@ public abstract class AgenticExtension {
      * current contract fails the build until it is accepted with {@code atlasAccept}.
      */
     public abstract Property<Boolean> getContractLocked();
+
+    /**
+     * Constraints and hints in the generated surfaces. Defaults to false. When true, the OpenAPI
+     * document, the REST controllers and the MCP tool classes carry the contract's constraints, and
+     * {@code META-INF/ai-atlas/mcp-tools.json} is generated with each tool's input schema and hints.
+     */
+    public abstract Property<Boolean> getConstraints();
 }

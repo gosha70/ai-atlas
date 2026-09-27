@@ -16,7 +16,7 @@ import java.util.List;
 
 /**
  * The contract options of the main {@code compileJava} task (FR-016): the baseline's absolute
- * path and lock mode. The baseline is an input, and a missing file is allowed, so creating,
+ * path and lock mode, and the constraints flag (FR-020). The baseline is an input, and a missing file is allowed, so creating,
  * editing or accepting it re-runs the compilation and with it the gate. Only its content is
  * fingerprinted: the absolute path appears in the arguments alone, so checkouts in different
  * directories share build cache entries.
@@ -28,6 +28,8 @@ public abstract class ContractArguments implements CommandLineArgumentProvider {
     static final String OPT_BASELINE = AgenticProcessor.OPT_CONTRACT_BASELINE;
     /** The processor option enabling lock mode. */
     static final String OPT_LOCKED = AgenticProcessor.OPT_CONTRACT_LOCKED;
+    /** The processor option carrying constraints and hints into the generated surfaces. */
+    static final String OPT_CONSTRAINTS = AgenticProcessor.OPT_CONSTRAINTS;
 
     /** The baseline file; it may not exist yet. */
     @InputFiles
@@ -38,9 +40,14 @@ public abstract class ContractArguments implements CommandLineArgumentProvider {
     @Input
     public abstract Property<Boolean> getLocked();
 
+    /** Whether the generated surfaces carry constraints and hints. */
+    @Input
+    public abstract Property<Boolean> getConstraints();
+
     @Override
     public Iterable<String> asArguments() {
         return List.of("-A" + OPT_BASELINE + "=" + getBaseline().getSingleFile().getAbsolutePath(),
-                "-A" + OPT_LOCKED + "=" + getLocked().get());
+                "-A" + OPT_LOCKED + "=" + getLocked().get(),
+                "-A" + OPT_CONSTRAINTS + "=" + getConstraints().get());
     }
 }
