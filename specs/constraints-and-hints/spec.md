@@ -163,7 +163,7 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
     | `\w` / `\W` (Java `[a-zA-Z_0-9]`) | `[a-zA-Z_0-9]` / the negated form below |
     | `\s` / `\S` (Java `[ \t\n\x0B\f\r]`) | `[ \t\n\x0B\f\r]` / the negated form below |
     | `.` (Java: any character except `\n`, `\r`, U+0085, U+2028, U+2029) | the negated form of `[\n\r\u0085  ]` |
-    | A character class `[...]` of literals, ranges between BMP non-surrogate characters, and the escapes above, optionally negated with `^` | a class with each member translated; a negated class uses the negated form |
+    | A character class `[...]` or `[^...]` whose members are only *class members* (below) | a class of the translated members; a negated class uses the negated form |
     | Groups `(...)`, non-capturing `(?:...)`, alternation `\|` | themselves |
     | Quantifiers `*`, `+`, `?`, `{n}`, `{n,}`, `{n,m}`, and their lazy `?` variants | themselves |
 
@@ -190,6 +190,24 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
       match a surrogate code unit.
     - The emitted lookbehind is part of the translation, not of the accepted input subset. It
       requires an ECMAScript 2018+ engine, and the docs state this.
+  - **Class members.** Inside `[...]` and `[^...]`, only these are allowed:
+    - a literal BMP non-surrogate character;
+    - `\t`, `\n`, `\r`, `\f`, `\xhh`, and `\uhhhh` naming a non-surrogate;
+    - an escaped metacharacter;
+    - a range `a-b` whose endpoints are BMP non-surrogates **and whose span does not include
+      U+D800–U+DFFF**, so `[퟿-]` is not allowed even though both endpoints are
+      non-surrogates;
+    - the **positive** escapes `\d`, `\w` and `\s`, which are expanded in place to their ASCII
+      members. For example, `[\d_]` is emitted as `[0-9_]`, and `[^\s,]` as the negated form of
+      `[ \t\n\x0B\f\r,]`.
+
+    The **complemented** escapes `\S`, `\D` and `\W` are *not* allowed inside a class. The class
+    they would form contains every astral code point and surrogate, which a bracket expression
+    without `u` cannot express, and the four-branch form cannot be placed inside brackets. A class
+    containing one, such as `[\S]` or `[\D_]`, makes the pattern not publishable, with the FR-004
+    WARNING. Outside a class, `\S`, `\D` and `\W` stay publishable through the negated form.
+    Consequently every non-negated class matches only BMP non-surrogate characters, and every negated
+    class's `X` does too.
   - **Not in the subset, so not publishable:**
     - anything with flags;
     - inline flags, possessive quantifiers, atomic groups, lookarounds, backreferences and named groups;
@@ -197,6 +215,7 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
     - `\b`, `\B`, `\A`, `\Z`, `\z`, `\G`, `\R`, `\h`, `\H`, `\v`, `\X`;
     - any `\p{…}`/`\P{…}`, `\Q…\E`, octal and `\x{…}` escapes;
     - class union or intersection (nested `[` or `&&`);
+    - `\S`, `\D` or `\W` inside a class, and a class range spanning U+D800–U+DFFF;
     - literal characters outside the BMP, and surrogates.
   - **Anchoring:** the published form of a translated pattern `t` is `^(?:t)$`.
   - **`notBlank` is not a regex translation.** It is defined as Hibernate Validator 8.0.3's
@@ -334,10 +353,21 @@ Owner decisions of 2026-09-26, recorded in the origin transcript:
   - `@NotBlank`: accepts `"a\nb"`, `" a "`, U+00A0 and U+2003, rejects `""`, `" "`, `"\n\t"` and U+0000;
   - `@NotBlank @Pattern("[a-z ]+")`: rejects `"   "`, accepts `" ab "`.
 
-  For constraints that are **not published**, the assertion is deliberately one-sided: Bean
-  Validation rejects, and both schemas accept because they omit the constraint. The cases are a
-  `@Pattern` with `CASE_INSENSITIVE`, a possessive quantifier, `\b`, `\p{L}`, and a literal
-  U+1F600 in the pattern. Each also produces the FR-004 WARNING.
+  - **Class-member boundary (published):** `@Pattern("[\\d_]+")` accepts `"4_2"` and rejects `"٣"` (U+0663); `@Pattern("[^\\s,]+")` accepts U+1F600 and U+00A0, rejects `"a,b"`.
+
+  For constraints that are **not published**, the assertion is deliberately one-sided. Both schemas
+  accept every input, because they omit the constraint, while Bean Validation keeps its Java
+  result. The fixture chooses inputs that Bean Validation rejects, so the gap is visible. The cases
+  are:
+  - a `@Pattern` with `CASE_INSENSITIVE`;
+  - a possessive quantifier;
+  - `\b` and `\p{L}`;
+  - a literal U+1F600 in the pattern;
+  - `[\\S]` (input `" "`);
+  - `[\\D_]` (input `"5"`);
+  - `[\\uD7FF-\\uE000]` (input `"a"`).
+
+  Each also produces the FR-004 WARNING naming the unsupported construct.
 
 ### The runtime (US4)
 
