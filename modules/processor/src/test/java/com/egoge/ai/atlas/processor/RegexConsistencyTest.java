@@ -67,6 +67,7 @@ class RegexConsistencyTest {
     private static final String GRIN = new String(Character.toChars(0x1F600));
     private static final String HIGH = "\uD83D";
     private static final String LOW = "\uDE00";
+    private static final String SIZE_MAX_1 = "@Size(max = 1)";
 
     /** One constrained parameter: its annotations, and whether its constraint is published. */
     private record Case(String annotations, boolean published, List<Input> inputs) {
@@ -114,6 +115,10 @@ class RegexConsistencyTest {
             new Case("@NotBlank", true, List.of(accepts("a\nb"), accepts(" a "), accepts(" "), accepts(" "),
                     rejects(""), rejects(" "), rejects("\n\t"), rejects("\u0000"))),
             new Case("@NotBlank @Pattern(regexp = \"[a-z ]+\")", true, List.of(rejects("   "), accepts(" ab "))),
+            // Lengths only on BMP inputs, where UTF-16 units and code points agree
+            new Case("@Size(min = 2, max = 3)", true, List.of(rejects("a"), accepts("ab"), accepts("é\u2028x"),
+                    rejects("abcd"), rejects("\u00A0"))),
+            new Case(SIZE_MAX_1, true, List.of(accepts("a"), accepts("é"), accepts("\u2028"), rejects("ab"))),
             unpublished("@Pattern(regexp = \"[a-z]+\", flags = Pattern.Flag.CASE_INSENSITIVE)", rejects("123")),
             unpublished("@Pattern(regexp = \"[a-z]++\")", rejects("1")),
             unpublished("@Pattern(regexp = \"\\\\bab\\\\b\")", rejects("x")),
@@ -177,15 +182,10 @@ class RegexConsistencyTest {
     void mcpInputSchemaAgreesUnderEcmaScript() {
         for (String flags : ECMASCRIPT_FLAGS) {
             SchemaRegistry registry = registry(Dialects.getDraft202012(), flags);
-            forEachInput((name, c, input) -> {
-                Schema schema = registry.getSchema(tool(name).get("inputSchema"));
-                ObjectNode arguments = JSON.createObjectNode();
-                arguments.set(PARAMETER, TextNode.valueOf(input.value()));
-                assertThat(schema.validate(arguments).isEmpty())
-                        .as("mcp-tools.json, flags '%s', %s %s on %s", flags, name, c.annotations(),
-                                describe(input.value()))
-                        .isEqualTo(c.published() ? input.accepted() : true);
-            });
+            forEachInput((name, c, input) -> assertThat(mcpAccepts(registry, name, input.value()))
+                    .as("mcp-tools.json, flags '%s', %s %s on %s", flags, name, c.annotations(),
+                            describe(input.value()))
+                    .isEqualTo(c.published() ? input.accepted() : true));
         }
     }
 
@@ -193,13 +193,27 @@ class RegexConsistencyTest {
     void openApiParameterSchemaAgreesUnderEcmaScript() {
         for (String flags : ECMASCRIPT_FLAGS) {
             SchemaRegistry registry = registry(Dialects.getOpenApi30(), flags);
-            forEachInput((name, c, input) -> {
-                JsonNode parameter = openApi.get("paths").get(REST_PATH + name).get("post").get("parameters").get(0);
-                Schema schema = registry.getSchema(parameter.get("schema"));
-                assertThat(schema.validate(TextNode.valueOf(input.value())).isEmpty())
-                        .as("OpenAPI, flags '%s', %s %s on %s", flags, name, c.annotations(), describe(input.value()))
-                        .isEqualTo(c.published() ? input.accepted() : true);
-            });
+            forEachInput((name, c, input) -> assertThat(openApiAccepts(registry, name, input.value()))
+                    .as("OpenAPI, flags '%s', %s %s on %s", flags, name, c.annotations(), describe(input.value()))
+                    .isEqualTo(c.published() ? input.accepted() : true));
+        }
+    }
+
+    /**
+     * The one known disagreement on a published constraint, by the owner's decision: Bean Validation
+     * counts a string's length in UTF-16 units, JSON Schema in code points, and {@code minLength}/
+     * {@code maxLength} are published as they are. U+1F600 is two units, one code point.
+     */
+    @Test
+    void sizeCountsUtf16UnitsInBeanValidationButCodePointsInTheSchemas() {
+        String name = name(CASES.stream().map(Case::annotations).toList().indexOf(SIZE_MAX_1));
+
+        assertThat(beanValidationAccepts(name, GRIN)).as("Bean Validation").isFalse();
+        for (String flags : ECMASCRIPT_FLAGS) {
+            assertThat(mcpAccepts(registry(Dialects.getDraft202012(), flags), name, GRIN))
+                    .as("mcp-tools.json, flags '%s'", flags).isTrue();
+            assertThat(openApiAccepts(registry(Dialects.getOpenApi30(), flags), name, GRIN))
+                    .as("OpenAPI, flags '%s'", flags).isTrue();
         }
     }
 
@@ -211,7 +225,8 @@ class RegexConsistencyTest {
             Case c = CASES.get(i);
             JsonNode property = tool(name(i)).get("inputSchema").get("properties").get(PARAMETER);
             boolean hasPattern = property.has("pattern") || property.has("allOf");
-            assertThat(hasPattern).as("%s %s", name(i), c.annotations()).isEqualTo(c.published());
+            boolean patterned = c.annotations().contains("@Pattern") || c.annotations().contains("@NotBlank");
+            assertThat(hasPattern).as("%s %s", name(i), c.annotations()).isEqualTo(c.published() && patterned);
             if (!c.published()) {
                 assertThat(warnings).as("%s %s", name(i), c.annotations())
                         .anyMatch(w -> w.contains("parameter '" + PARAMETER + "'") && w.contains("cannot be published"));
@@ -226,6 +241,18 @@ class RegexConsistencyTest {
     private static boolean beanValidationAccepts(String name, String value) {
         return validator.forExecutables().validateParameters(tool, toolMethods.get(name), new Object[]{value})
                 .isEmpty();
+    }
+
+    private static boolean mcpAccepts(SchemaRegistry registry, String name, String value) {
+        Schema schema = registry.getSchema(tool(name).get("inputSchema"));
+        ObjectNode arguments = JSON.createObjectNode();
+        arguments.set(PARAMETER, TextNode.valueOf(value));
+        return schema.validate(arguments).isEmpty();
+    }
+
+    private static boolean openApiAccepts(SchemaRegistry registry, String name, String value) {
+        JsonNode parameter = openApi.get("paths").get(REST_PATH + name).get("post").get("parameters").get(0);
+        return registry.getSchema(parameter.get("schema")).validate(TextNode.valueOf(value)).isEmpty();
     }
 
     /** A registry whose {@code pattern} keyword runs on GraalJS with {@code flags}, fetching nothing remote. */
