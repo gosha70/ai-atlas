@@ -67,6 +67,10 @@ final class ConstraintComparison {
         if (old.required() != null && now.required() != null && !old.required().equals(now.required())) {
             record(C_REQUIRED, old.required().toString(), now.required().toString(), now.required());
         }
+        compareConstraints(old, now);
+    }
+
+    private void compareConstraints(Parameter old, Parameter now) {
         EffectiveConstraints c0 = old.constraints();
         EffectiveConstraints c1 = now.constraints();
         if (c0 == null || c1 == null) {
@@ -176,9 +180,23 @@ final class ConstraintComparison {
             Parameter o = old.parameters().get(i);
             Parameter p = now.parameters().get(i);
             parameters.add(new Parameter(p.name(), p.javaType(), p.description(), p.enumConstants(),
-                    o.required() != null ? p.required() : null, o.constraints() != null ? p.constraints() : null));
+                    o.required() != null ? p.required() : null, lockView(o, p)));
         }
         return new Operation(now.service(), now.method(), now.toolName(), now.channels(), now.description(),
                 now.rest(), parameters, now.returns(), old.hints() != null ? now.hints() : null, now.lifecycle());
+    }
+
+    /**
+     * The constraints lock mode compares for {@code now}: unknown when unknown in the baseline, and
+     * the baseline's own when FR-008 finds no difference, as between {@code > 9} and {@code >= 10}
+     * on an integral type, so equivalent spellings compare equal.
+     */
+    private static EffectiveConstraints lockView(Parameter old, Parameter now) {
+        if (old.constraints() == null || now.constraints() == null) {
+            return null;
+        }
+        List<Difference> differences = new ArrayList<>();
+        new ConstraintComparison("", null, differences).compareConstraints(old, now);
+        return differences.isEmpty() ? old.constraints() : now.constraints();
     }
 }

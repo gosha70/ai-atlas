@@ -118,6 +118,7 @@ class ConstraintGateTest {
         // on an int, > 9 and >= 10 are the same endpoint, in either direction
         Fixture inclusive = base().with(SERVICE, "/*count*/ @DecimalMin(value = \"9\", inclusive = false)",
                 "/*count*/ @Min(10)");
+        assertPasses(gate(baseline(base()), inclusive, LOCKED));
         assertNoDifference(base(), inclusive);
         assertNoDifference(inclusive, base());
     }

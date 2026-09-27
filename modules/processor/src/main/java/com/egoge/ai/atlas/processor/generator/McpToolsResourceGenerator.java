@@ -190,10 +190,10 @@ public final class McpToolsResourceGenerator {
             schema.put(K_TYPE, scalar);
             return schema;
         }
-        TypeName element = elementType(type);
-        if (element != null) {
+        if (isArray(type)) {
             schema.put(K_TYPE, T_ARRAY);
-            String elementScalar = scalarType(element);
+            TypeName element = elementType(type);
+            String elementScalar = element != null ? scalarType(element) : null;
             if (elementScalar != null) {
                 Map<String, Object> items = new LinkedHashMap<>();
                 items.put(K_TYPE, elementScalar);
@@ -229,7 +229,17 @@ public final class McpToolsResourceGenerator {
         return NUMBER_TYPES.contains(name) ? T_NUMBER : null;
     }
 
-    /** The element type of an array or a {@code java.util} collection, or {@code null}. */
+    /** Whether the type is an array or a {@code java.util} collection, raw or parameterized. */
+    private static boolean isArray(TypeName type) {
+        if (type instanceof ArrayTypeName) {
+            return true;
+        }
+        ClassName raw = type instanceof ParameterizedTypeName parameterized ? parameterized.rawType()
+                : type instanceof ClassName className ? className : null;
+        return raw != null && COLLECTION_TYPES.contains(raw.canonicalName());
+    }
+
+    /** The element type of an array or a parameterized {@code java.util} collection; {@code null} when raw. */
     private static TypeName elementType(TypeName type) {
         if (type instanceof ArrayTypeName array) {
             return array.componentType();
