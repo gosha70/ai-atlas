@@ -1,0 +1,560 @@
+{
+  "irVersion": 2,
+  "apiBasePath": "/api",
+  "apiMajor": 1,
+  "entities": [
+    {
+      "className": "shop.Customer",
+      "dtoName": "CustomerDto",
+      "dtoPackage": "shop.generated",
+      "displayName": "Customer",
+      "description": "A customer",
+      "includeTypeInfo": true,
+      "fields": [
+        {
+          "name": "id",
+          "displayName": "id",
+          "javaType": "java.lang.Long",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Customer id",
+          "constraints": {},
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "name",
+          "displayName": "name",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Display name",
+          "constraints": {},
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        }
+      ]
+    },
+    {
+      "className": "shop.Order",
+      "dtoName": "OrderDto",
+      "dtoPackage": "shop.generated",
+      "displayName": "Order",
+      "description": "A customer order",
+      "includeTypeInfo": true,
+      "fields": [
+        {
+          "name": "id",
+          "displayName": "id",
+          "javaType": "java.lang.Long",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Order id",
+          "constraints": {},
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "status",
+          "displayName": "status",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Status",
+          "constraints": {},
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "marginCents",
+          "displayName": "marginCents",
+          "javaType": "java.lang.Integer",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Internal margin, for REST back-office clients",
+          "constraints": {},
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "agentSummary",
+          "displayName": "agentSummary",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Plain-language summary for agents",
+          "constraints": {},
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "actions",
+          "displayName": "actions",
+          "javaType": "java.util.List<shop.OrderAction>",
+          "collectionKind": "COLLECTION",
+          "elementType": "shop.OrderAction",
+          "typeHint": null,
+          "reference": {
+            "entity": "shop.OrderAction",
+            "dto": "shop.generated.OrderActionDto"
+          },
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Actions on the order",
+          "constraints": {},
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "customer",
+          "displayName": "customer",
+          "javaType": "shop.Customer",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": {
+            "entity": "shop.Customer",
+            "dto": "shop.generated.CustomerDto"
+          },
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "The customer",
+          "constraints": {},
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        }
+      ]
+    },
+    {
+      "className": "shop.OrderAction",
+      "dtoName": "OrderActionDto",
+      "dtoPackage": "shop.generated",
+      "displayName": "OrderAction",
+      "description": "An action on an order",
+      "includeTypeInfo": true,
+      "fields": [
+        {
+          "name": "id",
+          "displayName": "id",
+          "javaType": "java.lang.Long",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Action id",
+          "constraints": {},
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "type",
+          "displayName": "type",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Action type",
+          "constraints": {},
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "performedBy",
+          "displayName": "performedBy",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Employee who performed it",
+          "constraints": {},
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "order",
+          "displayName": "order",
+          "javaType": "shop.Order",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": {
+            "entity": "shop.Order",
+            "dto": "shop.generated.OrderDto"
+          },
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Parent order",
+          "constraints": {},
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        }
+      ]
+    },
+    {
+      "className": "shop.Shipment",
+      "dtoName": "ShipmentDto",
+      "dtoPackage": "shop.generated",
+      "displayName": "Shipment",
+      "description": "A shipment",
+      "includeTypeInfo": true,
+      "fields": [
+        {
+          "name": "id",
+          "displayName": "id",
+          "javaType": "java.lang.Long",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Shipment id",
+          "constraints": {},
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "actions",
+          "displayName": "actions",
+          "javaType": "java.util.List<shop.OrderAction>",
+          "collectionKind": "COLLECTION",
+          "elementType": "shop.OrderAction",
+          "typeHint": null,
+          "reference": {
+            "entity": "shop.OrderAction",
+            "dto": "shop.generated.OrderActionDto"
+          },
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Actions",
+          "constraints": {},
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        }
+      ]
+    }
+  ],
+  "operations": [
+    {
+      "id": "shop.OrderService#customer(java.lang.Long)",
+      "service": "shop.OrderService",
+      "method": "customer",
+      "toolName": "customer",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "A customer",
+      "rest": {
+        "httpMethod": "POST",
+        "path": "/order-service/customer"
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "javaType": "java.lang.Long",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "shop.Customer",
+        "returnKind": "NONE",
+        "returnType": "shop.Customer",
+        "reference": {
+          "entity": "shop.Customer",
+          "dto": "shop.generated.CustomerDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.OrderService#find(java.lang.Long)",
+      "service": "shop.OrderService",
+      "method": "find",
+      "toolName": "find",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Find an order on both channels",
+      "rest": {
+        "httpMethod": "POST",
+        "path": "/order-service/find"
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "javaType": "java.lang.Long",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "shop.Order",
+        "returnKind": "NONE",
+        "returnType": "shop.Order",
+        "reference": {
+          "entity": "shop.Order",
+          "dto": "shop.generated.OrderDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.OrderService#forAgent(java.lang.Long)",
+      "service": "shop.OrderService",
+      "method": "forAgent",
+      "toolName": "forAgent",
+      "channels": [
+        "AI"
+      ],
+      "description": "Agent-only lookup",
+      "rest": null,
+      "parameters": [
+        {
+          "name": "id",
+          "javaType": "java.lang.Long",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "shop.Order",
+        "returnKind": "NONE",
+        "returnType": "shop.Order",
+        "reference": {
+          "entity": "shop.Order",
+          "dto": "shop.generated.OrderDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.OrderService#forApi(java.lang.Long)",
+      "service": "shop.OrderService",
+      "method": "forApi",
+      "toolName": "forApi",
+      "channels": [
+        "API"
+      ],
+      "description": "REST-only lookup",
+      "rest": {
+        "httpMethod": "POST",
+        "path": "/order-service/for-api"
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "javaType": "java.lang.Long",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "shop.Order",
+        "returnKind": "NONE",
+        "returnType": "shop.Order",
+        "reference": {
+          "entity": "shop.Order",
+          "dto": "shop.generated.OrderDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.OrderService#list()",
+      "service": "shop.OrderService",
+      "method": "list",
+      "toolName": "list",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "List orders on both channels",
+      "rest": {
+        "httpMethod": "GET",
+        "path": "/order-service/list"
+      },
+      "parameters": [],
+      "returns": {
+        "javaType": "java.util.List<shop.Order>",
+        "returnKind": "COLLECTION",
+        "returnType": "shop.Order",
+        "reference": {
+          "entity": "shop.Order",
+          "dto": "shop.generated.OrderDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    }
+  ]
+}

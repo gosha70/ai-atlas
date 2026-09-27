@@ -1,0 +1,197 @@
+{
+  "openapi" : "3.0.3",
+  "info" : {
+    "title" : "AI-ATLAS Generated API",
+    "description" : "Auto-generated API from @AgenticExposed services",
+    "version" : "1.0.0"
+  },
+  "paths" : {
+    "/api/v1/order-service/find" : {
+      "post" : {
+        "summary" : "Find an order on both channels",
+        "operationId" : "find",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OrderDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/order-service/list" : {
+      "get" : {
+        "summary" : "List orders on both channels",
+        "operationId" : "list",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/OrderDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/order-service/for-api" : {
+      "post" : {
+        "summary" : "REST-only lookup",
+        "operationId" : "forApi",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OrderDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/order-service/customer" : {
+      "post" : {
+        "summary" : "A customer",
+        "operationId" : "customer",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CustomerDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "OrderDto" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "Order id",
+            "format" : "int64"
+          },
+          "status" : {
+            "type" : "string",
+            "description" : "Status"
+          },
+          "marginCents" : {
+            "type" : "integer",
+            "description" : "Internal margin, for REST back-office clients",
+            "format" : "int32"
+          },
+          "actions" : {
+            "type" : "string",
+            "description" : "Actions on the order"
+          },
+          "customer" : {
+            "type" : "string",
+            "description" : "The customer"
+          }
+        },
+        "description" : "A customer order"
+      },
+      "ShipmentDto" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "Shipment id",
+            "format" : "int64"
+          },
+          "actions" : {
+            "type" : "string",
+            "description" : "Actions"
+          }
+        },
+        "description" : "A shipment"
+      },
+      "OrderActionDto" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "Action id",
+            "format" : "int64"
+          },
+          "type" : {
+            "type" : "string",
+            "description" : "Action type"
+          },
+          "performedBy" : {
+            "type" : "string",
+            "description" : "Employee who performed it"
+          },
+          "order" : {
+            "type" : "string",
+            "description" : "Parent order"
+          }
+        },
+        "description" : "An action on an order"
+      },
+      "CustomerDto" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "Customer id",
+            "format" : "int64"
+          },
+          "name" : {
+            "type" : "string",
+            "description" : "Display name"
+          }
+        },
+        "description" : "A customer"
+      }
+    }
+  }
+}

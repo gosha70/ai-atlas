@@ -164,4 +164,17 @@ public @interface AgenticField {
      * and OpenAPI schema descriptions to guide consumers toward the replacement.
      */
     String deprecatedMessage() default "";
+
+    /**
+     * <strong>Spike (Phase 4, epic #23 §7).</strong> The channels this field is eligible for. The
+     * default, {@code {INHERIT}}, makes the field eligible for every channel, as today. An explicit
+     * value narrows eligibility: a response is projected to the fields eligible for the channel that
+     * serves it, so {@code channels = {API}} keeps the field out of MCP tool results and
+     * {@code channels = {AI}} keeps it out of REST responses and the OpenAPI document.
+     *
+     * <p>Eligibility only narrows the {@code @AgenticField} whitelist; it never exposes an
+     * unannotated field. Honoured only with the processor option {@code ai.atlas.projections=true};
+     * with it off, an explicit value draws a WARNING and the field stays on every channel.
+     */
+    AgenticExposed.Channel[] channels() default { AgenticExposed.Channel.INHERIT };
 }
