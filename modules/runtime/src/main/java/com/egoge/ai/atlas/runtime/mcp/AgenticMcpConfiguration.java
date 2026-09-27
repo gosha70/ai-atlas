@@ -12,6 +12,7 @@ import io.modelcontextprotocol.spec.McpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.McpToolUtils;
+import org.springframework.ai.mcp.server.common.autoconfigure.ToolCallbackConverterAutoConfiguration;
 import org.springframework.ai.mcp.server.common.autoconfigure.properties.McpServerProperties;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -58,7 +59,9 @@ import java.util.Set;
  * behavioural hints as its MCP {@code annotations}. Every other tool keeps its derived schema.
  * No {@link ToolCallbackProvider} is registered then, so every tool name comes from one path. A tool
  * the application's own {@code ToolCallbackProvider} bean also provides is left to that provider,
- * with a WARNING, so each name is registered once.
+ * with a WARNING, so each name is registered once, while Spring AI's tool-callback conversion
+ * ({@code spring.ai.mcp.server.tool-callback-converter}, on by default) registers that provider's
+ * tools. With the conversion off, nothing registers them, so AI-ATLAS registers the tool itself.
  *
  * <p>On an ASYNC or STATELESS server the tools are registered through a lazy
  * {@link ToolCallbackProvider}, with Spring AI's derived schemas only.
@@ -264,7 +267,10 @@ public class AgenticMcpConfiguration {
 
         private List<SyncToolSpecification> resolveSpecifications() {
             Map<String, ToolSpecificationEntry> listed = readToolSpecifications(context);
-            Map<String, String> providedByApplication = applicationProvidedToolNames(context);
+            // Only Spring AI's tool-callback conversion registers the application's providers; without it,
+            // a tool left to them would not be served at all
+            Map<String, String> providedByApplication = toolCallbackConversionActive(context)
+                    ? applicationProvidedToolNames(context) : Map.of();
             McpServerProperties properties = serverProperties.getIfAvailable();
             List<SyncToolSpecification> result = new ArrayList<>();
             int applied = 0;
@@ -348,9 +354,20 @@ public class AgenticMcpConfiguration {
     }
 
     /**
+     * Whether Spring AI's MCP server converts the {@link ToolCallbackProvider} beans into tool
+     * specifications, as {@link ToolCallbackConverterAutoConfiguration} does when it is active: the
+     * MCP server is enabled and {@code spring.ai.mcp.server.tool-callback-converter} is not
+     * {@code false}. Read from the context, so it follows Spring AI's own conditions.
+     */
+    static boolean toolCallbackConversionActive(ApplicationContext context) {
+        return context.getBeanNamesForType(ToolCallbackConverterAutoConfiguration.class, false, false).length > 0;
+    }
+
+    /**
      * The tool names the application's own {@link ToolCallbackProvider} beans register, each with the
      * first bean that provides it. On a SYNC server AI-ATLAS registers no provider, so every one found
-     * belongs to the application, and Spring AI registers its tools itself.
+     * belongs to the application, and Spring AI registers its tools itself while its tool-callback
+     * conversion is active.
      */
     private static Map<String, String> applicationProvidedToolNames(ApplicationContext context) {
         Map<String, String> names = new LinkedHashMap<>();

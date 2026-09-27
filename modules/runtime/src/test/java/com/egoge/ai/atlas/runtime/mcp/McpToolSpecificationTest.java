@@ -157,30 +157,6 @@ class McpToolSpecificationTest {
         }
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {SSE, STREAMABLE})
-    void applicationOwnProviderTakesPrecedenceAndEachNameIsRegisteredOnce(String transport, CapturedOutput output)
-            throws Exception {
-        boolean streamable = STREAMABLE.equals(transport);
-        try (ConfigurableApplicationContext context =
-                     new SpringApplicationBuilder(McpToolFixtures.OwnProviderApplication.class)
-                .resourceLoader(new DefaultResourceLoader(fixtures(ORDERS_FIXTURE)))
-                .properties("server.port=0", "spring.main.banner-mode=off", PROTOCOL_PROPERTY + "=" + transport)
-                .run();
-             RawMcpClient client = streamable ? new RawMcpClient.Streamable(baseUrl(context))
-                     : new RawMcpClient.Sse(baseUrl(context))) {
-            client.initialize();
-            List<String> names = new ArrayList<>();
-            client.request("tools/list", "{}").path("tools").forEach(tool -> names.add(tool.path("name").asText()));
-
-            assertThat(names).containsExactlyInAnyOrder(FIND_ORDERS, PLACE_ORDER, PING);
-            assertThat(output).containsOnlyOnce("MCP tool '" + PING + "' is registered by the application's own "
-                    + "ToolCallbackProvider bean 'pingToolProvider'");
-            JsonNode pong = client.call(PING, "{\"message\":\"hi\"}");
-            assertThat(pong.path("isError").asBoolean()).as(pong.toString()).isFalse();
-        }
-    }
-
     // ---- the merge --------------------------------------------------------------------------------
 
     @Test
@@ -413,7 +389,7 @@ class McpToolSpecificationTest {
     // ---- helpers ------------------------------------------------------------------------------------
 
     /** A class loader that adds the given fixture directories to the test class path. */
-    private static ClassLoader fixtures(String... directories) {
+    static ClassLoader fixtures(String... directories) {
         ClassLoader parent = McpToolSpecificationTest.class.getClassLoader();
         URL[] urls = new URL[directories.length];
         for (int i = 0; i < directories.length; i++) {
@@ -463,7 +439,7 @@ class McpToolSpecificationTest {
         return texts;
     }
 
-    private static String baseUrl(ApplicationContext context) {
+    static String baseUrl(ApplicationContext context) {
         return "http://localhost:" + context.getEnvironment().getProperty("local.server.port");
     }
 

@@ -1,0 +1,17 @@
+{
+  "tools": [
+    {
+      "name": "ping",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "message": {"type": "string", "description": "message", "minLength": 1}
+        },
+        "required": ["message"],
+        "additionalProperties": false
+      },
+      "annotations": {"readOnlyHint": true, "idempotentHint": true}
+    }
+  ]
+}
