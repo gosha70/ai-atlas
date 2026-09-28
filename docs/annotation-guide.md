@@ -14,6 +14,7 @@ Marks an entity class for DTO generation. The annotation processor generates a J
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `dtoName` | String | `"{ClassName}Dto"` | Name of the generated DTO record |
+| `aiDtoName` | String | `dtoName` with `Dto` replaced by `AiDto` | Name of the separate record MCP tools return when the entity's AI and API projections differ; needs `ai.atlas.projections=true` (see [Per-Channel Field Projections](channel-projections.md)) |
 | `packageName` | String | `"{package}.generated"` | Package for the generated DTO |
 | `name` | String | Simple class name | Display name used in enriched JSON `typeInfo` block |
 | `description` | String | `""` | Class description included in OpenAPI schema and DTO metadata |
@@ -65,6 +66,7 @@ Marks a field for inclusion in the generated DTO. Fields without this annotation
 | `removedInVersion` | int | `Integer.MAX_VALUE` | Major version at which this field is removed from the DTO (exclusive — half-open interval) |
 | `deprecatedSinceVersion` | int | `0` | Major version at which this field became deprecated (`0` = not deprecated) |
 | `deprecatedMessage` | String | `""` | Migration guidance for deprecated fields |
+| `channels` | Channel[] | `{INHERIT}` | Which channels' responses carry the field: `AI` (MCP tools), `API` (REST + OpenAPI), or both. `INHERIT` means every channel. Needs `ai.atlas.projections=true` (see [Per-Channel Field Projections](channel-projections.md)) |
 
 ### Example
 
