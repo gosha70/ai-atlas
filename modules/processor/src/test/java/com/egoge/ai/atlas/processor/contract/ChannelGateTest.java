@@ -147,6 +147,66 @@ class ChannelGateTest {
     }
 
     @Test
+    void aFieldReachableOnlyThroughAReferenceCycleIsBreaking() throws Exception {
+        List<Difference> differences = compare(cyclicShop(), cyclicShop().with("shop.OrderAction", NOTE, api(NOTE)));
+
+        assertThat(channelDifferences(differences)).extracting(Difference::path, Difference::change,
+                        Difference::classification)
+                .containsExactly(tuple("field shop.OrderAction#note", "channels.AI", Classification.BREAKING));
+    }
+
+    @Test
+    void aReferenceCycleOffTheChannelDoesNotReachTheEntity() throws Exception {
+        Fixture apiActions = cyclicShop().with("shop.Order", ACTIONS, api(ACTIONS));
+
+        List<Difference> differences = compare(apiActions,
+                cyclicShop().with("shop.Order", ACTIONS, api(ACTIONS)).with("shop.OrderAction", NOTE, api(NOTE)));
+
+        assertThat(channelDifferences(differences)).extracting(Difference::path, Difference::classification)
+                .containsExactly(tuple("field shop.OrderAction#note", Classification.COMPATIBLE));
+    }
+
+    @Test
+    void aFieldOfAnEntityAnOperationReturnsInACollectionIterableOrArrayIsBreaking() throws Exception {
+        for (String returns : List.of("java.util.List<Order>", "Iterable<Order>", "Order[]")) {
+            Fixture before = shop().with("shop.OrderService", "public Order find", "public " + returns + " find");
+
+            List<Difference> differences = compare(before,
+                    shop().with("shop.OrderService", "public Order find", "public " + returns + " find")
+                            .with("shop.Order", MARGIN, api(MARGIN)));
+
+            assertThat(channelDifferences(differences)).as(returns)
+                    .extracting(Difference::path, Difference::change, Difference::classification)
+                    .containsExactly(tuple("field shop.Order#margin", "channels.AI", Classification.BREAKING));
+        }
+    }
+
+    @Test
+    void aFieldLosingTheApiChannelAnOperationServesIsBreaking() throws Exception {
+        List<Difference> differences = compare(shop(), shop().with("shop.Order", MARGIN, ai(MARGIN)));
+
+        assertThat(channelDifferences(differences)).containsExactly(new Difference("field shop.Order#margin",
+                "channels.API", Direction.OUTPUT, "[AI, API]", "[AI]", Classification.BREAKING,
+                "Clients of the API channel no longer receive the field",
+                "publish it in a new major (ai.atlas.api.major = 3, then atlasAccept), as a field's channels have"
+                        + " no lifecycle of their own"));
+    }
+
+    @Test
+    void aFieldLosingTheApiChannelNoOperationServesLosesItCompatibly() throws Exception {
+        Fixture agentOrders = shop().with("shop.OrderService", "returnType = Order.class)",
+                "returnType = Order.class, channels = AgenticExposed.Channel.AI)");
+
+        List<Difference> differences = compare(agentOrders, shop().with("shop.OrderService",
+                "returnType = Order.class)", "returnType = Order.class, channels = AgenticExposed.Channel.AI)")
+                .with("shop.Order", MARGIN, ai(MARGIN)));
+
+        assertThat(channelDifferences(differences)).extracting(Difference::path, Difference::change,
+                        Difference::classification)
+                .containsExactly(tuple("field shop.Order#margin", "channels.API", Classification.COMPATIBLE));
+    }
+
+    @Test
     void aFieldOfAnEntityNoOperationOnTheChannelServesLosesItCompatibly() throws Exception {
         Path baseline = baseline(shop());
 
@@ -231,8 +291,18 @@ class ChannelGateTest {
         return annotation.replace(")", ", channels = Channel.API)");
     }
 
+    private static String ai(String annotation) {
+        return annotation.replace(")", ", channels = Channel.AI)");
+    }
+
     private static Fixture shop() {
         return new Fixture(new LinkedHashMap<>(SHOP));
+    }
+
+    /** The shop with each action referring back to its order: Order and OrderAction form a cycle. */
+    private static Fixture cyclicShop() {
+        return shop().with("shop.OrderAction", "public Long getId()",
+                "@AgenticField(description = \"Parent\") private Order order;\n    public Order getOrder() { return order; }\n    public Long getId()");
     }
 
     private Path baseline(Fixture fixture) throws IOException {
