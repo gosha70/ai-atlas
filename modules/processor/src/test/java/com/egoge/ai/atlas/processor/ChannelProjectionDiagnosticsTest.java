@@ -41,6 +41,14 @@ class ChannelProjectionDiagnosticsTest {
             }
             """);
 
+    /** An unannotated subclass of {@link #KEY}: {@code @AgenticEntity} is not inherited. */
+    private static final JavaFileObject VIP_KEY = JavaFileObjects.forSourceString("shop.VipKey", """
+            package shop;
+            public class VipKey extends Key {
+                public String getTier() { return "gold"; }
+            }
+            """);
+
     // ------------------------------------------------------------ empty intersections
 
     @Test
@@ -168,6 +176,34 @@ class ChannelProjectionDiagnosticsTest {
     }
 
     @Test
+    void aSubtypeOfAnEntityReturnedWithoutAResolvableReturnTypeIsAnError() {
+        String[][] returns = {
+                {"VipKey", "null"},
+                {"java.util.List<VipKey>", "java.util.List.of()"},
+                {"Iterable<? extends VipKey>", "java.util.List.of()"},
+                {"VipKey[]", "new VipKey[0]"},
+        };
+        for (String[] r : returns) {
+            Compilation compilation = compile(KEY, VIP_KEY, keyService("", r[0], r[1]));
+
+            assertThat(compilation.status()).as(r[0]).isEqualTo(Compilation.Status.FAILURE);
+            assertThat(messages(compilation, Diagnostic.Kind.ERROR)).as(r[0]).containsExactly("[ai-atlas] Method"
+                    + " 'keys' returns VipKey, a subtype of the @AgenticEntity Key, without a resolvable"
+                    + " @AgenticExposed(returnType), so its REST and MCP wrappers would return the raw entity, which"
+                    + " ai.atlas.projections=true cannot project per channel. Declare returnType = Key.class");
+        }
+    }
+
+    @Test
+    void aSubtypeOfAnEntityReturnedWithTheEntityAsReturnTypeIsValid() {
+        for (String[] r : new String[][] {{"VipKey", "null"}, {"java.util.List<VipKey>", "java.util.List.of()"}}) {
+            Compilation compilation = compile(KEY, VIP_KEY, keyService(", returnType = Key.class", r[0], r[1]));
+
+            assertThat(compilation.status()).as(r[0]).isEqualTo(Compilation.Status.SUCCESS);
+        }
+    }
+
+    @Test
     void theRawEntityReturnIsAllowedWithTheOptionOffAndForAnInactiveOperation() {
         JavaFileObject service = JavaFileObjects.forSourceString("shop.NoteService", """
                 package shop;
@@ -278,6 +314,40 @@ class ChannelProjectionDiagnosticsTest {
     }
 
     @Test
+    void aRecordThatIsNotGeneratedDoesNotCollide() {
+        List<JavaFileObject> sources = new ArrayList<>(shop(true));
+        // No field active at major 1, so no OrderAiDto DTO is generated for it
+        sources.add(JavaFileObjects.forSourceString("shop.Later", """
+                package shop;
+                import com.egoge.ai.atlas.annotations.*;
+                @AgenticEntity(description = "Later", dtoName = "OrderAiDto")
+                public class Later {
+                    @AgenticField(description = "Text", sinceVersion = 2) private String text;
+                    public String getText() { return text; }
+                }
+                """));
+        // Splits, but no field is eligible for AI, so no ShipmentAiDto AI record is generated for it
+        sources.add(JavaFileObjects.forSourceString("shop.Ledger", """
+                package shop;
+                import com.egoge.ai.atlas.annotations.*;
+                import com.egoge.ai.atlas.annotations.AgenticExposed.Channel;
+                @AgenticEntity(description = "A ledger", aiDtoName = "ShipmentAiDto")
+                public class Ledger {
+                    @AgenticField(description = "Total", channels = Channel.API) private Long total;
+                    public Long getTotal() { return total; }
+                }
+                """));
+
+        Compilation compilation = compile(sources.toArray(JavaFileObject[]::new));
+
+        assertThat(messages(compilation, Diagnostic.Kind.ERROR)).isEmpty();
+        assertThat(compilation.status()).isEqualTo(Compilation.Status.SUCCESS);
+        assertThat(source(compilation, "shop.generated.OrderAiDto")).contains("record OrderAiDto");
+        assertThat(source(compilation, "shop.generated.ShipmentAiDto")).contains("record ShipmentAiDto");
+        assertThat(compilation.generatedSourceFile("shop.generated.LaterDto")).isEmpty();
+    }
+
+    @Test
     void aLaterRoundDtoNamedLikeAnEarlierAiRecordIsAnError() {
         LaterRoundProcessor summaries = new LaterRoundProcessor(Map.of("shop.late.Summary", """
                 package shop.late;
@@ -379,6 +449,18 @@ class ChannelProjectionDiagnosticsTest {
     }
 
     // ------------------------------------------------------------ helpers
+
+    private static JavaFileObject keyService(String returnType, String returns, String body) {
+        return JavaFileObjects.forSourceString("shop.KeyService", """
+                package shop;
+                import com.egoge.ai.atlas.annotations.*;
+                import com.egoge.ai.atlas.annotations.AgenticExposed.Channel;
+                public class KeyService {
+                    @AgenticExposed(description = "Keys", channels = Channel.API%s)
+                    public %s keys() { return %s; }
+                }
+                """.formatted(returnType, returns, body));
+    }
 
     private static Compilation compile(JavaFileObject... sources) {
         return javac().withProcessors(new AgenticProcessor()).withOptions(FLAG_ON).compile(sources);

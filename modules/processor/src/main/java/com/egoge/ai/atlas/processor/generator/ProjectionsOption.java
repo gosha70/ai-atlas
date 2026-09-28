@@ -15,6 +15,7 @@ import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.util.EntityRefResolver;
 import com.egoge.ai.atlas.processor.util.FieldScanner;
 import com.egoge.ai.atlas.processor.util.PiiDetector;
+import com.egoge.ai.atlas.processor.util.ReturnedTypes;
 import com.palantir.javapoet.ClassName;
 
 import javax.annotation.processing.Messager;
@@ -23,19 +24,12 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
-import javax.lang.model.type.ArrayType;
-import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.type.TypeVariable;
-import javax.lang.model.type.WildcardType;
-import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Deque;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -299,16 +293,23 @@ public final class ProjectionsOption {
         return false;
     }
 
-    /** What a new AI record would collide with, or {@code null} when its name is free. */
+    /**
+     * What a new AI record would collide with, or {@code null} when its name is free. Only records
+     * that are generated count: a DTO whose API view has a field, an AI record whose AI view has one.
+     */
     private static String aiRecordCollision(String className, ClassName record, ChannelProjection projection,
                                             Map<String, EntityModel> registry, ProcessingEnvironment env) {
-        for (var other : registry.entrySet()) {
-            if (other.getValue().dtoClassName().equals(record)) {
-                return "the DTO of " + simpleName(other.getKey());
+        Map<String, EntityModel> api = projection.view(API);
+        Map<String, EntityModel> ai = projection.view(AI);
+        for (String other : registry.keySet()) {
+            EntityModel dto = api.get(other);
+            if (!dto.fields().isEmpty() && dto.dtoClassName().equals(record)) {
+                return "the DTO of " + simpleName(other);
             }
-            if (!other.getKey().equals(className) && projection.splits(other.getKey())
-                    && projection.view(AI).get(other.getKey()).dtoClassName().equals(record)) {
-                return "the AI record of " + simpleName(other.getKey());
+            EntityModel aiRecord = ai.get(other);
+            if (!other.equals(className) && projection.splits(other) && !aiRecord.fields().isEmpty()
+                    && aiRecord.dtoClassName().equals(record)) {
+                return "the AI record of " + simpleName(other);
             }
         }
         return env.getElementUtils().getTypeElement(record.canonicalName()) != null
@@ -371,9 +372,9 @@ public final class ProjectionsOption {
     }
 
     /**
-     * An ERROR on a method that returns an {@code @AgenticEntity}, or a collection, iterable or
-     * array of one, without a resolvable {@code returnType}: its wrapper would return the raw entity,
-     * which the channel projection cannot reach.
+     * An ERROR on a method that returns an {@code @AgenticEntity} or a subtype of one, or a
+     * collection, iterable or array of either, without a resolvable {@code returnType}: its wrapper
+     * would return the raw entity, which the channel projection cannot reach.
      *
      * @return whether the method is valid
      */
@@ -384,46 +385,24 @@ public final class ProjectionsOption {
         }
         TypeMirror returned = method.getReturnType();
         if (returnKind != ServiceModel.ReturnKind.NONE) {
-            returned = elementType(returned, env.getTypeUtils());
+            returned = ReturnedTypes.elementType(returned, env.getTypeUtils());
         }
         if (returned instanceof TypeVariable variable) {
             returned = variable.getUpperBound();
         }
-        if (!(returned instanceof DeclaredType declared)
-                || declared.asElement().getAnnotation(AgenticEntity.class) == null) {
+        TypeElement entityType = returned == null ? null : ReturnedTypes.entityOf(returned, env.getTypeUtils());
+        if (entityType == null) {
             return true;
         }
-        String entity = declared.asElement().getSimpleName().toString();
+        String entity = entityType.getSimpleName().toString();
+        var returnedType = env.getTypeUtils().asElement(returned);
+        String subject = entityType.equals(returnedType) ? "the @AgenticEntity " + entity
+                : returnedType.getSimpleName() + ", a subtype of the @AgenticEntity " + entity + ",";
         env.getMessager().printMessage(Diagnostic.Kind.ERROR, PREFIX + "Method '" + method.getSimpleName()
-                + "' returns the @AgenticEntity " + entity + " without a resolvable @AgenticExposed(returnType),"
+                + "' returns " + subject + " without a resolvable @AgenticExposed(returnType),"
                 + " so its REST and MCP wrappers would return the raw entity, which " + option
                 + "=true cannot project per channel. Declare returnType = " + entity + ".class", method);
         return false;
-    }
-
-    /**
-     * The element type of an array, or of a collection or iterable through its {@code Iterable}
-     * supertype, or {@code null} when it is raw or unbounded.
-     */
-    private static TypeMirror elementType(TypeMirror type, Types types) {
-        if (type instanceof ArrayType array) {
-            return array.getComponentType();
-        }
-        Deque<TypeMirror> pending = new ArrayDeque<>(List.of(type));
-        Set<String> seen = new HashSet<>();
-        while (!pending.isEmpty()) {
-            TypeMirror current = pending.pop();
-            if (!(current instanceof DeclaredType declared) || !seen.add(current.toString())) {
-                continue;
-            }
-            if (((TypeElement) declared.asElement()).getQualifiedName().contentEquals("java.lang.Iterable")) {
-                List<? extends TypeMirror> arguments = declared.getTypeArguments();
-                TypeMirror element = arguments.isEmpty() ? null : arguments.get(0);
-                return element instanceof WildcardType wildcard ? wildcard.getExtendsBound() : element;
-            }
-            pending.addAll(types.directSupertypes(current));
-        }
-        return null;
     }
 
     /**

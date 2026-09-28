@@ -165,9 +165,14 @@ Projection reaches only responses mapped to a DTO. A method without a resolvable
 
 So with the flag on, an exposed method that returns an `@AgenticEntity`, or a collection, iterable
 or array of one, without a resolvable `returnType` is a compile ERROR on the method: declare
+`returnType = Order.class`. A subtype of an entity counts too, even though `@AgenticEntity` is not
+inherited: `VipOrder extends Order` returned without a `returnType` is an ERROR asking for
 `returnType = Order.class`. Only operations active at the configured major are checked. `Optional`
 and other wrapper return types remain unsupported: `Optional<Order>` with a `returnType` is rejected
-as incompatible, as before.
+as incompatible, as before. Other return shapes, such as `List<List<Order>>`,
+`Iterable<? super Order>`, `Map<String, Order>` and `Stream<Order>`, are not checked, so their
+raw entities still leak as described above, which [#50](https://github.com/gosha70/ai-atlas/issues/50)
+covers.
 
 There is no other runtime change: the controller calls `OrderDto.fromEntity`, the tool calls
 `OrderAiDto.fromEntity`, both are `@Generated` ai-atlas types that `DtoResponseBodyAdvice` accepts,
