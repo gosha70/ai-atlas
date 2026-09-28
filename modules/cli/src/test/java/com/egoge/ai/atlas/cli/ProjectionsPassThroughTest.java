@@ -21,7 +21,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The CLI passes {@code ai.atlas.projections} through {@code -A} unchanged: with it off, a declared
- * {@code @AgenticField(channels)} fails the generation; with it on, the generation succeeds.
+ * {@code @AgenticField(channels)} fails the generation; with it on, the MCP tool returns the
+ * entity's AI record.
  */
 class ProjectionsPassThroughTest {
 
@@ -63,6 +64,11 @@ class ProjectionsPassThroughTest {
 
         assertThat(exitCode).as(stdout.toString()).isEqualTo(CommandLine.ExitCode.OK);
         assertThat(MAPPER.readTree(stdout.toString()).get("status").asText()).isEqualTo("ok");
+        Path generated = workspace.resolve("out/sources/test/generated");
+        assertThat(Files.readString(generated.resolve("CustomerAiDto.java"))).doesNotContain("String name");
+        assertThat(Files.readString(generated.resolve("CustomerDto.java"))).contains("String name");
+        assertThat(Files.readString(generated.resolve("CustomerServiceMcpTool.java")))
+                .contains("public CustomerAiDto findById(");
     }
 
     private int generate(String option) {

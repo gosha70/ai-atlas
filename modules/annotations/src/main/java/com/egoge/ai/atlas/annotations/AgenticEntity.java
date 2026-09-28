@@ -38,6 +38,20 @@ public @interface AgenticEntity {
     String dtoName() default "";
 
     /**
+     * Custom name for the separate record MCP tools return when the entity's AI and API projections
+     * differ ({@link AgenticField#channels()}). Defaults to the DTO name with its {@code Dto} suffix
+     * replaced by {@code AiDto}: {@code OrderDto} becomes {@code OrderAiDto}, and a custom
+     * {@code OrderSummary} becomes {@code OrderSummaryAiDto}. Generated in the DTO's package.
+     *
+     * <p>The record exists only while the projections differ, directly or through a referenced
+     * entity, so it can appear or disappear as channel declarations change; MCP clients receive
+     * JSON and never see its name. Only meaningful with the processor option
+     * {@code ai.atlas.projections=true}; a name that collides with another type in the package is a
+     * compile error.
+     */
+    String aiDtoName() default "";
+
+    /**
      * Override package for the generated DTO. Defaults to
      * {@code {originalPackage}.generated}.
      */

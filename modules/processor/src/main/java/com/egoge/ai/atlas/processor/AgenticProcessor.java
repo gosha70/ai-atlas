@@ -11,7 +11,6 @@ import com.egoge.ai.atlas.processor.contract.IrBuilder;
 import com.egoge.ai.atlas.processor.generator.ApiVersionPropertiesGenerator;
 import com.egoge.ai.atlas.processor.generator.ConstraintsOption;
 import com.egoge.ai.atlas.processor.generator.DeprecationManifestGenerator;
-import com.egoge.ai.atlas.processor.generator.DtoGenerator;
 import com.egoge.ai.atlas.processor.generator.McpToolGenerator;
 import com.egoge.ai.atlas.processor.generator.OpenApiGenerator;
 import com.egoge.ai.atlas.processor.generator.ProjectionsOption;
@@ -167,7 +166,7 @@ public class AgenticProcessor extends AbstractProcessor {
             // Phase 3: Generate aggregate artifacts after all rounds, from the projection the gate checked
             ContractProjection projection = contractIr.project(apiBasePath, apiMajor);
             if (!openApiGenerated && (!entityRegistry.isEmpty() || !serviceRegistry.isEmpty())) {
-                OpenApiGenerator.generate(new ArrayList<>(entityRegistry.values()),
+                OpenApiGenerator.generate(projections.openApiEntities(entityRegistry),
                         serviceRegistry, projection.operationIds(),
                         apiBasePath, apiMajor, openApiInfoVersion, constraints.surfaces(projection),
                         processingEnv.getFiler(), processingEnv.getMessager());
@@ -264,8 +263,7 @@ public class AgenticProcessor extends AbstractProcessor {
             if (hasEmptyRef) {
                 dtoSkippedKeys.add(key);
             } else {
-                DtoGenerator.generate(model, entityRegistry, apiMajor,
-                        processingEnv.getFiler(), processingEnv.getMessager());
+                projections.generateDtos(key, entityRegistry, apiMajor, processingEnv);
             }
         }
     }
@@ -278,6 +276,7 @@ public class AgenticProcessor extends AbstractProcessor {
         projection.reportExcluded(typeElement, scanned, processingEnv.getMessager());
 
         PiiDetector.checkUnannotatedFields(typeElement, processingEnv);
+        projections.reportAiEligiblePii(typeElement, model, processingEnv);
 
         if (fields.isEmpty()) {
             // Register with empty fields so references can be detected in pass 2,
@@ -399,7 +398,7 @@ public class AgenticProcessor extends AbstractProcessor {
                 .getPackageOf(serviceType).getQualifiedName() + ".generated";
         ServiceModel model = projection.service(ClassName.get(serviceType), operationIds);
         serviceRegistry.add(model);
-        McpToolGenerator.generate(model, generatedPackage, apiMajor, constraints.surfaces(projection),
+        McpToolGenerator.generate(projections.toolModel(model, entityRegistry), generatedPackage, apiMajor, constraints.surfaces(projection),
                 processingEnv.getFiler(), processingEnv.getMessager());
         RestControllerGenerator.generate(model, generatedPackage, apiBasePath, apiMajor,
                 constraints.surfaces(projection), processingEnv.getFiler(), processingEnv.getMessager());
@@ -484,6 +483,10 @@ public class AgenticProcessor extends AbstractProcessor {
 
         if (!VersionSelector.validateLifecycle(methodName, apiSince, apiUntil, apiDeprecatedSince, method,
                 processingEnv.getMessager())) {
+            return null;
+        }
+        if (apiSince <= apiMajor && apiMajor <= apiUntil && !projections.checkResponse(method, returnKind,
+                returnEntityType, returnDtoType, channels, entityRegistry, processingEnv)) {
             return null;
         }
 
