@@ -7,6 +7,7 @@ import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.egoge.ai.atlas.annotations.AgenticExposed.Channel;
 import com.egoge.ai.atlas.annotations.AgenticField;
 import com.egoge.ai.atlas.processor.contract.ChannelProjection;
+import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel;
@@ -69,7 +70,7 @@ public final class ProjectionsOption {
     /** The REST channel. */
     public static final String API = ChannelProjection.API;
     /** Every channel, sorted: the eligibility of a field that declares none. */
-    public static final List<String> EVERY_CHANNEL = List.of(AI, API);
+    public static final List<String> EVERY_CHANNEL = ContractIr.Field.EVERY_CHANNEL;
 
     private static final String PREFIX = "[ai-atlas] ";
 

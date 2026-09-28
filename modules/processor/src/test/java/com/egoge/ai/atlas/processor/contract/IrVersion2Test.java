@@ -76,7 +76,7 @@ class IrVersion2Test {
     void constraintsRequirednessAndHintsAreRecordedInV2() throws Exception {
         ContractIr ir = IrJson.parse(compile(), "api.ir.json");
 
-        assertThat(ir.irVersion()).isEqualTo(2);
+        assertThat(ir.irVersion()).isEqualTo(ContractIr.IR_VERSION);
         List<Field> fields = ir.entities().get(0).fields();
         assertThat(fields.get(0).constraints()).isEqualTo(new EffectiveConstraints(null, false, null, false,
                 null, 40, null, null, List.of(new PatternConstraint("[A-Z].*", List.of())), true));
@@ -103,7 +103,7 @@ class IrVersion2Test {
         String second = compile();
 
         assertThat(second.getBytes(StandardCharsets.UTF_8)).isEqualTo(first.getBytes(StandardCharsets.UTF_8));
-        assertThat(first).startsWith("{\n  \"irVersion\": 2,\n");
+        assertThat(first).startsWith("{\n  \"irVersion\": " + ContractIr.IR_VERSION + ",\n");
         assertThat(IrJson.write(IrJson.parse(first, "api.ir.json"))).isEqualTo(first);
     }
 
@@ -174,18 +174,18 @@ class IrVersion2Test {
     }
 
     @Test
-    void irVersionAboveTwoIsAnError() {
-        String v3 = v1Document().replace("\"irVersion\": 1", "\"irVersion\": 3");
+    void irVersionAboveThreeIsAnError() {
+        String v4 = v1Document().replace("\"irVersion\": 1", "\"irVersion\": 4");
 
-        assertThatThrownBy(() -> IrJson.parse(v3, ".atlas/api.ir.json"))
+        assertThatThrownBy(() -> IrJson.parse(v4, ".atlas/api.ir.json"))
                 .isInstanceOf(IrJson.IrReadException.class)
-                .hasMessageContaining("irVersion 3")
-                .hasMessageContaining("supports irVersion 2");
+                .hasMessageContaining("irVersion 4")
+                .hasMessageContaining("supports irVersion 3");
     }
 
     @Test
     void v2DocumentWithAMissingOrNullSlotIsMalformed() {
-        String valid = IrJson.write(document(EffectiveConstraints.NONE, true, Hints.NONE));
+        String valid = v2Document();
 
         assertMalformed(valid.replaceFirst("\"constraints\": \\{},\n\\s*\"lifecycle\"", "\"lifecycle\""),
                 "missing 'constraints'");
@@ -265,7 +265,8 @@ class IrVersion2Test {
 
     private static ContractIr document(EffectiveConstraints constraints, Boolean required, Hints hints) {
         Field field = new Field("name", "name", "java.lang.String", "NONE", null, null, null, false, List.of(),
-                false, false, true, "Name", constraints, new FieldLifecycle(1, Integer.MAX_VALUE, 0, ""));
+                false, false, true, "Name", constraints, Field.EVERY_CHANNEL,
+                new FieldLifecycle(1, Integer.MAX_VALUE, 0, ""));
         Operation op = new Operation("shop.Catalog", "find", "find", List.of("AI"), "Find",
                 null, List.of(new Parameter("q", "java.lang.String", "", List.of(), required, constraints)),
                 new Return("java.lang.String", "NONE", null, null), hints,
@@ -276,9 +277,16 @@ class IrVersion2Test {
                 List.of(op));
     }
 
-    /** The {@link #document} shape as Phase 2 wrote it: no constraint, requiredness or hint slot. */
-    private static String v1Document() {
+    /** The {@link #document} shape as version 2 wrote it: no channels slot. */
+    static String v2Document() {
         return IrJson.write(document(EffectiveConstraints.NONE, true, Hints.NONE))
+                .replace("\"irVersion\": 3", "\"irVersion\": 2")
+                .replaceAll("\n\\s*\"channels\": \\[\n\\s*\"AI\",\n\\s*\"API\"\n\\s*],", "");
+    }
+
+    /** The {@link #document} shape as Phase 2 wrote it: no constraint, requiredness, hint or channels slot. */
+    static String v1Document() {
+        return v2Document()
                 .replace("\"irVersion\": 2", "\"irVersion\": 1")
                 .replaceAll(",\n\\s*\"required\": true,\n\\s*\"constraints\": \\{}", "")
                 .replaceAll("\n\\s*\"constraints\": \\{},", "")

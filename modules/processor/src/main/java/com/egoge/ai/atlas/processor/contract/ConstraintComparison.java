@@ -190,7 +190,8 @@ final class ConstraintComparison {
                         ? old.constraints() : now.constraints();
         return new Field(now.name(), now.displayName(), now.javaType(), now.collectionKind(), now.elementType(),
                 now.typeHint(), now.reference(), now.enumType(), now.allowedValues(), now.openEnum(),
-                now.sensitive(), now.checkCircularReference(), now.description(), constraints, now.lifecycle());
+                now.sensitive(), now.checkCircularReference(), now.description(), constraints, now.channels(),
+                now.lifecycle());
     }
 
     /** {@code now} with each hint, requiredness and constraint slot unknown where it is unknown in {@code old}. */

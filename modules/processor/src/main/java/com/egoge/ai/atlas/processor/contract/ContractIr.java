@@ -15,7 +15,9 @@ import java.util.List;
  * names, and absent values are {@code null}. {@link IrJson} writes and reads the canonical form.
  *
  * <p>A constraint, requiredness or hint slot is {@code null} only in a document migrated from
- * {@code irVersion} 1: its value is <em>unknown</em>, which is distinct from "none" (FR-006).
+ * {@code irVersion} 1: its value is <em>unknown</em>, which is distinct from "none" (FR-006). A
+ * field's channels are never unknown: before {@code irVersion} 3 nothing could narrow them, so a
+ * migrated field is on every channel.
  *
  * @param irVersion   version of this document's format, {@link #IR_VERSION} when written
  * @param apiBasePath configured REST base path, e.g. {@code /api}
@@ -27,7 +29,7 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
                          List<Entity> entities, List<Operation> operations) {
 
     /** The {@code irVersion} this ai-atlas writes and the highest it reads. */
-    public static final int IR_VERSION = 2;
+    public static final int IR_VERSION = 3;
     /** Class-output-relative path of the emitted IR document. */
     public static final String RESOURCE_PATH = "META-INF/ai-atlas/api.ir.json";
 
@@ -72,16 +74,32 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
      * @param checkCircularReference {@code @AgenticField(checkCircularReference)}
      * @param description            {@code @AgenticField(description)}
      * @param constraints            the field's effective constraints, or {@code null} when unknown
+     * @param channels               the channels whose responses carry the field, sorted: its
+     *                               effective eligibility, every channel unless
+     *                               {@code ai.atlas.projections} is on and it declares fewer
      * @param lifecycle              the field's lifecycle
      */
     public record Field(String name, String displayName, String javaType, String collectionKind,
                         String elementType, String typeHint, TypeRef reference, boolean enumType,
                         List<String> allowedValues, boolean openEnum, boolean sensitive,
                         boolean checkCircularReference, String description, EffectiveConstraints constraints,
-                        FieldLifecycle lifecycle) {
+                        List<String> channels, FieldLifecycle lifecycle) {
 
+        /** The channels of a field that declares none, and of every field migrated from before {@code irVersion} 3. */
+        public static final List<String> EVERY_CHANNEL = List.of("AI", "API");
+
+        /**
+         * @throws IllegalArgumentException if {@code channels} is not a non-empty, sorted list of
+         *                                  distinct channels among {@link #EVERY_CHANNEL}
+         */
         public Field {
             allowedValues = List.copyOf(allowedValues);
+            channels = List.copyOf(channels);
+            if (channels.isEmpty() || !EVERY_CHANNEL.containsAll(channels)
+                    || !channels.equals(channels.stream().distinct().sorted().toList())) {
+                throw new IllegalArgumentException("'channels' of field '" + name + "' must be a non-empty,"
+                        + " sorted list of distinct channels among " + EVERY_CHANNEL + ", got " + channels);
+            }
         }
     }
 

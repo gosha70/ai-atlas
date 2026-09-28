@@ -100,7 +100,6 @@ public class AgenticProcessor extends AbstractProcessor {
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
         super.init(processingEnv);
-        contractIr = new IrBuilder(processingEnv);
         resolveVersionConfig();
         qualityKind = QualityDiagnostics.resolveKind(OPT_STRICT,
                 processingEnv.getOptions().get(OPT_STRICT), processingEnv.getMessager());
@@ -109,6 +108,9 @@ public class AgenticProcessor extends AbstractProcessor {
         versionConfigValid &= constraints != null;
         projections = ProjectionsOption.resolve(OPT_PROJECTIONS, processingEnv);
         versionConfigValid &= projections != null;
+        if (projections != null) {
+            contractIr = new IrBuilder(processingEnv, projections::channels);
+        }
     }
 
     private void resolveVersionConfig() {

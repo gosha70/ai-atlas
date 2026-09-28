@@ -87,6 +87,8 @@ public final class IrJson {
     private static final String K_REQUIRED = "required";
     /** The first {@code irVersion} with constraint, requiredness and hint slots. */
     private static final int CONSTRAINTS_VERSION = 2;
+    /** The first {@code irVersion} with each field's channels. */
+    private static final int CHANNELS_VERSION = 3;
 
     private static final String INDENT = "  ";
     private static final char NEWLINE = '\n';
@@ -164,6 +166,7 @@ public final class IrJson {
         map.put(K_CHECK_CIRCULAR_REFERENCE, field.checkCircularReference());
         map.put(K_DESCRIPTION, field.description());
         map.put(IrConstraintsJson.K_CONSTRAINTS, IrConstraintsJson.write(field.constraints()));
+        map.put(K_CHANNELS, field.channels());
         FieldLifecycle lifecycle = field.lifecycle();
         Map<String, Object> life = new LinkedHashMap<>();
         life.put(K_SINCE_VERSION, lifecycle.sinceVersion());
@@ -362,7 +365,7 @@ public final class IrJson {
             // A version-1 document is migrated: its constraint, requiredness and hint slots are unknown (FR-006)
             boolean v2 = irVersion >= CONSTRAINTS_VERSION;
             return new ContractIr(ContractIr.IR_VERSION, string(root, K_API_BASE_PATH), integer(root, K_API_MAJOR),
-                    list(root, K_ENTITIES, e -> readEntity(e, v2)),
+                    list(root, K_ENTITIES, e -> readEntity(e, irVersion)),
                     list(root, K_OPERATIONS, o -> readOperation(o, v2)));
         } catch (IllegalArgumentException e) {
             throw malformed(source, e.getMessage());
@@ -373,13 +376,14 @@ public final class IrJson {
         return new IrReadException("Contract baseline " + source + " is not valid Contract IR JSON: " + detail);
     }
 
-    private static Entity readEntity(JsonNode node, boolean v2) {
+    private static Entity readEntity(JsonNode node, int irVersion) {
         return new Entity(string(node, K_CLASS_NAME), string(node, K_DTO_NAME), string(node, K_DTO_PACKAGE),
                 string(node, K_DISPLAY_NAME), string(node, K_DESCRIPTION), bool(node, K_INCLUDE_TYPE_INFO),
-                list(node, K_FIELDS, f -> readField(f, v2)));
+                list(node, K_FIELDS, f -> readField(f, irVersion)));
     }
 
-    private static Field readField(JsonNode node, boolean v2) {
+    private static Field readField(JsonNode node, int irVersion) {
+        boolean v2 = irVersion >= CONSTRAINTS_VERSION;
         JsonNode life = object(node, K_LIFECYCLE);
         return new Field(string(node, K_NAME), string(node, K_DISPLAY_NAME), string(node, K_JAVA_TYPE),
                 string(node, K_COLLECTION_KIND), nullableString(node, K_ELEMENT_TYPE),
@@ -387,6 +391,8 @@ public final class IrJson {
                 strings(node, K_ALLOWED_VALUES), bool(node, K_OPEN_ENUM), bool(node, K_SENSITIVE),
                 bool(node, K_CHECK_CIRCULAR_REFERENCE), string(node, K_DESCRIPTION),
                 v2 ? IrConstraintsJson.readConstraints(node) : null,
+                // Nothing before version 3 could narrow a field's channels: a migrated field is on every channel
+                irVersion >= CHANNELS_VERSION ? strings(node, K_CHANNELS) : Field.EVERY_CHANNEL,
                 new FieldLifecycle(integer(life, K_SINCE_VERSION), integer(life, K_REMOVED_IN_VERSION),
                         integer(life, K_DEPRECATED_SINCE_VERSION), string(life, K_DEPRECATED_MESSAGE)));
     }
