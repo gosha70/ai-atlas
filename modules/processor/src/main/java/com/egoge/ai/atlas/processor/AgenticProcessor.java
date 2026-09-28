@@ -14,6 +14,7 @@ import com.egoge.ai.atlas.processor.generator.DeprecationManifestGenerator;
 import com.egoge.ai.atlas.processor.generator.DtoGenerator;
 import com.egoge.ai.atlas.processor.generator.McpToolGenerator;
 import com.egoge.ai.atlas.processor.generator.OpenApiGenerator;
+import com.egoge.ai.atlas.processor.generator.ProjectionsOption;
 import com.egoge.ai.atlas.processor.generator.RestControllerGenerator;
 import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.FieldModel;
@@ -64,7 +65,8 @@ import java.util.Set;
 @SupportedOptions({
         "ai.atlas.pii.patterns", "ai.atlas.pii.patterns.file",
         "ai.atlas.api.basePath", "ai.atlas.api.major", "ai.atlas.openapi.infoVersion",
-        "ai.atlas.strict", "ai.atlas.contract.baseline", "ai.atlas.contract.locked", "ai.atlas.constraints"
+        "ai.atlas.strict", "ai.atlas.contract.baseline", "ai.atlas.contract.locked", "ai.atlas.constraints",
+        "ai.atlas.projections"
 })
 public class AgenticProcessor extends AbstractProcessor {
 
@@ -75,6 +77,7 @@ public class AgenticProcessor extends AbstractProcessor {
     public static final String OPT_CONTRACT_BASELINE = "ai.atlas.contract.baseline";
     public static final String OPT_CONTRACT_LOCKED = "ai.atlas.contract.locked";
     public static final String OPT_CONSTRAINTS = "ai.atlas.constraints";
+    public static final String OPT_PROJECTIONS = "ai.atlas.projections";
     private final Map<String, EntityModel> entityRegistry = new HashMap<>();
     private final Set<String> dtoSkippedKeys = new HashSet<>();
     private final List<ServiceModel> serviceRegistry = new ArrayList<>();
@@ -92,6 +95,7 @@ public class AgenticProcessor extends AbstractProcessor {
     /** Kind of the quality diagnostics that are warnings by default and errors under {@code ai.atlas.strict}. */
     private Diagnostic.Kind qualityKind;
     private ConstraintsOption constraints;
+    private ProjectionsOption projections;
 
     @Override public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
     @Override
@@ -104,6 +108,8 @@ public class AgenticProcessor extends AbstractProcessor {
         versionConfigValid &= qualityKind != null;
         constraints = ConstraintsOption.resolve(OPT_CONSTRAINTS, processingEnv);
         versionConfigValid &= constraints != null;
+        projections = ProjectionsOption.resolve(OPT_PROJECTIONS, processingEnv);
+        versionConfigValid &= projections != null;
     }
 
     private void resolveVersionConfig() {
@@ -221,6 +227,7 @@ public class AgenticProcessor extends AbstractProcessor {
             }
 
             var scanned = contractIr.addEntity(typeElement, FieldScanner.scanAll(typeElement, processingEnv));
+            projections.recordEntity(typeElement, scanned, processingEnv.getMessager());
             roundEntities.put(typeElement, scanned);
         }
         ContractProjection projection = contractIr.project(apiBasePath, apiMajor);
