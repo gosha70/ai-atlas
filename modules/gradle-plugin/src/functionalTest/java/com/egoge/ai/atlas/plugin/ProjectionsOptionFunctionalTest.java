@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code agentic { projections }}, when set, reaches the main {@code compileJava} and
  * {@code atlasAcceptCompile}, as the processor option {@code ai.atlas.projections}, and never the
  * test compilation. Unset, it is not passed, so the processor's default ({@code false}) or a value
- * in {@code options.compilerArgs} applies. With it off, a declared {@code @AgenticField(channels)}
+ * in {@code options.compilerArgs} applies; set, it overrides a conflicting one. With it off, a declared {@code @AgenticField(channels)}
  * fails the compilation.
  */
 class ProjectionsOptionFunctionalTest {
@@ -82,6 +82,33 @@ class ProjectionsOptionFunctionalTest {
         String output = runner("compileJava").build().getOutput();
 
         assertThat(line(output, "MAIN-ARGS ")).containsOnlyOnce(OPTION).doesNotContain("-A" + OPTION + "=false");
+    }
+
+    @Test
+    void theExtensionOverridesAConflictingCompilerArgument() throws IOException {
+        writeProject("projections.set(true)", "channels = AgenticExposed.Channel.API");
+        append("build.gradle.kts", """
+                tasks.named<JavaCompile>("compileJava") {
+                    options.compilerArgs.add("-A%s=false")
+                    doFirst { println("MAIN-ARGS " + options.allCompilerArgs) }
+                }
+                """.formatted(OPTION));
+
+        BuildResult on = runner("compileJava").build();
+
+        String args = line(on.getOutput(), "MAIN-ARGS ");
+        assertThat(args.lastIndexOf("-A" + OPTION + "=true")).isGreaterThan(args.indexOf("-A" + OPTION + "=false"));
+        assertThat(on.getOutput()).doesNotContain("requires " + OPTION + "=true");
+
+        writeProject("projections.set(false)", "channels = AgenticExposed.Channel.API");
+        append("build.gradle.kts", """
+                tasks.named<JavaCompile>("compileJava") { options.compilerArgs.add("-A%s=true") }
+                """.formatted(OPTION));
+
+        BuildResult off = runner("compileJava").buildAndFail();
+
+        assertThat(off.getOutput()).contains("@AgenticField(channels) on field 'margin' of Order requires "
+                + OPTION + "=true");
     }
 
     @Test

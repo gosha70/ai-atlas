@@ -6,6 +6,8 @@ package com.egoge.ai.atlas.processor.contract;
 import com.egoge.ai.atlas.processor.AgenticProcessor;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Entity;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Field;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.testing.compile.Compilation;
 import com.google.testing.compile.JavaFileObjects;
 import org.junit.jupiter.api.Test;
@@ -38,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class IrVersion3Test {
 
+    private static final ObjectMapper JSON = new ObjectMapper();
     private static final String PROJECTIONS = "-A" + AgenticProcessor.OPT_PROJECTIONS + "=true";
     private static final String LOCKED = "-A" + AgenticProcessor.OPT_CONTRACT_LOCKED + "=true";
     /** A field's every-channel slot, as a document's entity field carries it. */
@@ -160,6 +163,40 @@ class IrVersion3Test {
 
         assertPasses(locked);
         assertThat(irOf(locked)).isEqualTo(v3);
+    }
+
+    @Test
+    void aVersion1BaselinePassesTheGateAndLockModeAgainstTheSameContract() throws IOException {
+        String v3 = irOf(compile(GateFixtures.fixture().sources(), MAJOR + M));
+        ObjectNode document = (ObjectNode) JSON.readTree(v3);
+        document.put("irVersion", 1);
+        stripSlotsVersion1Lacks(document);
+        String v1 = JSON.writerWithDefaultPrettyPrinter().writeValueAsString(document);
+        assertThat(v1).contains("\"irVersion\" : 1").doesNotContain("\"constraints\"", "\"required\"",
+                "\"hints\"");
+        assertThat(v1.split("\"channels\"", -1)).as("only operations keep channels")
+                .hasSize(document.path("operations").size() + 1);
+        Path baseline = Files.writeString(dir.resolve("api.ir.json"), v1, StandardCharsets.UTF_8);
+
+        Compilation gated = javac().withProcessors(new AgenticProcessor())
+                .withOptions(MAJOR + M, BASELINE + baseline).compile(GateFixtures.fixture().sources());
+        Compilation locked = javac().withProcessors(new AgenticProcessor())
+                .withOptions(MAJOR + M, BASELINE + baseline, LOCKED).compile(GateFixtures.fixture().sources());
+
+        assertPasses(gated);
+        assertPasses(locked);
+        assertThat(irOf(locked)).isEqualTo(v3);
+    }
+
+    /** Removes the constraint, requiredness, hint and field channels slots, which version 1 did not write. */
+    private static void stripSlotsVersion1Lacks(ObjectNode document) {
+        document.path("entities").forEach(entity -> entity.path("fields")
+                .forEach(field -> ((ObjectNode) field).remove(List.of("channels", "constraints"))));
+        document.path("operations").forEach(operation -> {
+            ((ObjectNode) operation).remove("hints");
+            operation.path("parameters")
+                    .forEach(parameter -> ((ObjectNode) parameter).remove(List.of("required", "constraints")));
+        });
     }
 
     private static Map<String, List<String>> channels(Entity entity) {

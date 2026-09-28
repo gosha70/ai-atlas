@@ -80,6 +80,45 @@ class ChannelProjectionGenerationTest {
     }
 
     @Test
+    void anEntityWhoseFieldsAreAllAiOnlyHasNoApiSchemaAndLeavesRestUnchanged() throws Exception {
+        List<JavaFileObject> sources = new ArrayList<>(shop(true));
+        sources.add(JavaFileObjects.forSourceString("shop.Insight", """
+                package shop;
+                import com.egoge.ai.atlas.annotations.*;
+                import com.egoge.ai.atlas.annotations.AgenticExposed.Channel;
+                @AgenticEntity(description = "An insight for agents")
+                public class Insight {
+                    @AgenticField(description = "Text", channels = Channel.AI) private String text;
+                    public String getText() { return text; }
+                }
+                """));
+        sources.add(JavaFileObjects.forSourceString("shop.InsightService", """
+                package shop;
+                import com.egoge.ai.atlas.annotations.*;
+                import com.egoge.ai.atlas.annotations.AgenticExposed.Channel;
+                public class InsightService {
+                    @AgenticExposed(description = "An insight", returnType = Insight.class, channels = Channel.AI)
+                    public Insight insight(Long id) { return null; }
+                }
+                """));
+        Compilation compilation = javac().withProcessors(new AgenticProcessor()).withOptions(FLAG_ON, PARAMETERS)
+                .compile(sources);
+
+        assertThat(compilation).succeeded();
+        assertThat(compilation.generatedSourceFile("shop.generated.InsightDto")).isEmpty();
+        assertThat(source(compilation, "shop.generated.InsightAiDto")).contains("record InsightAiDto(");
+        JsonNode openApi = openApi(compilation);
+        JsonNode shopOnly = openApi(compileShop());
+        assertThat(fieldNames(openApi.path("components").path("schemas")))
+                .doesNotContain("InsightDto", "InsightAiDto")
+                .containsExactlyElementsOf(fieldNames(shopOnly.path("components").path("schemas")));
+        assertThat(openApi.path("components").path("schemas")).isEqualTo(shopOnly.path("components").path("schemas"));
+        assertThat(openApi.path("paths")).isEqualTo(shopOnly.path("paths"));
+        assertThat(JSON.valueToTree(new GeneratedClasses(compilation).rest("find", 7L)).path("marginCents").asInt())
+                .isEqualTo(1234);
+    }
+
+    @Test
     void eachRecordsFieldMetadataHoldsOnlyItsOwnFields() throws Exception {
         GeneratedClasses classes = new GeneratedClasses(compileShop());
 
