@@ -3,7 +3,6 @@
  */
 package com.egoge.ai.atlas.runtime.mcp;
 
-import com.egoge.ai.atlas.runtime.json.AgentSafeModule;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -73,7 +72,8 @@ import java.util.Set;
  * {@link ToolCallbackProvider}, with Spring AI's derived schemas only.
  *
  * <p>On both, each tool's result is serialized with {@link AgentSafeToolCallResultConverter}, so
- * {@code @AgenticEntity} results keep their {@code @AgenticField} whitelist over MCP too.
+ * {@code @AgenticEntity} results keep their {@code @AgenticField} whitelist over MCP too. A tool left
+ * to the application's own beans keeps it through {@link AgentSafeToolCallbacks}.
  *
  * <p>Both are lazy to avoid circular dependencies with the MCP server auto-configuration: tool
  * beans are scanned when the MCP server first reads the tools, not at bean creation time.
@@ -291,7 +291,8 @@ public class AgenticMcpConfiguration {
                     // the same name fails startup
                     log.warn("AI-ATLAS: MCP tool '{}' is registered by the application's own ToolCallbackProvider "
                             + "bean '{}', so AI-ATLAS does not register it and its generated constraints and "
-                            + "hints are not applied", name, provider);
+                            + "hints are not applied; its results still keep the @AgenticField whitelist",
+                            name, provider);
                     continue;
                 }
                 String mimeType = properties != null ? properties.getToolResponseMimeType().get(name) : null;
@@ -445,9 +446,7 @@ public class AgenticMcpConfiguration {
                 }
             }
         }
-        ToolCallResultConverter converter = new AgentSafeToolCallResultConverter(context
-                .getBeanProvider(AgentSafeModule.class)
-                .getIfAvailable(() -> new AgentSafeModule(false, true, true)));
+        ToolCallResultConverter converter = new AgentSafeToolCallResultConverter(AgentSafeToolCallbacks.module(context));
         ToolCallback[] result = new ToolCallback[callbacks.length];
         for (int i = 0; i < callbacks.length; i++) {
             ToolCallback callback = callbacks[i];

@@ -24,9 +24,9 @@ import java.lang.reflect.Type;
  * AI's converter.
  *
  * <p>AI-ATLAS applies it to every {@code @Tool} method it registers that declares no result converter
- * of its own. A tool the application registers through its own {@code ToolCallbackProvider} can
- * opt in with {@code @Tool(resultConverter = AgentSafeToolCallResultConverter.class)}, which uses
- * the default (flat) JSON settings.
+ * of its own, and, through {@link AgentSafeToolCallbacks}, to every callback of the application's
+ * own {@code ToolCallbackProvider}, {@code ToolCallback} and {@code List<ToolCallback>} beans that
+ * would use Spring AI's default converter.
  */
 public final class AgentSafeToolCallResultConverter implements ToolCallResultConverter {
 
@@ -34,9 +34,13 @@ public final class AgentSafeToolCallResultConverter implements ToolCallResultCon
 
     private final ObjectMapper mapper;
 
-    /** With the default {@code ai.atlas.json} settings: flat JSON. */
+    /**
+     * With the running application's {@code AgentSafeModule} bean, or its {@code ai.atlas.json.*}
+     * settings, as {@code @Tool(resultConverter = AgentSafeToolCallResultConverter.class)} instantiates
+     * it; with the default (flat) settings outside an application context.
+     */
     public AgentSafeToolCallResultConverter() {
-        this(new AgentSafeModule(false, true, true));
+        this(AgentSafeToolCallbacks.currentModule());
     }
 
     /** With the given module, such as the application's {@code AgentSafeModule} bean. */

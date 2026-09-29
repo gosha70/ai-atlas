@@ -14,8 +14,9 @@ import java.util.Set;
 
 /**
  * Resolves the {@code @AgenticEntity} a class serializes as: the class itself when annotated, else
- * the nearest annotated supertype, walking superclasses before interfaces, breadth first, as the
- * processor's {@code ReturnedTypes.entityOf} does. {@code @AgenticEntity} is not {@code @Inherited},
+ * the nearest annotated supertype, breadth first, as the processor's {@code ReturnedTypes.entityOf}
+ * does: the class, then its superclass and its interfaces, then theirs, so a directly implemented
+ * interface is found before a grandparent class. {@code @AgenticEntity} is not {@code @Inherited},
  * so an unannotated subtype (or a proxy subclass) would otherwise escape the whitelist (issue #50).
  */
 final class EntityTypes {

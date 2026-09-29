@@ -4,6 +4,7 @@
 package com.egoge.ai.atlas.runtime.autoconfigure;
 
 import com.egoge.ai.atlas.runtime.json.AgentSafeModule;
+import com.egoge.ai.atlas.runtime.mcp.AgentSafeToolCallbacks;
 import com.egoge.ai.atlas.runtime.mcp.AgenticMcpConfiguration;
 import com.egoge.ai.atlas.runtime.security.DeprecationHeaderFilter;
 import com.egoge.ai.atlas.runtime.security.DtoResponseBodyAdvice;
@@ -11,6 +12,7 @@ import com.egoge.ai.atlas.runtime.security.PiiAuditInterceptor;
 import com.egoge.ai.atlas.runtime.security.VersionNegotiationFilter;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -27,13 +29,15 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * <p>Activates when Spring Web is on the classpath. Registers:
  * <ul>
  *   <li>MCP tool auto-discovery via {@link AgenticMcpConfiguration}</li>
+ *   <li>The {@code @AgenticField} whitelist for the application's own MCP tools via
+ *       {@link AgentSafeToolCallbacks}</li>
  *   <li>PII audit interceptor for generated REST endpoints</li>
  * </ul>
  */
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @EnableConfigurationProperties(AgenticProperties.class)
-@Import(AgenticMcpConfiguration.class)
+@Import({AgenticMcpConfiguration.class, AgentSafeToolCallbacks.class})
 public class AgenticAutoConfiguration implements WebMvcConfigurer {
 
     private final AgenticProperties properties;
@@ -57,10 +61,12 @@ public class AgenticAutoConfiguration implements WebMvcConfigurer {
 
     /**
      * Registers the Hibernate-safe Jackson serialization module for
-     * {@code @AgenticEntity}-annotated entities.
+     * {@code @AgenticEntity}-annotated entities. An application's own {@code AgentSafeModule} bean
+     * replaces it.
      */
     @Bean
     @ConditionalOnClass(name = "com.fasterxml.jackson.databind.ObjectMapper")
+    @ConditionalOnMissingBean
     public AgentSafeModule agentSafeModule() {
         AgenticProperties.Json json = properties.getJson();
         return new AgentSafeModule(

@@ -162,6 +162,11 @@ class McpEntityResultTest {
                 {null, Object.class},
                 {42, int.class},
                 {Map.of("k", LocalDate.of(2026, 1, 2)), Map.class},
+                {McpOwnProviderFixtures.address(), McpOwnProviderFixtures.Address.class},
+                {McpOwnProviderFixtures.map(), Map.class},
+                {List.of(Map.of("nested", List.of(1, 2))), List.class},
+                {new int[] {1, 2}, int[].class},
+                {true, boolean.class},
         };
         for (Object[] value : unchanged) {
             assertThat(converter.convert(value[0], (Class<?>) value[1])).as(String.valueOf(value[0]))
