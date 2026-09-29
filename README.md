@@ -778,6 +778,8 @@ Configuration properties:
 
 The serializer handles Hibernate proxies (lazy-loaded associations), uninitialized PersistentCollections, and circular references in bidirectional JPA relationships — all via reflection, with no hard compile dependency on Hibernate.
 
+The whitelist applies wherever an `@AgenticEntity` is serialized: Spring MVC responses, and MCP tool results, which the runtime writes through `AgentSafeToolCallResultConverter` (Spring AI's own tool-result mapper plus `AgentSafeModule`), so an entity a tool returns raw, or inside a `List`, `Map`, `Stream` or array, reaches the agent through its `@AgenticField` getters only. Every other result, generated DTOs included, keeps Spring AI's JSON. An unannotated subtype of an entity (`VipCustomer extends Customer`) serializes as its nearest entity, never with its own getters. A tool registered through the application's own `ToolCallbackProvider` bean keeps its own converter; it can opt in with `@Tool(resultConverter = AgentSafeToolCallResultConverter.class)`.
+
 ## Edge Case Handling
 
 | Scenario | Behavior |
