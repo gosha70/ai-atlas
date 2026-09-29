@@ -401,7 +401,7 @@ public final class IrJson {
                 v2 ? bool(p, K_REQUIRED) : null, v2 ? IrConstraintsJson.readConstraints(p) : null));
         JsonNode returns = object(node, K_RETURNS);
         JsonNode life = object(node, K_LIFECYCLE);
-        return new Operation(string(node, K_SERVICE), string(node, K_METHOD), string(node, K_TOOL_NAME),
+        return IrConsistency.check(new Operation(string(node, K_SERVICE), string(node, K_METHOD), string(node, K_TOOL_NAME),
                 strings(node, K_CHANNELS), string(node, K_DESCRIPTION),
                 IrRestJson.read(nullableObject(node, K_REST), irVersion, parameters.size()), parameters,
                 new Return(string(returns, K_JAVA_TYPE), string(returns, K_RETURN_KIND),
@@ -409,10 +409,10 @@ public final class IrJson {
                         IrBoundJson.read(returns, irVersion)),
                 v2 ? IrConstraintsJson.readHints(node) : null,
                 new OperationLifecycle(integer(life, K_API_SINCE), integer(life, K_API_UNTIL),
-                        integer(life, K_API_DEPRECATED_SINCE), string(life, K_API_REPLACEMENT)));
+                        integer(life, K_API_DEPRECATED_SINCE), string(life, K_API_REPLACEMENT))));
     }
 
-    private static JsonNode required(JsonNode node, String key) {
+    static JsonNode required(JsonNode node, String key) {
         JsonNode value = node.get(key);
         if (value == null) {
             throw new IllegalArgumentException("missing '" + key + "'");
@@ -428,7 +428,7 @@ public final class IrJson {
         return value.textValue();
     }
 
-    private static String nullableString(JsonNode node, String key) {
+    static String nullableString(JsonNode node, String key) {
         return required(node, key).isNull() ? null : string(node, key);
     }
 

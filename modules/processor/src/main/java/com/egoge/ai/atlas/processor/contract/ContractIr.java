@@ -188,9 +188,12 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
      * The REST mapping of an operation, independent of the base path and major: always the
      * <em>effective</em> mapping, which the controller and the OpenAPI document serve.
      *
-     * @param httpMethod  {@code GET} or {@code POST}
-     * @param path        {@code /<service-kebab>/<method-kebab>}; the generated mapping prefixes
-     *                    {@code <apiBasePath>/v<major>}. A segment may be a {@code {name}} variable
+     * @param httpMethod  {@code GET} or {@code POST} on the RPC fallback; from Phase 5 an explicit
+     *                    or CRUD mapping may also use {@code PUT}, {@code PATCH} or {@code DELETE}
+     * @param path        {@code /<service-kebab>/<method-kebab>} on the RPC fallback; from Phase 5
+     *                    an explicit or CRUD mapping is {@code /<resource><path>}. The generated
+     *                    mapping prefixes {@code <apiBasePath>/v<major>}. A segment may be a
+     *                    {@code {name}} variable, naming the {@link #PATH} parameter it binds
      * @param status      the success status, a 2xx code; {@link #OK} for every mapping before Phase 5
      * @param parameterIn each parameter's location, {@link #PATH}, {@link #QUERY} or {@link #BODY}, in
      *                    declaration order; every parameter is in the {@link #QUERY} before Phase 5
@@ -239,9 +242,14 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
             return parameterIn.get(index);
         }
 
-        /** The method and path with every {@code {name}} variable as {@code {}}: the route clients call. */
+        /** The path with every {@code {name}} variable as {@code {}}: the route clients call. */
+        public String route() {
+            return path.replaceAll("\\{[^}/]*}", "{}");
+        }
+
+        /** The method and {@link #route()}: two mappings with the same key collide. */
         public String routeKey() {
-            return httpMethod + " " + path.replaceAll("\\{[^}/]*}", "{}");
+            return httpMethod + " " + route();
         }
     }
 
@@ -319,7 +327,13 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
         /** No bound: what every operation records until Phase 5 declares one. */
         public static final Bound NONE = new Bound(NONE_NAME, NONE_NAME, null, null, null);
 
-        /** @throws IllegalArgumentException if the style or envelope is unknown, or {@code maxResults} below 1 */
+        /**
+         * @throws IllegalArgumentException if the style or envelope is unknown, {@code maxResults}
+         *                                  is below 1, or the parameters do not fit the style:
+         *                                  {@code NONE} names none, {@code LIMIT} names its limit
+         *                                  parameter, only {@code LIMIT} names a cursor, and
+         *                                  {@code DECLARED} sets {@code maxResults}
+         */
         public Bound {
             if (!STYLES.contains(style)) {
                 throw new IllegalArgumentException("'style' must be one of " + STYLES + ", got " + style);
@@ -329,6 +343,18 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
             }
             if (maxResults != null && maxResults < 1) {
                 throw new IllegalArgumentException("'maxResults' must be at least 1, got " + maxResults);
+            }
+            if (NONE_NAME.equals(style) && (limitParameter != null || cursorParameter != null)) {
+                throw new IllegalArgumentException("style NONE names no 'limitParameter' or 'cursorParameter'");
+            }
+            if (LIMIT.equals(style) && limitParameter == null) {
+                throw new IllegalArgumentException("style LIMIT must name its 'limitParameter'");
+            }
+            if (cursorParameter != null && !LIMIT.equals(style)) {
+                throw new IllegalArgumentException("only style LIMIT names a 'cursorParameter', got style " + style);
+            }
+            if (DECLARED.equals(style) && maxResults == null) {
+                throw new IllegalArgumentException("style DECLARED must set 'maxResults'");
             }
         }
 

@@ -168,6 +168,16 @@ malformed when a `style` or `envelope` is unknown, `maxResults` is below 1, `sta
 a location is not `PATH`, `QUERY` or `BODY`, or `parameterIn` does not hold one location per
 parameter.
 
+A document that contradicts itself is malformed too, as a hand-edited baseline could otherwise hide
+a change from the gate:
+
+- a bound whose parameters do not fit its style: `NONE` with a limit or cursor parameter, `LIMIT`
+  without a `limitParameter`, a `cursorParameter` on any style other than `LIMIT`, or `DECLARED`
+  without `maxResults`;
+- a `limitParameter` or `cursorParameter` that names none of the operation's parameters;
+- a `PATH` parameter whose name no `{name}` variable of the path carries, or more than one `BODY`;
+- a `rest` object on an operation without the `API` channel, or `rest: null` on one with it.
+
 ## Projection at a major
 
 The **projection at N** of an IR is the entities, fields and operations active at major N, with
@@ -244,24 +254,49 @@ There is no rename detection: a rename is a removal plus an addition, and is rep
 
 ### REST status and result bounds
 
-The `irVersion 4` slots, for operations active at M in both documents. The changes are named
-`rest.status`, `parameter <index>.in` (above) and `returns.bound.<key>`.
+The `irVersion 4` slots, for operations active at M in both documents. Each change is named after
+its IR key: `rest.status`, `rest.parameterIn[<index>]` (above) and `returns.bound.<key>`.
+`maxResults` means two things, so it is reported with a direction: as an **output** it is the
+result bound of a non-paged style (`DECLARED`, `NONE`), and as an **input** the page-size ceiling of
+a paged style (`PAGEABLE`, `LIMIT`).
 
 | Change | Classification |
 |--------|----------------|
 | `rest.status` changes | **Breaking** (output) |
 | The envelope changes | **Breaking** (output) |
-| A result bound (`maxResults` of a non-paged style) appears or falls | Compatible |
+| A result bound appears or falls | Compatible |
 | A result bound disappears or rises | **Breaking** (output) |
-| A page-size ceiling (`maxResults` of `PAGEABLE` or `LIMIT`, the change `pageSizeCeiling`) appears or falls | **Breaking** (input) |
-| A page-size ceiling rises or disappears | Compatible |
+| A page-size ceiling rejects a page size the baseline accepted (below) | **Breaking** (input) |
+| Any other change to a page-size ceiling | Compatible |
 | A paging role is declared or removed on an existing parameter (`style`, `limitParameter`, `cursorParameter`) | `informational` |
 
 A `Pageable` or limit parameter added or removed is already breaking through the operation's
-identity. When the style moves between paged and non-paged, `maxResults` changes meaning, so the
-result bound and the page-size ceiling are compared separately: `DECLARED` with 50 becoming
-`LIMIT` with a ceiling of 50 is a result bound disappearing (breaking) and a ceiling appearing
-(breaking).
+identity.
+
+**Page-size ceilings and a limit parameter's maximum.** A `LIMIT` parameter can carry its own
+Phase 3 maximum, such as `@Max(100)`, which the constraint rules above already gate as
+`maximum`. So that each real input change is reported once:
+
+- a `LIMIT` ceiling at or above its limit parameter's effective maximum on the same side adds
+  nothing, and counts as no ceiling. Declaring `@AgenticParam(paging = LIMIT)` on
+  `find(@Max(100) int limit)` with a ceiling of 100 reports only the informational paging role;
+- the ceiling is compared only when what it adds differs between the two sides. `@Max(100)` with a
+  ceiling of 100 becoming `@Max(50)` with a ceiling of 50 is one breaking `maximum` change;
+- a ceiling that remains is **breaking** when it is below every page size the baseline accepted:
+  the baseline ceiling, and the baseline maximum of the same limit parameter. Otherwise it is
+  compatible. `@Max(50)` with no ceiling becoming `@Max(100)` with a ceiling of 80 rejects nothing
+  that was accepted, so both changes are compatible.
+
+**Crossing between paged and non-paged styles.** `maxResults` changes meaning, so each direction is
+compared on its own. `DECLARED` with 50 becoming `LIMIT` with a ceiling of 50 is:
+
+- a result bound disappearing: **breaking** (output);
+- no input change when the limit parameter's maximum is 50 or less, as its constraint already
+  rejected larger page sizes;
+- otherwise a ceiling appearing below what the baseline accepted: **breaking** (input).
+
+The reverse, `PAGEABLE` or `LIMIT` becoming `DECLARED`, is a result bound appearing and a ceiling
+disappearing, both compatible; a changed envelope is still breaking.
 
 ### Constraints, requiredness and hints
 
