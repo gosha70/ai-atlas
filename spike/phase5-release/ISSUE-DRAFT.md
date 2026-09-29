@@ -55,7 +55,9 @@ The feasibility spike is on branch `claude/phase5-release-spike`, in
   below supersede it.
 
 The owner accepted items 1–3 and 5–9 with the refinements stated. Item 4 strengthens the spike's
-default. **Owner decision needed** marks what is still open.
+default. The follow-up decisions of the same day settle channel removals (item 4), offline tags and
+history (item 10), development builds (item 1) and the resource manifest (item 2). No owner decision
+remains open.
 
 ### 1. Version source and format
 - **Decided:** `agentic { releaseVersion }`, defaulting to `project.version`, strict
@@ -69,13 +71,15 @@ default. **Owner decision needed** marks what is still open.
   - `agentic { version }` defaults to **the plugin's own version**, no longer `project.version`.
     The plugin already resolves it for its mismatch message (`AgenticPlugin.java:224-232`).
   - An explicit `agentic { version }` still wins.
-  - This is a behaviour change for consumers who relied on the old default, so it goes in the
-    changelog.
-  - It can ship ahead of this phase as its own fix.
-- **Owner decision needed:** what happens when the plugin's own version cannot be determined (a
-  development build).
-  - Recommended: fail with a message asking for an explicit `agentic { version }`.
-  - Do not fall back to `project.version`.
+  - **Development builds:** when the plugin cannot determine its own version, an explicit
+    `agentic { version }` is required, and the build fails with a message asking for it. It never
+    falls back to the consumer's `project.version`.
+  - **Shipped separately, before this phase,** as its own fix. That fix carries a changelog entry,
+    because consumers relying on the old default change behaviour. Its tests cover:
+    - the default: the plugin's own version, unaffected by `-Pversion` or `project.version`;
+    - an explicit `agentic { version }`, which wins;
+    - a development build without an explicit version, which fails.
+  - This phase depends on that fix. It does not re-implement it.
 
 ### 2. Snapshot contents
 - **Decided:** commit full copies, in `.atlas/releases/<version>/`, of:
@@ -94,15 +98,38 @@ default. **Owner decision needed** marks what is still open.
   - the policy in force;
   - a SHA-256 of every other file.
 - **Decided: one compilation.** The accepted IR and every generated resource come from the same
-  successful compilation. A missing or stale resource fails the release.
-  - The processor records the resources it wrote in this compilation, with their digests.
-  - The release copies exactly those files and verifies them. It never takes "whatever is in the
-    class output".
-  - The OpenAPI document is always required: `agentic { openApiEnabled }` is not wired to the
-    processor today, so every compilation emits one.
-  - `mcp-tools.json` is required exactly when `ai.atlas.constraints` is on.
-  - The unversioned alias `openapi.json`, `deprecation-manifest.json` and `api-version.properties`
-    are not snapshotted.
+  successful compilation. A missing, unexpected or stale resource fails the release.
+- **Decided: a resource manifest.** In the final round, the processor writes
+  `META-INF/ai-atlas/contract-resources.json` next to the IR. It records:
+  - the **effective processor configuration**, as the processor parsed it:
+    - `ai.atlas.api.major`, `ai.atlas.api.basePath` and `ai.atlas.openapi.infoVersion`;
+    - `ai.atlas.constraints` and `ai.atlas.projections`;
+  - the artifacts that configuration requires, each with its path and SHA-256.
+
+  The manifest is written whether the options came from the Gradle extension or from manual `-A`
+  arguments in `options.compilerArgs`, where javac keeps the last value.
+- **Required artifacts follow that effective configuration, never the extension's values:**
+  - `api.ir.json`, always;
+  - `openapi-v<major>.json`, always for a non-empty contract (`agentic { openApiEnabled }` is not
+    wired to the processor today);
+  - `mcp-tools.json`, exactly when the effective `ai.atlas.constraints` is true.
+- **The release copies exactly the listed artifacts and verifies their digests.**
+  - A listed artifact that is missing fails the release.
+  - So does one whose digest differs.
+  - So does any other ai-atlas contract resource in the class output: a leftover `openapi-v<N>.json`
+    from another major, or `mcp-tools.json` with constraints now off.
+  - It never takes "whatever is in the class output".
+- **Decided: an empty contract is recorded explicitly.** javac does not run the processor for a
+  compilation with no ai-atlas annotation, so the processor cannot write the manifest.
+  - The plugin derives the effective configuration from `compileJava`'s final compiler arguments,
+    including manual `-A` arguments, with javac's last-wins rule.
+  - It builds the empty IR with the processor's `EmptyContract`.
+  - It records `"contract": "empty"`, with `api.ir.json` as the only expected artifact.
+  - The release fails when the class output still holds any ai-atlas contract resource, which must
+    be stale output from an earlier compilation.
+  - So a complete module removal stays releasable without ever accepting stale output.
+- The unversioned alias `openapi.json`, `deprecation-manifest.json` and `api-version.properties` are
+  not snapshotted.
 
 ### 3. Relationship to the baseline, lock mode and `atlasAccept`
 - **Decided:** creating a release never accepts a change.
@@ -138,18 +165,26 @@ The obligations are to **published** clients, so they hold whatever `atlasAccept
     removed in major 1";
   - the remedy.
 - **Shape:** an `agentic { release { policy { … } } }` block.
-- **Owner decision needed — channel removals.** Fields have no per-channel lifecycle (Phase 4
-  item 5), so no declaration deprecates "AI access to this field".
-  - **Recommended:** deprecating the **whole field**, with `deprecatedSinceVersion`, qualifies a
-    later channel removal. It warns every client of the field, including that channel's, so the
-    obligation is met.
-  - Channel-specific deprecation is not promised in this phase.
-  - **Alternative:** channel removals always fail unless the policy is overridden. That is stricter,
-    and leaves no lifecycle path until per-channel lifecycle exists.
+- **Decided — channel removals.** Fields have no per-channel lifecycle (Phase 4 item 5), so
+  whole-element deprecation can qualify a channel removal.
+  - **A field losing channel C** in a release at API major N passes only when both hold:
+    - At least `minDeprecatedReleases` **tagged** releases each had the field, at that release's own
+      API major, **active**, **deprecated** (`deprecatedSinceVersion` in effect), and **visible on
+      C**. Visible means the field lists C and its entity is reachable on C from an operation active
+      on C, as the gate's reachability rule computes it.
+    - `N − deprecatedSinceVersion ≥ minApiMajorAdvance`.
+  - **An operation losing channel C** follows the equivalent rule. It needs tagged releases where
+    the operation was active, deprecated (`apiDeprecatedSince` in effect) and listed C, and the same
+    API-major advance.
+  - A release where the element was deprecated but **not** visible on C earns no credit for
+    removing C.
+  - Channel-specific deprecation is **not** promised in this phase.
 - **Empty contracts — decided:** a release may represent the complete removal of a module's
-  contract. The processor's `EmptyContract` document is released like any other contract, and every
-  element it removes is subject to the removal policy. Without this, a module's disappearance could
-  never be recorded.
+  contract.
+  - The processor's `EmptyContract` document is released like any other contract, with the resource
+    manifest recorded explicitly (item 2).
+  - Every element it removes is subject to the removal policy.
+  - Without this, a module's disappearance could never be recorded.
 
 ### 5. Changelog
 - **Decided:** an immutable `CHANGELOG.md` per release, plus a deterministic `.atlas/CHANGELOG.md`,
@@ -173,8 +208,12 @@ The obligations are to **published** clients, so they hold whatever `atlasAccept
     and the trusted-history rule in item 8.
 - **Flow:**
   1. Generate the snapshot with `agenticRelease` and commit it in the release PR.
-  2. Tag the merged commit.
+  2. Tag the merged commit with the configured tag name.
   3. The release job runs `agenticReleaseVerify` on the tag.
+- **History in CI.** Any job that runs `agenticRelease` or `agenticReleaseVerify` first fetches the
+  history and tags those tasks need, for example `actions/checkout` with `fetch-depth: 0` and
+  `fetch-tags: true`. The checks themselves then run offline. `agenticReleaseHistoryCheck` needs no
+  git at all.
 - The task makes no network, database or model call and writes no timestamp, path or host.
   Re-releasing the same inputs gives byte-identical files.
 
@@ -208,37 +247,61 @@ The obligations are to **published** clients, so they hold whatever `atlasAccept
     exactly the release's major;
   - an empty contract.
 
-### 10. Publication semantics
-- **Owner recommendation, to confirm:** deprecation credit comes only from **tagged** releases.
-  A folder added in the same PR does not earn it.
-- **Recommended mechanism:**
-  - a release counts as published when the tag `v<version>` exists in the repository (the tag
-    pattern is configurable);
-  - a committed snapshot without its tag is **pending**: it is part of the history chain, but earns
-    no deprecation credit;
-  - `agenticRelease` refuses to create a release while another release is still pending, so at most
-    one is pending at a time.
-- **Owner decision needed — how the plugin learns about tags offline:**
-  - Recommended: read local git tags (`git tag --list`), and fail with a clear message when the
-    repository has no tags because it is a shallow clone; CI must fetch tags.
-  - Alternative: an explicit `publishedVersions` list in the build, which is manual and can drift.
-  - Alternative: a trusted `published.json` updated by the release job, which needs CI write access.
+### 10. Publication semantics and history
+- **Decided:** deprecation credit comes only from **tagged** releases. A snapshot folder added in
+  the same PR earns none.
+- **Decided — local git tags, with an explicit naming convention.**
+  - The tag name is `agentic { release { tagName = "v{version}" } }` (default `v{version}`), and it
+    is recorded in each `release.json`.
+  - Only that exact name counts. `1.0.0` does not stand in for `v1.0.0`.
+  - Tags are read from the local repository, offline, with an annotated tag peeled to its commit.
+- **Decided — a tag must be proved.** A matching tag name is not enough. A tag qualifies only when
+  all of these hold:
+  - its commit's tree contains `.atlas/releases/<version>/release.json` and
+    `.atlas/releases/<version>/api.ir.json`;
+  - those files match the manifest's digests;
+  - they are byte-identical to the working copy's;
+  - the commit is an ancestor of `HEAD`.
+
+  A tag that fails any of these fails the release or verification, naming the tag and the check.
+- **Pending releases.** A committed snapshot whose tag does not exist yet is **pending**.
+  - It is part of the history chain, but earns no credit.
+  - Only the newest snapshot may be pending.
+  - `agenticRelease` refuses to create a release while one is pending.
+- **Decided — a first release is distinguished from incomplete history:**
+
+  | State | Outcome |
+  |---|---|
+  | No snapshot directories and no tag matching the convention | **A genuine first release: valid.** No git history is needed beyond the repository itself. |
+  | Snapshots exist, and every one except at most the newest is backed by a proved tag | Valid |
+  | Any older snapshot without its tag, a matching tag without its snapshot, a shallow clone (`git rev-parse --is-shallow-repository`), or no git repository while snapshots exist | **Fail: the published history needed for validation is unavailable.** The message names what is missing and says to fetch tags and full history. |
+- **Where this applies.** `agenticRelease` and `agenticReleaseVerify` apply these rules.
+  `agenticReleaseHistoryCheck` (item 6) stays git-free, so ordinary branches and source archives
+  still build.
 
 ## Out of scope
 - Pre-release versions, and releases on an older line (item 1).
 - An `atlas release` CLI command (item 7), and any MCP tool that writes.
 - Per-channel lifecycle and channel-specific deprecation (item 4).
+- Separating `agentic { version }` from `project.version` (item 1). It ships first, as its own fix,
+  and this phase depends on it.
 - Publishing snapshots outside the repository (Maven classifiers, release assets).
 - Collection safety and REST metadata (the rest of Phase 5). **Qualified tool names** (2.0).
 
 ## Acceptance criteria
-- [ ] `agentic { version }` defaults to the plugin's own version, never `project.version`. A test
-      releases a consumer as `2.0.0` and asserts the ai-atlas dependency version is unchanged.
+- [ ] Prerequisite, shipped separately: `agentic { version }` defaults to the plugin's own version,
+      and never falls back to `project.version`. An explicit value wins. A development build
+      without an explicit value fails. A consumer released as `2.0.0` keeps its ai-atlas dependency
+      version. The fix carries a changelog entry.
 - [ ] `agenticRelease` writes `.atlas/releases/<version>/` with the files in item 2. `release.json`
       records `manifestVersion`, the version, the API major, the previous release, `irVersion`, the
       policy and a digest of every other file.
-- [ ] Every snapshotted resource comes from the same compilation as the IR. A missing, stale or
-      unrecorded resource fails the release.
+- [ ] The processor writes `contract-resources.json` with its effective configuration and the
+      digests of the artifacts that configuration requires. The release copies exactly those
+      artifacts. A missing, mismatched or unlisted contract resource fails. Tests set the options
+      through manual `-A` arguments as well as through the extension.
+- [ ] An empty contract is recorded explicitly (`"contract": "empty"`), from `compileJava`'s
+      effective arguments, and releases when the class output holds no stale contract resource.
 - [ ] A fresh contract not canonically equal to the accepted baseline fails and names
       `atlasAccept`. The snapshot keeps the baseline's bytes. Releasing never writes the baseline.
 - [ ] Releasing an existing version fails and changes no file. A SNAPSHOT or
@@ -247,16 +310,24 @@ The obligations are to **published** clients, so they hold whatever `atlasAccept
 - [ ] `ReleaseComparison` in the processor reuses `ContractComparison` and compares each release at
       its own published API major. `ContractGate` behaviour and messages are unchanged.
 - [ ] A removal fails unless the element was published deprecated in at least one tagged release,
-      at least one API major before the removing release. This covers fields, operations, channel
-      losses and an empty contract.
+      at least one API major before the removing release. This covers fields, operations and an
+      empty contract.
+- [ ] A field or operation losing channel C passes only with enough tagged releases in which it was
+      active, deprecated and visible on C, plus the API-major advance. A release in which it was
+      deprecated but not visible on C earns no credit.
 - [ ] Every other breaking change within the same API major fails by default, including one
       accepted with `atlasAccept`. Overrides are explicit and recorded.
 - [ ] Changelog entries come only from the release comparison. Tests pin the exact text for added,
       deprecated, removed and breaking entries. `.atlas/CHANGELOG.md` is regenerated and validated
       against history, and the root `CHANGELOG.md` is never touched.
-- [ ] `agenticReleaseHistoryCheck` runs under `check` offline, without tags.
+- [ ] `agenticReleaseHistoryCheck` runs under `check` offline, without git.
       `agenticReleaseVerify` checks the tag's snapshot and rejects changes to published snapshots
       relative to trusted history.
+- [ ] Tags follow the configured `tagName`. A tag qualifies only when its commit is an ancestor of
+      `HEAD` and contains the matching snapshot and manifest, byte-identical to the working copy.
+- [ ] A new project with no snapshots and no matching tags releases. Any of these fails, naming what
+      is missing: an untagged older snapshot, a tag without its snapshot, a shallow clone, or
+      snapshots without a git repository.
 - [ ] Releasing the same inputs twice gives byte-identical files.
 - [ ] Comparison tests cover nested references, projections, renamed identifiers, lifecycle
       boundaries and the empty contract, each at its release's own published API major.
