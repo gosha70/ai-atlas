@@ -154,16 +154,38 @@ schema.
 ## The raw-entity path
 
 Projection reaches only responses mapped to a DTO. A method without a resolvable
-`@AgenticExposed(returnType)` returns the entity itself, which projection cannot reach:
+`@AgenticExposed(returnType)` returns the entity itself, which projection cannot reach. The runtime
+still keeps the entity to its `@AgenticField` whitelist on both channels, but knows no channel, so
+the raw entity carries fields of either channel:
 
-- On REST, the runtime's `AgentSafeSerializer` keeps to `@AgenticField` fields but knows no channel,
-  so it would serve AI-only fields.
-- On MCP, Spring AI serializes the result with its own `ObjectMapper`, without the runtime's
-  `AgentSafeModule`, so every getter reaches the agent, including those of fields without
-  `@AgenticField`. That leak exists with or without projections, and is tracked in
-  [#50](https://github.com/gosha70/ai-atlas/issues/50). With the flag off, the same happens to an `@AgenticField` whose
-  type is an unannotated subtype of an entity, such as `VipCustomer customer`: its DTO copies the raw
-  `VipCustomer`, which [#50](https://github.com/gosha70/ai-atlas/issues/50) also covers.
+- On REST, the runtime's `AgentSafeSerializer` keeps to `@AgenticField` fields, so it would serve
+  AI-only fields.
+- On MCP, the runtime writes every tool result through `AgentSafeToolCallResultConverter`: Spring
+  AI's own tool-result `ObjectMapper` with the runtime's `AgentSafeModule` registered. The raw entity
+  keeps to `@AgenticField` fields too, so it would serve API-only fields to the agent. Before the fix
+  for [#50](https://github.com/gosha70/ai-atlas/issues/50), Spring AI serialized it without the
+  module, and every getter reached the agent, including those of fields without `@AgenticField`.
+  So does a tool the application serves through its own `ToolCallbackProvider`,
+  `List<ToolCallbackProvider>`, `ToolCallback` or `List<ToolCallback>` bean. Where Spring AI gathers
+  those beans for the MCP server, the runtime rebuilds each callback that would use Spring AI's
+  default converter around `AgentSafeToolCallResultConverter`, keeping its definition and
+  `returnDirect`. The beans themselves are left as they are. A tool naming its own
+  `resultConverter` keeps it. A callback whose result conversion the runtime cannot see fails
+  startup when it serves a tool the runtime registers. Otherwise it is served with a WARNING, or
+  fails startup under `ai.atlas.mcp.fail-on-unprotected-tools=true`.
+  Four paths stay outside the whitelist:
+  - an entity used as a `Map` key is written with its `toString()`;
+  - `ChatClient.tools(bean)` calls a tool in process with Spring AI's default converter; pass
+    `AgentSafeToolCallbacks.agentSafe(provider)` with `.toolCallbacks(...)` instead;
+  - an `@McpTool` method is serialized by Spring AI's annotation support, and one returning an
+    entity is reported at startup;
+  - a tool specification bean the application declares itself is served as it is.
+
+  The README's JSON serialization section gives the remedies.
+- An unannotated subtype of an entity, such as `VipCustomer extends Customer`, serializes as its
+  nearest entity on both channels: `Customer`'s `@AgenticField` getters, never `VipCustomer`'s own.
+  With the flag off, that also covers an `@AgenticField VipCustomer customer`, whose DTO still copies
+  the raw `VipCustomer`.
 
 So with the flag on, an exposed method that returns an `@AgenticEntity`, or a collection, iterable
 or array of one, without a resolvable `returnType` is a compile ERROR on the method: declare
@@ -172,14 +194,14 @@ inherited: `VipOrder extends Order` returned without a `returnType` is an ERROR 
 `returnType = Order.class`. Only operations active at the configured major are checked. `Optional`
 and other wrapper return types remain unsupported: `Optional<Order>` with a `returnType` is rejected
 as incompatible, as before. Other return shapes, such as `List<List<Order>>`,
-`Iterable<? super Order>`, `Map<String, Order>` and `Stream<Order>`, are not checked, so their
-raw entities still leak as described above, which [#50](https://github.com/gosha70/ai-atlas/issues/50)
-covers.
+`Iterable<? super Order>`, `Map<String, Order>` and `Stream<Order>`, are not checked: their raw
+entities keep the `@AgenticField` whitelist at runtime, as above, but not the channel projection.
 
 The same holds for fields. With the flag on, an `@AgenticField` whose type, or collection, iterable
 or array element type, is an unannotated subtype of an entity, such as `VipCustomer customer` or
 `List<VipCustomer> customers` where `VipCustomer extends Customer`, is a compile ERROR on the field:
-its DTO would copy the raw `VipCustomer`, every getter of it. Declare the field as `Customer`, or add
+its DTO would copy the raw `VipCustomer`, which the runtime serializes through `Customer`'s whitelist
+but not its channel projection. Declare the field as `Customer`, or add
 `@AgenticField(type = Customer.class)`. With the flag on, the hint also takes effect on a direct
 field, so `@AgenticField(type = Customer.class) VipCustomer customer` maps through `CustomerDto` on
 REST and `CustomerAiDto` on MCP, and the Contract IR records its reference to `Customer`. The hint

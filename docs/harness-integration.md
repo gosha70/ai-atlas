@@ -305,6 +305,9 @@ stays on SSE exactly as before.
   its endpoint stay up. To disable the server and its transport entirely, set
   `spring.ai.mcp.server.enabled=false`. Server identity via the standard
   `spring.ai.mcp.server.*` properties. See the demo's `application.yml`.
+  `ai.atlas.mcp.fail-on-unprotected-tools` (default `false`) fails startup, instead of logging a
+  WARNING, when the server would serve an application tool whose results the runtime cannot keep
+  to the `@AgenticField` whitelist (see the README's JSON serialization section).
 - Use this path when tools must be served continuously from a deployed application; use the
   CLI/STDIO path when a harness needs to *drive generation* at build/edit time.
 

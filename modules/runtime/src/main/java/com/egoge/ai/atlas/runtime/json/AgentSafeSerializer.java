@@ -26,7 +26,8 @@ import java.util.Comparator;
  * <ul>
  *   <li>Unwraps Hibernate proxies via {@link HibernateSupport}</li>
  *   <li>Detects circular references via {@link SerializationContext}</li>
- *   <li>Only serializes {@code @AgenticField} fields (whitelist model)</li>
+ *   <li>Only serializes {@code @AgenticField} fields (whitelist model); an unannotated subtype of an
+ *       entity serializes as that entity</li>
  *   <li>In enriched mode, outputs {@code {value, description, validValues}} per field</li>
  *   <li>Skips uninitialized lazy fields instead of throwing LazyInitializationException</li>
  * </ul>
@@ -101,7 +102,10 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
     }
 
     private void writeObject(Object value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
-        Class<?> clazz = value.getClass();
+        // An unannotated subtype serializes as its nearest entity: only that entity's @AgenticField
+        // getters, never the subtype's own (issue #50)
+        Class<?> entity = EntityTypes.entityOf(value.getClass());
+        Class<?> clazz = entity != null ? entity : value.getClass();
         AgenticEntity classAnnotation = clazz.getAnnotation(AgenticEntity.class);
 
         gen.writeStartObject();
@@ -296,7 +300,7 @@ public class AgentSafeSerializer extends JsonSerializer<Object> {
     }
 
     private static boolean isAgenticFieldType(Class<?> clazz) {
-        return clazz.isAnnotationPresent(AgenticEntity.class);
+        return EntityTypes.entityOf(clazz) != null;
     }
 
     @Override

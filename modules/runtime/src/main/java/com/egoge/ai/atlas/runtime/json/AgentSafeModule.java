@@ -3,7 +3,6 @@
  */
 package com.egoge.ai.atlas.runtime.json;
 
-import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.fasterxml.jackson.core.Version;
 import com.fasterxml.jackson.databind.BeanDescription;
 import com.fasterxml.jackson.databind.JsonSerializer;
@@ -13,7 +12,7 @@ import com.fasterxml.jackson.databind.ser.BeanSerializerModifier;
 
 /**
  * Jackson module that registers the {@link AgentSafeSerializer} for all
- * classes annotated with {@code @AgenticEntity}. This module provides
+ * classes annotated with {@code @AgenticEntity}, and for their unannotated subtypes. This module provides
  * Hibernate-safe, PII-safe JSON serialization with optional enriched
  * output for LLM/MCP consumption.
  *
@@ -58,7 +57,8 @@ public class AgentSafeModule extends Module {
             public JsonSerializer<?> modifySerializer(SerializationConfig config,
                                                        BeanDescription beanDesc,
                                                        JsonSerializer<?> defaultSerializer) {
-                if (beanDesc.getBeanClass().isAnnotationPresent(AgenticEntity.class)) {
+                // Also an unannotated subtype of an entity, which serializes as that entity
+                if (EntityTypes.entityOf(beanDesc.getBeanClass()) != null) {
                     return serializer;
                 }
                 return defaultSerializer;
