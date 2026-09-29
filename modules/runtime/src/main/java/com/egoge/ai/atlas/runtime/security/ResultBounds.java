@@ -12,6 +12,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
 import java.util.Collection;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Checks a generated wrapper's result against the bound its service method declares with
@@ -62,11 +63,16 @@ public final class ResultBounds {
     }
 
     /**
-     * The number of elements a result holds: a collection's, map's or array's size, or the size of
-     * the {@code content} of a generated page or slice envelope; {@code -1} for anything else,
+     * The number of elements a result holds: a collection's, map's or array's size, the size of
+     * the {@code content} of a generated page or slice envelope, or that of an {@code Optional}'s
+     * content, {@code 0} when empty; {@code -1} for anything else,
      * such as a {@code Stream}, which counting would consume.
      */
     static long count(Object result) {
+        if (result instanceof Optional<?> optional) {
+            // An Optional of a collection holds every element when present, and none when empty
+            return optional.isPresent() ? count(optional.get()) : 0;
+        }
         if (result instanceof Collection<?> collection) {
             return collection.size();
         }

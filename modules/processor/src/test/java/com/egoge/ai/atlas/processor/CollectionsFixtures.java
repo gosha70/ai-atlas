@@ -70,7 +70,8 @@ final class CollectionsFixtures {
 
     /**
      * Every paging style. {@code byStatus} allow-lists two sort properties, {@code recent} declares
-     * a page-size ceiling of 3, {@code top} a bound of 2 that the service breaks by returning five.
+     * a page-size ceiling of 3, {@code bulk} one of 3000, above Spring Data's default maximum page
+     * size of 2000, {@code top} a bound of 2 that the service breaks by returning five.
      */
     static final String SERVICE_SRC = """
             package shop;
@@ -102,6 +103,8 @@ final class CollectionsFixtures {
                 }
                 @AgenticExposed(description = "Newest orders")
                 public List<Order> newest(Pageable pageable) { return slice(Order.all(), pageable); }
+                @AgenticExposed(description = "Orders in bulk pages", maxResults = 3000)
+                public List<Order> bulk(Pageable pageable) { return slice(Order.all(), pageable); }
                 @AgenticExposed(description = "Every order")
                 public List<Order> list() { return Order.all(); }
                 @AgenticExposed(description = "The top orders", maxResults = 2)

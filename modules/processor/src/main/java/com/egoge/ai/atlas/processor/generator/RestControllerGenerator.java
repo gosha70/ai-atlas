@@ -29,6 +29,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Generates Spring {@code @RestController} classes with request mappings
@@ -39,6 +41,8 @@ import java.util.Map;
  */
 public final class RestControllerGenerator {
 
+    private static final ClassName WEB_REQUEST =
+            ClassName.get("org.springframework.web.context.request", "WebRequest");
     private static final ClassName GENERATED = ClassName.get("javax.annotation.processing", "Generated");
     private static final ClassName REST_CONTROLLER = ClassName.get("org.springframework.web.bind.annotation", "RestController");
     private static final ClassName REQUEST_MAPPING = ClassName.get("org.springframework.web.bind.annotation", "RequestMapping");
@@ -135,6 +139,9 @@ public final class RestControllerGenerator {
             contracts.add(contract);
             classBuilder.addMethod(buildEndpointMethod(method, apiMajor, irOperation, contract, controllerClass));
         }
+        if (contracts.stream().anyMatch(c -> c != null && c.pageable() >= 0)) {
+            classBuilder.addMethods(PagingContract.restPagingCheckMethods());
+        }
         PagingContract.envelopeRecords(contracts).forEach(classBuilder::addType);
 
         return classBuilder.build();
@@ -216,7 +223,10 @@ public final class RestControllerGenerator {
         // Method body: delegate to service, map to DTO
         String callArgs = buildCallArgs(method);
         if (paging != null && paging.pageable() >= 0) {
-            paging.addRestPageableChecks(methodBuilder, method.parameters().get(paging.pageable()).name(),
+            // The raw page and size, which Spring Data's resolver would otherwise clamp unseen
+            String request = requestParameterName(method);
+            methodBuilder.addParameter(ParameterSpec.builder(WEB_REQUEST, request).build());
+            paging.addRestPageableChecks(methodBuilder, method.parameters().get(paging.pageable()).name(), request,
                     method.methodName());
         }
 
@@ -251,6 +261,16 @@ public final class RestControllerGenerator {
             case NONE -> methodBuilder.addStatement("return $T.fromEntity(service.$L($L))",
                     method.returnDtoType(), method.methodName(), callArgs);
         }
+    }
+
+    /** A name for the {@code WebRequest} parameter that no service parameter takes. */
+    private static String requestParameterName(MethodModel method) {
+        Set<String> taken = method.parameters().stream().map(ParameterModel::name).collect(Collectors.toSet());
+        String name = "request";
+        while (taken.contains(name)) {
+            name = name + "_";
+        }
+        return name;
     }
 
     private static String buildCallArgs(MethodModel method) {

@@ -205,12 +205,13 @@ public final class McpToolGenerator {
             ParameterModel param = method.parameters().get(i);
             if (paging != null && paging.replaces(i)) {
                 // The service takes a Pageable: the tool takes the page and size it is built from, never a sort
-                methodBuilder.addParameter(ParameterSpec.builder(Integer.class, PagingContract.PAGE_PARAM)
+                // Longs, so the tool itself rejects a size or page beyond an int, naming it and its range
+                methodBuilder.addParameter(ParameterSpec.builder(Long.class, PagingContract.PAGE_PARAM)
                         .addAnnotation(AnnotationSpec.builder(TOOL_PARAM)
                                 .addMember("description", "$S", PagingContract.PAGE_DESCRIPTION)
                                 .addMember("required", "$L", false).build())
                         .build());
-                methodBuilder.addParameter(ParameterSpec.builder(int.class, PagingContract.SIZE_PARAM)
+                methodBuilder.addParameter(ParameterSpec.builder(Long.class, PagingContract.SIZE_PARAM)
                         .addAnnotation(AnnotationSpec.builder(TOOL_PARAM)
                                 .addMember("description", "$S", PagingContract.SIZE_DESCRIPTION).build())
                         .build());
@@ -237,8 +238,8 @@ public final class McpToolGenerator {
 
         // Method body: delegate to service, map to DTO if applicable
         CodeBlock callArgs = buildCallArgs(method, paging);
-        if (paging != null) {
-            paging.addMcpCeilingCheck(methodBuilder, method.toolName());
+        if (paging != null && paging.pageable() >= 0) {
+            paging.addMcpPagingChecks(methodBuilder, method.toolName());
         }
 
         if (method.returnType().equals(TypeName.VOID)) {

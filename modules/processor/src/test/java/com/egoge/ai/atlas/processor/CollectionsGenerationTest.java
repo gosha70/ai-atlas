@@ -108,19 +108,62 @@ class CollectionsGenerationTest {
     void anOutOfRangePageInputIsRejectedNotClamped() throws Exception {
         GeneratedClasses classes = classes(FLAG_ON);
 
-        assertThatThrownBy(() -> classes.mcp("byStatus", "{\"status\": \"NEW\", \"size\": 0}"))
-                .hasStackTraceContaining("Page size must not be less than one");
-        assertThatThrownBy(() -> classes.mcp("byStatus", "{\"status\": \"NEW\", \"page\": -1, \"size\": 2}"))
-                .hasStackTraceContaining("Page index must not be less than zero");
-        // recent declares maxResults = 3, its page-size ceiling
+        // MCP: each input is named with its range; recent declares maxResults = 3, its page-size ceiling
         assertThatThrownBy(() -> classes.mcp("recent", "{\"size\": 4}"))
-                .hasStackTraceContaining("recent accepts a page size of at most 3; got 4");
+                .hasStackTraceContaining("[ai-atlas] recent: size must be an integer from 1 to 3; got 4");
+        assertThatThrownBy(() -> classes.mcp("recent", "{\"size\": 0}"))
+                .hasStackTraceContaining("recent: size must be an integer from 1 to 3; got 0");
+        assertThatThrownBy(() -> classes.mcp("recent", "{\"size\": -5}"))
+                .hasStackTraceContaining("recent: size must be an integer from 1 to 3; got -5");
+        assertThatThrownBy(() -> classes.mcp("recent", "{}"))
+                .hasStackTraceContaining("recent: size is required: an integer from 1 to 3");
+        assertThatThrownBy(() -> classes.mcp("recent", "{\"page\": -1, \"size\": 2}"))
+                .hasStackTraceContaining("recent: page must be an integer from 0 to 2147483647; got -1");
+        // Without a ceiling, any int size: a larger one is rejected by the tool, never overflowed
+        assertThatThrownBy(() -> classes.mcp("newest", "{\"size\": 99999999999}"))
+                .hasStackTraceContaining("newest: size must be an integer from 1 to 2147483647; got 99999999999");
+        assertThatThrownBy(() -> classes.mcp("newest", "{\"size\": 2, \"page\": 99999999999}"))
+                .hasStackTraceContaining("newest: page must be an integer from 0 to 2147483647; got 99999999999");
         assertThat(callback(classes, "recent").getToolDefinition().description())
                 .contains("pass size (at least 1, at most 3)");
-        MockHttpServletResponse tooLarge = rest(classes, "/recent", "size", "4");
-        assertThat(tooLarge.getStatus()).isEqualTo(400);
-        assertThat(tooLarge.getErrorMessage()).contains("recent accepts a page size of at most 3");
+
+        // REST: the raw inputs are checked, as Spring Data's resolver would clamp or replace each of these
+        assertRejected(classes, "recent: size must be an integer from 1 to 3; got 4", "/recent", "size", "4");
+        assertRejected(classes, "recent: size must be an integer from 1 to 3; got 0", "/recent", "size", "0");
+        assertRejected(classes, "newest: size must be an integer from 1 to 2147483647; got -5", "/newest",
+                "size", "-5");
+        assertRejected(classes, "newest: size must be an integer from 1 to 2147483647; got 'abc'", "/newest",
+                "size", "abc");
+        assertRejected(classes, "newest: size must be an integer from 1 to 2147483647; got '99999999999'",
+                "/newest", "size", "99999999999");
+        // Above Spring Data's maximum page size (2000): with no ceiling, and under a ceiling above it
+        assertRejected(classes, "newest: size 5000 is above the application's maximum page size 2000", "/newest",
+                "size", "5000");
+        assertRejected(classes, "bulk: size 3000 is above the application's maximum page size 2000", "/bulk",
+                "size", "3000");
+        assertRejected(classes, "newest: page must be an integer from 0 to 2147483647; got -3", "/newest",
+                "page", "-3", "size", "2");
+        assertRejected(classes, "newest: page must be an integer from 0 to 2147483647; got 'x'", "/newest",
+                "page", "x", "size", "2");
+        // A missing size takes the application's default page size (20), unless it is above the ceiling
+        assertRejected(classes, "recent: size is required here: the application's default page size 20"
+                + " (spring.data.web.pageable.default-page-size) is above this operation's maximum of 3; pass size"
+                + " as an integer from 1 to 3", "/recent");
+        assertThat(restJson(classes, "/newest").size()).isEqualTo(5);
+        assertThat(pageRequested(classes)).isEqualTo(PageRequest.of(0, 20));
+        // In range, the request is passed as given
         assertThat(restJson(classes, "/recent", "size", "3").path("content").size()).isEqualTo(3);
+        assertThat(restJson(classes, "/bulk", "page", "0", "size", "2000").size()).isEqualTo(5);
+        assertThat(pageRequested(classes)).isEqualTo(PageRequest.of(0, 2000));
+    }
+
+    private static void assertRejected(GeneratedClasses classes, String message, String path, String... params)
+            throws Exception {
+        MockHttpServletResponse response = rest(classes, path, params);
+        assertThat(response.getStatus()).as(path + " " + String.join(" ", params)).isEqualTo(400);
+        assertThat(response.getErrorMessage()).isEqualTo("[ai-atlas] " + message
+                + (message.contains("maximum page size 2000") ? " (spring.data.web.pageable.max-page-size); pass a"
+                + " size from 1 to 2000" : ""));
     }
 
     // ================================================================ Pageable on REST
@@ -131,7 +174,8 @@ class CollectionsGenerationTest {
         GeneratedClasses classes = new GeneratedClasses(compilation);
 
         assertThat(source(compilation, "shop.generated.OrderServiceRestController"))
-                .contains("public PageResult<OrderDto> byStatus(@RequestParam String status, Pageable pageable)");
+                .contains("public PageResult<OrderDto> byStatus(@RequestParam String status, Pageable pageable,\n"
+                        + "            WebRequest request)");
         JsonNode page = restJson(classes, "/by-status", "status", "NEW", "page", "1", "size", "2", "sort", "id,desc");
         assertThat(page.path("content").findValuesAsText("id")).containsExactly("3", "4");
         assertThat(page.path("totalElements").asLong()).isEqualTo(5);
@@ -264,6 +308,42 @@ class CollectionsGenerationTest {
                 .getAnnotation(AgenticBound.class).maxResults()).isEqualTo(2);
         assertThat(method(classes.load("shop.generated.OrderServiceMcpTool"), "list")
                 .getAnnotation(AgenticBound.class)).isNull();
+    }
+
+    @Test
+    void anOptionalOfACollectionCarriesItsBoundOnEverySurface() throws Exception {
+        Compilation compilation = CollectionsFixtures.compileWithOrder("shop.Maybe", """
+                package shop;
+                import com.egoge.ai.atlas.annotations.*;
+                import java.util.*;
+                @AgenticExposed(description = "Maybe")
+                public class Maybe {
+                    @AgenticExposed(description = "Maybe names", maxResults = 2)
+                    public Optional<List<String>> names() { return Optional.of(List.of("a", "b", "c")); }
+                    @AgenticExposed(description = "Maybe orders", maxResults = 2)
+                    public Optional<Order[]> orders() { return Optional.empty(); }
+                    @AgenticExposed(description = "Maybe counts", maxResults = 2)
+                    public Optional<Map<String, Long>> counts() { return Optional.empty(); }
+                }
+                """, FLAG_ON);
+        assertThat(compilation).succeeded();
+        GeneratedClasses classes = new GeneratedClasses(compilation);
+
+        JsonNode paths = openApi(compilation).path("paths");
+        JsonNode names = responseSchema(paths.path("/api/v1/maybe/names").path("get"));
+        assertThat(names.path("type").asText()).isEqualTo("array");
+        assertThat(names.path("items").path("type").asText()).isEqualTo("string");
+        assertThat(names.path("maxItems").asInt()).isEqualTo(2);
+        assertThat(responseSchema(paths.path("/api/v1/maybe/orders").path("get")).path("maxItems").asInt())
+                .isEqualTo(2);
+        assertThat(responseSchema(paths.path("/api/v1/maybe/counts").path("get")).path("maxProperties").asInt())
+                .isEqualTo(2);
+        for (String wrapper : new String[] {"shop.generated.MaybeMcpTool", "shop.generated.MaybeRestController"}) {
+            assertThat(method(classes.load(wrapper), "names").getAnnotation(AgenticBound.class).maxResults())
+                    .as(wrapper).isEqualTo(2);
+        }
+        assertThat(CollectionsFixtures.messages(compilation, javax.tools.Diagnostic.Kind.WARNING))
+                .noneMatch(m -> m.contains(CollectionsFixtures.NO_PAGING));
     }
 
     @Test

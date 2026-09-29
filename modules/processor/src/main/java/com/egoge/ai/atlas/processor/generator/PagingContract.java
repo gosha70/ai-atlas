@@ -61,6 +61,11 @@ public record PagingContract(Style style, Envelope envelope, int pageable, int l
     private static final ClassName RESPONSE_STATUS_EXCEPTION =
             ClassName.get("org.springframework.web.server", "ResponseStatusException");
     private static final ClassName HTTP_STATUS = ClassName.get("org.springframework.http", "HttpStatus");
+    private static final ClassName WEB_REQUEST =
+            ClassName.get("org.springframework.web.context.request", "WebRequest");
+    private static final String CHECK_PAGEABLE = "checkPageable";
+    private static final String PAGING_INPUT = "pagingInput";
+    private static final String BAD_REQUEST_METHOD = "badPagingInput";
     private static final String PAGE_RESULT = "PageResult";
     private static final String SLICE_RESULT = "SliceResult";
     private static final String PREFIX = "[ai-atlas] ";
@@ -188,35 +193,52 @@ public record PagingContract(Style style, Envelope envelope, int pageable, int l
 
     /**
      * The MCP tool's argument for the {@code Pageable}: a request built from its page and size
-     * inputs. {@code PageRequest.of} rejects a negative page or a size below 1.
+     * inputs, once {@link #addMcpPagingChecks} has checked them.
      */
     static CodeBlock pageRequestArgument() {
-        return CodeBlock.of("$T.of($L == null ? 0 : $L, $L)", PAGE_REQUEST, PAGE_PARAM, PAGE_PARAM, SIZE_PARAM);
+        return CodeBlock.of("$T.of($L == null ? 0 : $L.intValue(), $L.intValue())", PAGE_REQUEST, PAGE_PARAM,
+                PAGE_PARAM, SIZE_PARAM);
     }
 
-    /** Rejects an MCP page size above the ceiling, before the service is called. */
-    void addMcpCeilingCheck(MethodSpec.Builder builder, String methodName) {
+    /** The largest page size a client may request: the ceiling, else the largest {@code int}. */
+    private int maxPageSize() {
         Integer ceiling = pageSizeCeiling();
-        if (ceiling != null) {
-            builder.beginControlFlow("if ($L > $L)", SIZE_PARAM, ceiling)
-                    .addStatement("throw new $T($S + $L)", IllegalArgumentException.class, PREFIX + methodName
-                            + " accepts a page size of at most " + ceiling + "; got ", SIZE_PARAM)
-                    .endControlFlow();
-        }
+        return ceiling != null ? ceiling : Integer.MAX_VALUE;
     }
 
     /**
-     * Rejects a REST page size above the ceiling, and a sort on a property that is not allow-listed,
-     * with {@code 400}; drops the sort entirely when none is allow-listed. Nothing is clamped.
+     * Rejects a missing or out-of-range MCP page or size, naming the input and its range, before the
+     * service is called. The inputs are {@code Long}s, so a size above the largest {@code int} is
+     * rejected here too. Nothing is clamped.
      */
-    void addRestPageableChecks(MethodSpec.Builder builder, String param, String methodName) {
-        Integer ceiling = pageSizeCeiling();
-        if (ceiling != null) {
-            builder.beginControlFlow("if ($L.isUnpaged() || $L.getPageSize() > $L)", param, param, ceiling)
-                    .addStatement("throw new $T($T.BAD_REQUEST, $S)", RESPONSE_STATUS_EXCEPTION, HTTP_STATUS,
-                            PREFIX + methodName + " accepts a page size of at most " + ceiling)
-                    .endControlFlow();
-        }
+    void addMcpPagingChecks(MethodSpec.Builder builder, String methodName) {
+        String where = PREFIX + methodName + ": ";
+        String sizeRange = "an integer from 1 to " + maxPageSize();
+        builder.beginControlFlow("if ($L == null)", SIZE_PARAM)
+                .addStatement("throw new $T($S)", IllegalArgumentException.class,
+                        where + SIZE_PARAM + " is required: " + sizeRange)
+                .endControlFlow()
+                .beginControlFlow("if ($L < 1 || $L > $L)", SIZE_PARAM, SIZE_PARAM, maxPageSize())
+                .addStatement("throw new $T($S + $L)", IllegalArgumentException.class,
+                        where + SIZE_PARAM + " must be " + sizeRange + "; got ", SIZE_PARAM)
+                .endControlFlow()
+                .beginControlFlow("if ($L != null && ($L < 0 || $L > $L))", PAGE_PARAM, PAGE_PARAM, PAGE_PARAM,
+                        Integer.MAX_VALUE)
+                .addStatement("throw new $T($S + $L)", IllegalArgumentException.class,
+                        where + PAGE_PARAM + " must be an integer from 0 to " + Integer.MAX_VALUE + "; got ",
+                        PAGE_PARAM)
+                .endControlFlow();
+    }
+
+    /**
+     * Rejects out-of-range REST paging inputs, and a sort on a property that is not allow-listed,
+     * with {@code 400}; drops the sort entirely when none is allow-listed. Nothing is clamped.
+     *
+     * @param param   the {@code Pageable} parameter
+     * @param request the {@code WebRequest} parameter, whose raw page and size are checked
+     */
+    void addRestPageableChecks(MethodSpec.Builder builder, String param, String request, String methodName) {
+        builder.addStatement("$L($L, $L, $S, $L)", CHECK_PAGEABLE, param, request, methodName, maxPageSize());
         if (sortable.isEmpty()) {
             // A sort on a property clients cannot see would leak its values through the order
             builder.addStatement("$L = $L.isPaged() ? $T.of($L.getPageNumber(), $L.getPageSize()) : $T.unpaged()",
@@ -231,6 +253,83 @@ public record PagingContract(Style style, Envelope envelope, int pageable, int l
                         "'; sortable: " + sortable)
                 .endControlFlow()
                 .endControlFlow();
+    }
+
+    /**
+     * The controller's paging-input checks, for a controller with a {@code Pageable} operation.
+     * Spring Data's resolver clamps what it reads: a size below 1 or unparseable becomes the default,
+     * a size above its maximum page size becomes that maximum, and a negative page becomes 0. So the
+     * raw {@code page} and {@code size} are checked, and any input the resolver changed is rejected.
+     */
+    static List<MethodSpec> restPagingCheckMethods() {
+        ParameterSpec request = ParameterSpec.builder(WEB_REQUEST, "request").build();
+        ParameterSpec operation = ParameterSpec.builder(String.class, "operation").build();
+        MethodSpec input = MethodSpec.methodBuilder(PAGING_INPUT)
+                .addJavadoc("A raw paging query parameter, or {@code null} when absent or blank, as Spring Data"
+                        + " reads it.\n")
+                .addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+                .returns(Integer.class)
+                .addParameter(request)
+                .addParameter(String.class, "name")
+                .addParameter(operation)
+                .addParameter(String.class, "range")
+                .addStatement("String value = request.getParameter(name)")
+                .beginControlFlow("if (value == null || value.isBlank())")
+                .addStatement("return null")
+                .endControlFlow()
+                .beginControlFlow("try")
+                .addStatement("return Integer.parseInt(value)")
+                .nextControlFlow("catch ($T e)", NumberFormatException.class)
+                .addStatement("throw $L(operation + $S + name + $S + range + $S + value + $S)", BAD_REQUEST_METHOD,
+                        ": ", " must be ", "; got '", "'")
+                .endControlFlow()
+                .build();
+        MethodSpec badRequest = MethodSpec.methodBuilder(BAD_REQUEST_METHOD)
+                .addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+                .returns(RESPONSE_STATUS_EXCEPTION)
+                .addParameter(String.class, "message")
+                .addStatement("return new $T($T.BAD_REQUEST, $S + message)", RESPONSE_STATUS_EXCEPTION, HTTP_STATUS,
+                        PREFIX)
+                .build();
+        String defaultSize = " (spring.data.web.pageable.default-page-size)";
+        MethodSpec check = MethodSpec.methodBuilder(CHECK_PAGEABLE)
+                .addJavadoc("Rejects a page or size Spring Data's resolver clamped or replaced, and one outside the"
+                        + "\noperation's range, with 400. Nothing is clamped.\n")
+                .addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+                .addParameter(PAGEABLE, "pageable")
+                .addParameter(request)
+                .addParameter(operation)
+                .addParameter(int.class, "maxSize")
+                .addStatement("String pageRange = $S", "an integer from 0 to " + Integer.MAX_VALUE)
+                .addStatement("Integer page = $L(request, $S, operation, pageRange)", PAGING_INPUT, PAGE_PARAM)
+                .beginControlFlow("if (page != null && page < 0)")
+                .addStatement("throw $L(operation + $S + pageRange + $S + page)", BAD_REQUEST_METHOD,
+                        ": " + PAGE_PARAM + " must be ", "; got ")
+                .endControlFlow()
+                .addStatement("String sizeRange = $S + maxSize", "an integer from 1 to ")
+                .addStatement("Integer size = $L(request, $S, operation, sizeRange)", PAGING_INPUT, SIZE_PARAM)
+                .beginControlFlow("if (size != null && (size < 1 || size > maxSize))")
+                .addStatement("throw $L(operation + $S + sizeRange + $S + size)", BAD_REQUEST_METHOD,
+                        ": " + SIZE_PARAM + " must be ", "; got ")
+                .endControlFlow()
+                .beginControlFlow("if (size != null && size != pageable.getPageSize())")
+                .addStatement("throw $L(operation + $S + size + $S + pageable.getPageSize()"
+                                + " + $S + pageable.getPageSize())", BAD_REQUEST_METHOD,
+                        ": " + SIZE_PARAM + " ", " is above the application's maximum page size ",
+                        " (spring.data.web.pageable.max-page-size); pass a size from 1 to ")
+                .endControlFlow()
+                .beginControlFlow("if (size == null && pageable.isUnpaged() && maxSize != $L)", Integer.MAX_VALUE)
+                .addStatement("throw $L(operation + $S + sizeRange)", BAD_REQUEST_METHOD, ": " + SIZE_PARAM
+                        + " is required here: the application's default is unpaged; pass " + SIZE_PARAM + " as ")
+                .endControlFlow()
+                .beginControlFlow("if (size == null && pageable.isPaged() && pageable.getPageSize() > maxSize)")
+                .addStatement("throw $L(operation + $S + pageable.getPageSize() + $S + maxSize + $S + sizeRange)",
+                        BAD_REQUEST_METHOD, ": " + SIZE_PARAM + " is required here: the application's default page"
+                                + " size ", defaultSize + " is above this operation's maximum of ",
+                        "; pass " + SIZE_PARAM + " as ")
+                .endControlFlow()
+                .build();
+        return List.of(check, input, badRequest);
     }
 
     /** The sentence the MCP tool description gains, so a model knows how to page or what bound applies. */

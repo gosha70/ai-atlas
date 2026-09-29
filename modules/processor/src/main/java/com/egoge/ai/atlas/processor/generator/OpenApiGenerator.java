@@ -41,7 +41,6 @@ import javax.tools.Diagnostic;
 import javax.tools.StandardLocation;
 import java.io.IOException;
 import java.io.Writer;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -59,11 +58,10 @@ import java.util.Map;
 public final class OpenApiGenerator {
 
   private static final String OPENAPI_VERSION = "3.0.3";
-  private static final String APPLICATION_JSON = "application/json";
+  static final String APPLICATION_JSON = "application/json";
   private static final String TEXT_PLAIN = "text/plain";
-  private static final ClassName STRING = ClassName.get(String.class);
+  static final ClassName STRING = ClassName.get(String.class);
   private static final String BIG_DECIMAL = "java.math.BigDecimal";
-  private static final String MAP = "java.util.Map";
   /** Class-output-relative directory the OpenAPI specs are written to. */
   public static final String RESOURCE_DIR = "META-INF/openapi/";
   /** Unversioned alias emitted alongside the versioned spec. */
@@ -237,7 +235,7 @@ public final class OpenApiGenerator {
     return schema;
   }
 
-  private static Schema<?> mapJavaTypeToSchema(String javaType) {
+  static Schema<?> mapJavaTypeToSchema(String javaType) {
     return switch (javaType) {
       case "java.lang.Long", "long", "Long" -> new Schema<>().type("integer").format("int64");
       case "java.lang.Integer", "int", "Integer" -> new Schema<>().type("integer").format("int32");
@@ -291,7 +289,7 @@ public final class OpenApiGenerator {
     for (int i = 0; i < method.parameters().size(); i++) {
       ParameterModel param = method.parameters().get(i);
       if (paging != null && paging.replaces(i)) {
-        pageableParameters(paging).forEach(operation::addParametersItem);
+        PagedOpenApi.pageableParameters(paging).forEach(operation::addParametersItem);
         continue;
       }
       Parameter parameter = new Parameter()
@@ -318,7 +316,7 @@ public final class OpenApiGenerator {
 
     // Response
     ApiResponse response200 = new ApiResponse().description("Success");
-    Content content = paging != null ? pagedResponseContent(method, paging) : buildResponseContent(method);
+    Content content = paging != null ? PagedOpenApi.responseContent(method, paging) : buildResponseContent(method);
     if (content != null) {
       response200.content(content);
     }
@@ -352,7 +350,7 @@ public final class OpenApiGenerator {
   }
 
   /** Response content matching what the generated controller returns; {@code null} for void. */
-  private static Content buildResponseContent(MethodModel method) {
+  static Content buildResponseContent(MethodModel method) {
     if (method.returnDtoType() != null) {
       String dtoRef = "#/components/schemas/" + method.returnDtoType().simpleName();
       Schema<?> dtoSchema = new Schema<>().$ref(dtoRef);
@@ -378,87 +376,12 @@ public final class OpenApiGenerator {
     return jsonContent(new Schema<>().type("object"));
   }
 
-  /**
-   * What Spring Data's {@code PageableHandlerMethodArgumentResolver} reads for the {@code Pageable}:
-   * {@code page} and {@code size}, and {@code sort} only when properties are allow-listed, as the
-   * controller drops it otherwise. None is required, and no default is published: the defaults are
-   * application configuration.
-   */
-  private static List<Parameter> pageableParameters(PagingContract paging) {
-    Schema<?> size = new Schema<>().type("integer").format("int32").minimum(BigDecimal.ONE);
-    if (paging.pageSizeCeiling() != null) {
-      size.maximum(BigDecimal.valueOf(paging.pageSizeCeiling()));
-    }
-    List<Parameter> parameters = new ArrayList<>(List.of(
-        new Parameter().in("query").name(PagingContract.PAGE_PARAM).required(false)
-            .description(PagingContract.PAGE_DESCRIPTION)
-            .schema(new Schema<>().type("integer").format("int32").minimum(BigDecimal.ZERO)),
-        new Parameter().in("query").name(PagingContract.SIZE_PARAM).required(false)
-            .description("Page size: the most results to return, at least 1"
-                + (paging.pageSizeCeiling() != null ? " and at most " + paging.pageSizeCeiling() : ""))
-            .schema(size)));
-    if (!paging.sortable().isEmpty()) {
-      parameters.add(new Parameter().in("query").name(PagingContract.SORT_PARAM).required(false)
-          .description("Sort order, property[,asc|desc], repeatable; sortable properties: "
-              + String.join(", ", paging.sortable()))
-          .schema(new ArraySchema().items(new Schema<>().type("string"))));
-    }
-    return parameters;
-  }
-
-  /**
-   * The response of an operation with a paging contract: the {@code Page} or {@code Slice}
-   * envelope the controller returns, or its plain response; a declared bound is {@code maxItems}
-   * on the elements, or {@code maxProperties} on a map.
-   */
-  @SuppressWarnings({"rawtypes", "unchecked"}) // swagger-models properties() accepts raw Map<String, Schema>
-  private static Content pagedResponseContent(MethodModel method, PagingContract paging) {
-    Integer bound = paging.resultBound();
-    if (!paging.enveloped()) {
-      Content plain = buildResponseContent(method);
-      Schema<?> schema = plain != null && plain.get(APPLICATION_JSON) != null
-          ? plain.get(APPLICATION_JSON).getSchema() : null;
-      if (bound != null && schema instanceof ArraySchema) {
-        schema.maxItems(bound);
-      } else if (bound != null && schema != null && "object".equals(schema.getType())
-          && MAP.equals(rawName(method.returnType()))) {
-        schema.maxProperties(bound);
-      }
-      return plain;
-    }
-    Schema<?> items = method.returnDtoType() != null
-        ? new Schema<>().$ref("#/components/schemas/" + method.returnDtoType().simpleName())
-        : paging.elementType() != null ? mapJavaTypeToSchema(paging.elementType().toString())
-        : new Schema<>().type("object");
-    ArraySchema content = new ArraySchema().items(items);
-    if (bound != null) {
-      content.maxItems(bound);
-    }
-    Map<String, Schema<?>> properties = new LinkedHashMap<>();
-    properties.put("content", content);
-    properties.put("number", new Schema<>().type("integer").format("int32"));
-    properties.put("size", new Schema<>().type("integer").format("int32"));
-    properties.put("hasNext", new Schema<>().type("boolean"));
-    if (paging.envelope() == PagingContract.Envelope.PAGE) {
-      properties.put("totalElements", new Schema<>().type("integer").format("int64"));
-      properties.put("totalPages", new Schema<>().type("integer").format("int32"));
-    }
-    Schema<?> envelope = new Schema<>().type("object").required(new ArrayList<>(properties.keySet()));
-    envelope.properties((Map) properties);
-    return jsonContent(envelope);
-  }
-
-  private static String rawName(TypeName type) {
-    TypeName raw = type instanceof ParameterizedTypeName parameterized ? parameterized.rawType() : type;
-    return raw instanceof ClassName className ? className.canonicalName() : null;
-  }
-
-  private static Content jsonContent(Schema<?> schema) {
+  static Content jsonContent(Schema<?> schema) {
     return new Content().addMediaType(APPLICATION_JSON, new MediaType().schema(schema));
   }
 
   /** A boxed or primitive number or boolean with a dedicated schema mapping. */
-  private static boolean isScalar(TypeName type) {
+  static boolean isScalar(TypeName type) {
     return !"string".equals(mapJavaTypeToSchema(type.toString()).getType());
   }
 

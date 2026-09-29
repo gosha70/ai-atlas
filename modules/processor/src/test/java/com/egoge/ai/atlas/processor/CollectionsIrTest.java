@@ -23,6 +23,7 @@ import static com.egoge.ai.atlas.processor.CollectionsFixtures.compile;
 import static com.egoge.ai.atlas.processor.CollectionsFixtures.compileWithOrder;
 import static com.egoge.ai.atlas.processor.CollectionsFixtures.resource;
 import static com.google.testing.compile.CompilationSubject.assertThat;
+import static com.google.common.collect.MoreCollectors.onlyElement;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -94,6 +95,22 @@ class CollectionsIrTest {
     }
 
     @Test
+    void anOptionalOfACollectionRecordsItsDeclaredBound() throws Exception {
+        ContractIr ir = ir(compileWithOrder("shop.Maybe", """
+                package shop;
+                import com.egoge.ai.atlas.annotations.*;
+                import java.util.*;
+                @AgenticExposed(description = "Maybe")
+                public class Maybe {
+                    @AgenticExposed(description = "Maybe names", maxResults = 2)
+                    public Optional<List<String>> names() { return Optional.empty(); }
+                }
+                """, FLAG_ON));
+
+        assertThat(bound(ir, "names")).isEqualTo(new Bound("DECLARED", "NONE", null, null, 2));
+    }
+
+    @Test
     void theGateSeesTheEnvelopeTheFlagIntroducesAsABreakingOutputChange() throws Exception {
         List<Difference> differences = ContractGate.compare(ir(plain("", "")), ir(plain("", "", FLAG_ON)));
 
@@ -114,18 +131,17 @@ class CollectionsIrTest {
         ContractIr bounded = ir(plain(", maxResults = 50", ", maxResults = 5", FLAG_ON));
         ContractIr looser = ir(plain(", maxResults = 100", ", maxResults = 10", FLAG_ON));
 
+        // Both are returns.bound.maxResults: top's result bound an output, paged's page-size ceiling an input.
         // A bound appearing is compatible; a page-size ceiling appearing rejects larger pages
-        assertThat(classification(ContractGate.compare(none, bounded), "maxResults")).isEqualTo(Classification.COMPATIBLE);
-        assertThat(classification(ContractGate.compare(none, bounded), "pageSizeCeiling"))
-                .isEqualTo(Classification.BREAKING);
+        assertThat(classification(ContractGate.compare(none, bounded), "top")).isEqualTo(Classification.COMPATIBLE);
+        assertThat(classification(ContractGate.compare(none, bounded), "paged")).isEqualTo(Classification.BREAKING);
         // Rising: clients may receive more (breaking); larger pages are accepted (compatible)
-        assertThat(classification(ContractGate.compare(bounded, looser), "maxResults"))
-                .isEqualTo(Classification.BREAKING);
-        assertThat(classification(ContractGate.compare(bounded, looser), "pageSizeCeiling"))
+        assertThat(classification(ContractGate.compare(bounded, looser), "top")).isEqualTo(Classification.BREAKING);
+        assertThat(classification(ContractGate.compare(bounded, looser), "paged"))
                 .isEqualTo(Classification.COMPATIBLE);
         // Disappearing
-        assertThat(classification(ContractGate.compare(bounded, none), "maxResults")).isEqualTo(Classification.BREAKING);
-        assertThat(classification(ContractGate.compare(bounded, none), "pageSizeCeiling"))
+        assertThat(classification(ContractGate.compare(bounded, none), "top")).isEqualTo(Classification.BREAKING);
+        assertThat(classification(ContractGate.compare(bounded, none), "paged"))
                 .isEqualTo(Classification.COMPATIBLE);
     }
 
@@ -140,8 +156,9 @@ class CollectionsIrTest {
         assertThat(compilation).hadErrorContaining("returns.bound.envelope");
     }
 
-    private static Classification classification(List<Difference> differences, String key) {
-        return differences.stream().filter(d -> d.change().equals("returns.bound." + key)).findFirst().orElseThrow()
-                .classification();
+    /** The classification of the {@code returns.bound.maxResults} difference of one method. */
+    private static Classification classification(List<Difference> differences, String method) {
+        return differences.stream().filter(d -> d.change().equals("returns.bound.maxResults")
+                && d.path().contains("#" + method)).collect(onlyElement()).classification();
     }
 }

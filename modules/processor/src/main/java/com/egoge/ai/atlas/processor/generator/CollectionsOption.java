@@ -12,21 +12,15 @@ import com.egoge.ai.atlas.processor.generator.PagingContract.Style;
 import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
-import com.egoge.ai.atlas.processor.model.ServiceModel.ReturnKind;
 import com.egoge.ai.atlas.processor.util.VersionSelector;
-import com.palantir.javapoet.TypeName;
 
 import javax.annotation.processing.Messager;
 import javax.annotation.processing.ProcessingEnvironment;
-import javax.lang.model.element.AnnotationMirror;
-import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.DeclaredType;
-import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
-import javax.lang.model.type.WildcardType;
 import javax.tools.Diagnostic;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -67,11 +61,6 @@ public final class CollectionsOption {
     static final String PAGEABLE = PagingContract.DATA_PACKAGE + ".Pageable";
     private static final String PAGE = PagingContract.DATA_PACKAGE + ".Page";
     private static final String SLICE = PagingContract.DATA_PACKAGE + ".Slice";
-    private static final String BASE_STREAM = "java.util.stream.BaseStream";
-    private static final String MAP = "java.util.Map";
-    private static final String SIZE = "jakarta.validation.constraints.Size";
-    private static final Set<TypeKind> INTEGRAL = Set.of(TypeKind.INT, TypeKind.LONG, TypeKind.SHORT);
-    private static final Set<String> BOXED_INTEGRAL = Set.of("java.lang.Integer", "java.lang.Long", "java.lang.Short");
     private static final Set<String> PAGING_INPUTS = Set.of(PagingContract.PAGE_PARAM, PagingContract.SIZE_PARAM,
             PagingContract.SORT_PARAM);
     private static final String AI = "AI";
@@ -80,6 +69,7 @@ public final class CollectionsOption {
     private final boolean enabled;
     private final boolean constraints;
     private final ProcessingEnvironment env;
+    private final ReturnShapes shapes;
     /** The paging contract of each operation that has one, by IR operation identity. */
     private final Map<String, PagingContract> contracts = new HashMap<>();
     /** The effective result bound of each operation that has a paging contract, by IR operation identity. */
@@ -91,6 +81,7 @@ public final class CollectionsOption {
         this.enabled = enabled;
         this.constraints = constraints;
         this.env = env;
+        this.shapes = new ReturnShapes(env);
     }
 
     /**
@@ -141,9 +132,9 @@ public final class CollectionsOption {
         Messager messager = env.getMessager();
         String where = serviceType.getQualifiedName() + "#" + model.methodName();
         List<? extends VariableElement> params = method.getParameters();
-        AgenticExposed methodAnnotation = method.getAnnotation(AgenticExposed.class);
-        int maxResults = methodAnnotation != null ? methodAnnotation.maxResults() : AgenticExposed.NO_MAX_RESULTS;
-        if (typeAnnotation != null && typeAnnotation.maxResults() != AgenticExposed.NO_MAX_RESULTS
+        // Read as written, so an explicit maxResults = -1 is not taken for the default
+        Integer maxResults = ReturnShapes.explicitMaxResults(method);
+        if (typeAnnotation != null && ReturnShapes.explicitMaxResults(serviceType) != null
                 && reportedServices.add(serviceType.getQualifiedName().toString())) {
             messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + "@AgenticExposed(maxResults) on "
                     + serviceType.getQualifiedName() + " must be declared on each method, not the class: a bound"
@@ -163,8 +154,9 @@ public final class CollectionsOption {
         int cursor = role(params, Paging.CURSOR, where);
         boolean valid = limit != -2 && cursor != -2 && pageable != -2 && checkSortable(params, pageable, where);
         TypeMirror returned = method.getReturnType();
-        boolean collection = model.returnKind() != ReturnKind.NONE
-                || assignable(returned, BASE_STREAM) || assignable(returned, MAP);
+        // An Optional of a collection is a collection: present, it holds every element
+        TypeMirror shape = ReturnShapes.optionalContent(returned);
+        boolean collection = shapes.collection(shape);
         int bound = bound(method, maxResults, where);
         if (!valid || bound == -2) {
             return;
@@ -183,8 +175,14 @@ public final class CollectionsOption {
         if (!checkRoles(where, method, params, pageable, limit, cursor, bound)) {
             return;
         }
-        Envelope envelope = assignable(returned, PAGE) ? Envelope.PAGE
-                : assignable(returned, SLICE) ? Envelope.SLICE : Envelope.NONE;
+        if (bound != -1 && pageable < 0 && shapes.assignable(shape, ReturnShapes.BASE_STREAM)) {
+            messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + where + " declares a bound of " + bound
+                    + " on a Stream result, which ai-atlas can neither publish, as the stream has no schema, nor"
+                    + " check, as counting would consume it. Return a List, or take a Pageable", method);
+            return;
+        }
+        Envelope envelope = shapes.assignable(returned, PAGE) ? Envelope.PAGE
+                : shapes.assignable(returned, SLICE) ? Envelope.SLICE : Envelope.NONE;
         Style style = pageable >= 0 ? Style.PAGEABLE : limit >= 0 ? Style.LIMIT
                 : bound != -1 ? Style.DECLARED : Style.NONE;
         if (pageable >= 0 && !checkSortableProperties(params.get(pageable), model, where, apiEntities)) {
@@ -205,6 +203,11 @@ public final class CollectionsOption {
                     + " bound, so one call can return the whole result set." + cursorNote + " Take a Spring Data"
                     + " Pageable, mark a limit the service honours with @AgenticParam(paging = LIMIT), or declare"
                     + " @AgenticExposed(maxResults = N) when the result is known to be small", method);
+        } else if (style == Style.PAGEABLE && bound == -1) {
+            // An unbounded input, like a LIMIT without a maximum: MCP accepts any int page size
+            messager.printMessage(kind, PREFIX + where + " takes a Pageable with no page-size ceiling, so a client"
+                    + " can ask for the whole result set in one page. Declare the largest page size with"
+                    + " @AgenticExposed(maxResults = N)", params.get(pageable));
         } else if (style == Style.LIMIT && constraints
                 && irOperation.parameters().get(limit).constraints().maximum() == null) {
             messager.printMessage(kind, PREFIX + where + " declares paging = LIMIT on '"
@@ -246,14 +249,14 @@ public final class CollectionsOption {
         List<String> sortable = pageable >= 0 ? sortable(params.get(pageable)) : List.of();
         return new PagingContract(style, envelope, pageable, limit, cursor,
                 cursor >= 0 && !irOperation.parameters().get(cursor).required(), bound, sortable,
-                envelope != Envelope.NONE ? elementType(returned) : null);
+                envelope != Envelope.NONE ? ReturnShapes.elementType(returned) : null);
     }
 
     /** With the option off: an ERROR on each declaration that would silently do nothing. */
-    private void reportIgnored(String where, ExecutableElement method, int maxResults,
+    private void reportIgnored(String where, ExecutableElement method, Integer maxResults,
                                List<? extends VariableElement> params) {
         String off = " requires " + OPTION + "=true; with it off the declaration would silently do nothing";
-        if (maxResults != AgenticExposed.NO_MAX_RESULTS) {
+        if (maxResults != null) {
             env.getMessager().printMessage(Diagnostic.Kind.ERROR,
                     PREFIX + "@AgenticExposed(maxResults) on " + where + off, method);
         }
@@ -274,19 +277,20 @@ public final class CollectionsOption {
      * The effective bound: {@code maxResults}, or with {@code ai.atlas.constraints} on a
      * {@code @Size(max)} on the method, which must agree with it.
      *
+     * @param maxResults the {@code maxResults} written on the method, or {@code null} when none is
      * @return the bound, {@code -1} when none, {@code -2} after reporting an ERROR
      */
-    private int bound(ExecutableElement method, int maxResults, String where) {
-        if (maxResults != AgenticExposed.NO_MAX_RESULTS && maxResults < 1) {
+    private int bound(ExecutableElement method, Integer maxResults, String where) {
+        if (maxResults != null && maxResults < 1) {
             env.getMessager().printMessage(Diagnostic.Kind.ERROR, PREFIX + where + " declares maxResults = "
                     + maxResults + "; a bound must be at least 1", method);
             return -2;
         }
-        Integer size = constraints ? sizeMax(method) : null;
+        Integer size = constraints ? ReturnShapes.sizeMax(method) : null;
         if (size == null) {
-            return maxResults;
+            return maxResults != null ? maxResults : -1;
         }
-        if (maxResults != AgenticExposed.NO_MAX_RESULTS && maxResults != size) {
+        if (maxResults != null && !maxResults.equals(size)) {
             env.getMessager().printMessage(Diagnostic.Kind.ERROR, PREFIX + where + " declares maxResults = "
                     + maxResults + " and @Size(max = " + size + ") on its result; they must agree", method);
             return -2;
@@ -299,26 +303,11 @@ public final class CollectionsOption {
         return size;
     }
 
-    /** The {@code max} of a {@code @Size} on the method, a return-value constraint, or {@code null}. */
-    private static Integer sizeMax(ExecutableElement method) {
-        for (AnnotationMirror mirror : method.getAnnotationMirrors()) {
-            if (((TypeElement) mirror.getAnnotationType().asElement()).getQualifiedName().contentEquals(SIZE)) {
-                for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry
-                        : mirror.getElementValues().entrySet()) {
-                    if (entry.getKey().getSimpleName().contentEquals("max")) {
-                        return (Integer) entry.getValue().getValue();
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
     /** The misuse ERRORs of a collection method's paging roles; whether there is none. */
     private boolean checkRoles(String where, ExecutableElement method, List<? extends VariableElement> params,
                                int pageable, int limit, int cursor, int bound) {
         Messager messager = env.getMessager();
-        if (limit >= 0 && !integral(params.get(limit).asType())) {
+        if (limit >= 0 && !ReturnShapes.integral(params.get(limit).asType())) {
             messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + where + " declares paging = LIMIT on '"
                     + params.get(limit).getSimpleName() + "' of type " + params.get(limit).asType()
                     + "; a limit must be an int, long or short", params.get(limit));
@@ -444,30 +433,5 @@ public final class CollectionsOption {
     private boolean isPageable(TypeMirror type) {
         return type instanceof DeclaredType declared
                 && ((TypeElement) declared.asElement()).getQualifiedName().contentEquals(PAGEABLE);
-    }
-
-    private boolean assignable(TypeMirror type, String qualifiedName) {
-        TypeElement element = env.getElementUtils().getTypeElement(qualifiedName);
-        if (element == null) {
-            return false;
-        }
-        var types = env.getTypeUtils();
-        return types.isAssignable(types.erasure(type), types.erasure(element.asType()));
-    }
-
-    private static boolean integral(TypeMirror type) {
-        return INTEGRAL.contains(type.getKind()) || BOXED_INTEGRAL.contains(type.toString());
-    }
-
-    /** The first type argument of a Page or Slice return, or {@code null} when raw. */
-    private static TypeName elementType(TypeMirror returned) {
-        if (returned instanceof DeclaredType declared && !declared.getTypeArguments().isEmpty()) {
-            TypeMirror argument = declared.getTypeArguments().get(0);
-            if (argument instanceof WildcardType wildcard) {
-                argument = wildcard.getExtendsBound();
-            }
-            return argument != null ? TypeName.get(argument) : null;
-        }
-        return null;
     }
 }

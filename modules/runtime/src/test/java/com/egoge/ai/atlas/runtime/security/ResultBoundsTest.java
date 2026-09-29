@@ -20,6 +20,7 @@ import javax.annotation.processing.Generated;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -44,6 +45,11 @@ class ResultBoundsTest {
         public List<String> list() {
             return List.of("a", "b", "c");
         }
+
+        @AgenticBound(maxResults = 2)
+        public Optional<List<String>> maybeTop() {
+            return Optional.of(List.of("a", "b", "c"));
+        }
     }
 
     /** A generated envelope, as the processor nests it in a wrapper. */
@@ -61,6 +67,19 @@ class ResultBoundsTest {
         assertThat(output.getOut()).contains("[ai-atlas] /api/v1/bounded/top returned 3 results, more than the"
                 + " maxResults = 2 its service method BoundedController#top declares. The result is passed"
                 + " through unchanged");
+    }
+
+    @Test
+    void anOptionalOfACollectionIsCountedByItsContent(CapturedOutput output) throws Exception {
+        Optional<List<String>> body = new BoundedController().maybeTop();
+
+        Object written = write(body, BoundedController.class.getMethod("maybeTop"));
+
+        assertThat(written).isSameAs(body);
+        assertThat(output.getOut()).contains("[ai-atlas] /api/v1/bounded/maybeTop returned 3 results, more than the"
+                + " maxResults = 2");
+        assertThat(ResultBounds.count(Optional.of(Map.of("a", 1)))).isEqualTo(1);
+        assertThat(ResultBounds.count(Optional.empty())).isZero();
     }
 
     @Test
