@@ -346,6 +346,12 @@ public final class ContractGate {
         return new ContractComparison(baseline, fresh).run();
     }
 
+    /** Compares what two releases published, each at its own {@code apiMajor}: see {@link ReleaseSurface}. */
+    public static List<Difference> compareReleases(ContractIr previous, ContractIr current) {
+        int major = previous.apiMajor();
+        return compare(ReleaseSurface.of(previous, major), ReleaseSurface.of(current, major));
+    }
+
     /**
      * The {@link #DIFF_RESOURCE_PATH} document: every difference with its element path, attribute,
      * direction, before and after values and classification, in the given order (FR-013). The
