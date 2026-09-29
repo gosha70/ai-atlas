@@ -345,7 +345,8 @@ class AgenticReleaseFunctionalTest {
 
         BuildResult result = runner("check").buildAndFail();
 
-        assertThat(result.getOutput()).contains("Released file " + ir + " was modified after release",
+        // Gradle reports the resolved path: on macOS the temporary directory's /var is /private/var
+        assertThat(result.getOutput()).contains("Released file " + ir.toRealPath() + " was modified after release",
                 "restore it from version control");
         assertThat(release("1.1.0").buildAndFail().getOutput()).contains("was modified after release");
     }
