@@ -6,6 +6,7 @@ package com.egoge.ai.atlas.processor.contract;
 import com.egoge.ai.atlas.processor.constraints.EffectiveConstraints;
 
 import java.util.List;
+import java.util.Collections;
 
 /**
  * The Contract IR: every {@code @AgenticEntity} and {@code @AgenticExposed} declaration of one
@@ -17,7 +18,9 @@ import java.util.List;
  * <p>A constraint, requiredness or hint slot is {@code null} only in a document migrated from
  * {@code irVersion} 1: its value is <em>unknown</em>, which is distinct from "none" (FR-006). A
  * field's channels are never unknown: before {@code irVersion} 3 nothing could narrow them, so a
- * migrated field is on every channel.
+ * migrated field is on every channel. Nor are an operation's REST status, parameter locations and
+ * result bound: before {@code irVersion} 4 every API operation answered 200 with every parameter
+ * in the query, and no operation declared a bound, so a migrated operation records exactly that.
  *
  * @param irVersion   version of this document's format, {@link #IR_VERSION} when written
  * @param apiBasePath configured REST base path, e.g. {@code /api}
@@ -29,7 +32,7 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
                          List<Entity> entities, List<Operation> operations) {
 
     /** The {@code irVersion} this ai-atlas writes and the highest it reads. */
-    public static final int IR_VERSION = 3;
+    public static final int IR_VERSION = 4;
     /** Class-output-relative path of the emitted IR document. */
     public static final String RESOURCE_PATH = "META-INF/ai-atlas/api.ir.json";
 
@@ -142,9 +145,20 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
                             String description, Rest rest, List<Parameter> parameters, Return returns,
                             Hints hints, OperationLifecycle lifecycle) {
 
+        /**
+         * @throws IllegalArgumentException if {@code rest} does not locate exactly one parameter per
+         *                                  parameter, or {@code returns} is missing
+         */
         public Operation {
             channels = List.copyOf(channels);
             parameters = List.copyOf(parameters);
+            if (rest != null && rest.parameterIn().size() != parameters.size()) {
+                throw new IllegalArgumentException("'parameterIn' of operation '" + method + "' must locate each of"
+                        + " its " + parameters.size() + " parameter(s), got " + rest.parameterIn());
+            }
+            if (returns == null) {
+                throw new IllegalArgumentException("operation '" + method + "' must record its return");
+            }
         }
 
         /** The identity as {@code service#method(parameter types)}. */
@@ -171,13 +185,64 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
     }
 
     /**
-     * The REST mapping of an operation, independent of the base path and major.
+     * The REST mapping of an operation, independent of the base path and major: always the
+     * <em>effective</em> mapping, which the controller and the OpenAPI document serve.
      *
-     * @param httpMethod {@code GET} or {@code POST}
-     * @param path       {@code /<service-kebab>/<method-kebab>}; the generated mapping prefixes
-     *                   {@code <apiBasePath>/v<major>}
+     * @param httpMethod  {@code GET} or {@code POST}
+     * @param path        {@code /<service-kebab>/<method-kebab>}; the generated mapping prefixes
+     *                    {@code <apiBasePath>/v<major>}. A segment may be a {@code {name}} variable
+     * @param status      the success status, a 2xx code; {@link #OK} for every mapping before Phase 5
+     * @param parameterIn each parameter's location, {@link #PATH}, {@link #QUERY} or {@link #BODY}, in
+     *                    declaration order; every parameter is in the {@link #QUERY} before Phase 5
      */
-    public record Rest(String httpMethod, String path) {
+    public record Rest(String httpMethod, String path, int status, List<String> parameterIn) {
+
+        /** The success status of every RPC mapping. */
+        public static final int OK = 200;
+        /** A path variable. */
+        public static final String PATH = "PATH";
+        /** A query parameter, where the RPC mapping binds every parameter. */
+        public static final String QUERY = "QUERY";
+        /** The request body. */
+        public static final String BODY = "BODY";
+        /** Every parameter location. */
+        public static final List<String> LOCATIONS = List.of(PATH, QUERY, BODY);
+
+        /** @throws IllegalArgumentException if the status is not 2xx or a location is unknown */
+        public Rest {
+            parameterIn = List.copyOf(parameterIn);
+            if (status < 200 || status > 299) {
+                throw new IllegalArgumentException("'status' of " + httpMethod + " " + path
+                        + " must be a 2xx status, got " + status);
+            }
+            if (!LOCATIONS.containsAll(parameterIn)) {
+                throw new IllegalArgumentException("every 'parameterIn' of " + httpMethod + " " + path
+                        + " must be one of " + LOCATIONS + ", got " + parameterIn);
+            }
+        }
+
+        /**
+         * The RPC mapping every API operation had before Phase 5, and has while nothing declares
+         * otherwise: {@link #OK}, with every parameter in the query (Phase 0's canonical form).
+         *
+         * @param httpMethod     the HTTP method
+         * @param path           the path
+         * @param parameterCount the operation's number of parameters
+         * @return the mapping
+         */
+        public static Rest rpc(String httpMethod, String path, int parameterCount) {
+            return new Rest(httpMethod, path, OK, Collections.nCopies(parameterCount, QUERY));
+        }
+
+        /** The location of the parameter at {@code index}. */
+        public String in(int index) {
+            return parameterIn.get(index);
+        }
+
+        /** The method and path with every {@code {name}} variable as {@code {}}: the route clients call. */
+        public String routeKey() {
+            return httpMethod + " " + path.replaceAll("\\{[^}/]*}", "{}");
+        }
     }
 
     /**
@@ -207,8 +272,70 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
      *                   resolution, or {@code null}
      * @param reference  the entity {@code returnType} names and its DTO, or {@code null} when it
      *                   names no declared entity
+     * @param bound      the effective bound on the result, {@link Bound#NONE} when none is declared
      */
-    public record Return(String javaType, String returnKind, String returnType, TypeRef reference) {
+    public record Return(String javaType, String returnKind, String returnType, TypeRef reference, Bound bound) {
+
+        /** @throws IllegalArgumentException if {@code bound} is missing */
+        public Return {
+            if (bound == null) {
+                throw new IllegalArgumentException("the return of type '" + javaType + "' must record its bound");
+            }
+        }
+    }
+
+    /**
+     * The effective bound on an operation's result: how clients page it, the wire shape they
+     * receive, and the declared ceiling. Every operation records one, {@link #NONE} unless paging
+     * or a bound is declared; nothing before {@code irVersion} 4 could declare either.
+     *
+     * @param style           {@code PAGEABLE} (a Spring Data {@code Pageable} parameter), {@code LIMIT}
+     *                        (a declared limit parameter, with an optional cursor), {@code DECLARED}
+     *                        ({@code maxResults} alone) or {@code NONE}
+     * @param envelope        the wire shape: {@code PAGE} or {@code SLICE} for a paging envelope,
+     *                        {@code NONE} for the plain result
+     * @param limitParameter  name of the parameter that bounds a page (the {@code Pageable} or the
+     *                        limit parameter), or {@code null}
+     * @param cursorParameter name of the cursor parameter, or {@code null}
+     * @param maxResults      the declared ceiling, at least 1, or {@code null}: the largest page size
+     *                        of a paged style ({@code PAGEABLE}, {@code LIMIT}), otherwise the most
+     *                        results the operation returns
+     */
+    public record Bound(String style, String envelope, String limitParameter, String cursorParameter,
+                        Integer maxResults) {
+
+        /** A Spring Data {@code Pageable} parameter pages the result. */
+        public static final String PAGEABLE = "PAGEABLE";
+        /** A declared limit parameter pages the result. */
+        public static final String LIMIT = "LIMIT";
+        /** {@code maxResults} alone bounds the result. */
+        public static final String DECLARED = "DECLARED";
+        /** No style, or no envelope. */
+        public static final String NONE_NAME = "NONE";
+        /** Every style. */
+        public static final List<String> STYLES = List.of(PAGEABLE, LIMIT, DECLARED, NONE_NAME);
+        /** Every envelope. */
+        public static final List<String> ENVELOPES = List.of("PAGE", "SLICE", NONE_NAME);
+        /** No bound: what every operation records until Phase 5 declares one. */
+        public static final Bound NONE = new Bound(NONE_NAME, NONE_NAME, null, null, null);
+
+        /** @throws IllegalArgumentException if the style or envelope is unknown, or {@code maxResults} below 1 */
+        public Bound {
+            if (!STYLES.contains(style)) {
+                throw new IllegalArgumentException("'style' must be one of " + STYLES + ", got " + style);
+            }
+            if (!ENVELOPES.contains(envelope)) {
+                throw new IllegalArgumentException("'envelope' must be one of " + ENVELOPES + ", got " + envelope);
+            }
+            if (maxResults != null && maxResults < 1) {
+                throw new IllegalArgumentException("'maxResults' must be at least 1, got " + maxResults);
+            }
+        }
+
+        /** Whether clients page the result, so that {@code maxResults} is the page-size ceiling. */
+        public boolean paged() {
+            return PAGEABLE.equals(style) || LIMIT.equals(style);
+        }
     }
 
     /**

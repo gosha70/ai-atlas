@@ -1,5 +1,5 @@
 {
-  "irVersion": 3,
+  "irVersion": 4,
   "apiBasePath": "/api",
   "apiMajor": 2,
   "entities": [
@@ -650,7 +650,9 @@
       "description": "Retrieve all customers (deprecated — use getCustomersV2)",
       "rest": {
         "httpMethod": "GET",
-        "path": "/customer-service/get-customers"
+        "path": "/customer-service/get-customers",
+        "status": 200,
+        "parameterIn": []
       },
       "parameters": [],
       "returns": {
@@ -660,6 +662,13 @@
         "reference": {
           "entity": "com.egoge.ai.atlas.demo.entity.Customer",
           "dto": "com.egoge.ai.atlas.demo.entity.generated.CustomerDto"
+        },
+        "bound": {
+          "style": "NONE",
+          "envelope": "NONE",
+          "limitParameter": null,
+          "cursorParameter": null,
+          "maxResults": null
         }
       },
       "hints": {},
@@ -681,7 +690,9 @@
       "description": "Retrieve all customers with their addresses",
       "rest": {
         "httpMethod": "GET",
-        "path": "/customer-service/get-customers-v2"
+        "path": "/customer-service/get-customers-v2",
+        "status": 200,
+        "parameterIn": []
       },
       "parameters": [],
       "returns": {
@@ -691,6 +702,13 @@
         "reference": {
           "entity": "com.egoge.ai.atlas.demo.entity.Customer",
           "dto": "com.egoge.ai.atlas.demo.entity.generated.CustomerDto"
+        },
+        "bound": {
+          "style": "NONE",
+          "envelope": "NONE",
+          "limitParameter": null,
+          "cursorParameter": null,
+          "maxResults": null
         }
       },
       "hints": {},
@@ -713,7 +731,11 @@
       "description": "Find order by ID (legacy)",
       "rest": {
         "httpMethod": "POST",
-        "path": "/order-service/find-by-id"
+        "path": "/order-service/find-by-id",
+        "status": 200,
+        "parameterIn": [
+          "QUERY"
+        ]
       },
       "parameters": [
         {
@@ -732,6 +754,13 @@
         "reference": {
           "entity": "com.egoge.ai.atlas.demo.entity.Order",
           "dto": "com.egoge.ai.atlas.demo.entity.generated.OrderDto"
+        },
+        "bound": {
+          "style": "NONE",
+          "envelope": "NONE",
+          "limitParameter": null,
+          "cursorParameter": null,
+          "maxResults": null
         }
       },
       "hints": {},
@@ -754,7 +783,11 @@
       "description": "Find order by ID",
       "rest": {
         "httpMethod": "POST",
-        "path": "/order-service/find-by-id-v2"
+        "path": "/order-service/find-by-id-v2",
+        "status": 200,
+        "parameterIn": [
+          "QUERY"
+        ]
       },
       "parameters": [
         {
@@ -773,6 +806,13 @@
         "reference": {
           "entity": "com.egoge.ai.atlas.demo.entity.Order",
           "dto": "com.egoge.ai.atlas.demo.entity.generated.OrderDto"
+        },
+        "bound": {
+          "style": "NONE",
+          "envelope": "NONE",
+          "limitParameter": null,
+          "cursorParameter": null,
+          "maxResults": null
         }
       },
       "hints": {},
@@ -795,7 +835,11 @@
       "description": "Find orders by priority (planned for v3)",
       "rest": {
         "httpMethod": "POST",
-        "path": "/order-service/find-by-priority"
+        "path": "/order-service/find-by-priority",
+        "status": 200,
+        "parameterIn": [
+          "QUERY"
+        ]
       },
       "parameters": [
         {
@@ -814,6 +858,13 @@
         "reference": {
           "entity": "com.egoge.ai.atlas.demo.entity.Order",
           "dto": "com.egoge.ai.atlas.demo.entity.generated.OrderDto"
+        },
+        "bound": {
+          "style": "NONE",
+          "envelope": "NONE",
+          "limitParameter": null,
+          "cursorParameter": null,
+          "maxResults": null
         }
       },
       "hints": {},
@@ -836,7 +887,11 @@
       "description": "Find orders by status (e.g. PENDING, CONFIRMED)",
       "rest": {
         "httpMethod": "POST",
-        "path": "/order-service/find-by-status"
+        "path": "/order-service/find-by-status",
+        "status": 200,
+        "parameterIn": [
+          "QUERY"
+        ]
       },
       "parameters": [
         {
@@ -855,6 +910,13 @@
         "reference": {
           "entity": "com.egoge.ai.atlas.demo.entity.Order",
           "dto": "com.egoge.ai.atlas.demo.entity.generated.OrderDto"
+        },
+        "bound": {
+          "style": "NONE",
+          "envelope": "NONE",
+          "limitParameter": null,
+          "cursorParameter": null,
+          "maxResults": null
         }
       },
       "hints": {},

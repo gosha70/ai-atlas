@@ -159,17 +159,17 @@ class ContractIrTest {
         // Class-level returnType, resolved to the entity and its DTO
         Operation find = operation(ir, "shop.CatalogService#find(java.lang.Long)");
         assertThat(find.returns()).isEqualTo(new ContractIr.Return("shop.Product", "NONE", "shop.Product",
-                new TypeRef("shop.Product", "shop.generated.ProductView")));
+                new TypeRef("shop.Product", "shop.generated.ProductView"), ContractIr.Bound.NONE));
         assertThat(find.description()).isEqualTo("Browse the catalog");
         assertThat(find.toolName()).isEqualTo("find");
         assertThat(find.channels()).containsExactly("AI", "API");
-        assertThat(find.rest()).isEqualTo(new ContractIr.Rest("POST", "/catalog-service/find"));
+        assertThat(find.rest()).isEqualTo(new ContractIr.Rest("POST", "/catalog-service/find", 200, List.of("QUERY")));
         assertThat(find.parameters()).containsExactly(
                 new ContractIr.Parameter("id", "java.lang.Long", "", List.of(), true,
                         EffectiveConstraints.NONE));
         assertThat(operation(ir, "shop.CatalogService#find()").toolName()).isEqualTo("findFeatured");
         assertThat(operation(ir, "shop.CatalogService#find()").rest())
-                .isEqualTo(new ContractIr.Rest("GET", "/catalog-service/find"));
+                .isEqualTo(new ContractIr.Rest("GET", "/catalog-service/find", 200, List.of()));
         assertThat(operation(ir, "shop.CatalogService#top(int)").returns().returnKind()).isEqualTo("ARRAY");
         assertThat(operation(ir, "shop.CatalogService#findAll()").returns().javaType())
                 .isEqualTo("java.util.List<shop.Product>");
@@ -177,12 +177,12 @@ class ContractIrTest {
         // Method-level returnType on a List<?> method
         Operation customers = operation(ir, "shop.AdminService#customers()");
         assertThat(customers.returns()).isEqualTo(new ContractIr.Return("java.util.List<?>", "COLLECTION",
-                "shop.Customer", new TypeRef("shop.Customer", "shop.api.CustomerDto")));
+                "shop.Customer", new TypeRef("shop.Customer", "shop.api.CustomerDto"), ContractIr.Bound.NONE));
 
         // No returnType; void; enum parameter; tool name; channels without API
         Operation count = operation(ir, "shop.AdminService#count(shop.Status)");
         assertThat(count.toolName()).isEqualTo("countProducts");
-        assertThat(count.returns()).isEqualTo(new ContractIr.Return("long", "NONE", null, null));
+        assertThat(count.returns()).isEqualTo(new ContractIr.Return("long", "NONE", null, null, ContractIr.Bound.NONE));
         assertThat(count.parameters()).containsExactly(
                 new ContractIr.Parameter("status", "shop.Status", "", List.of("ACTIVE", "RETIRED"), true,
                         EffectiveConstraints.NONE));
@@ -201,7 +201,7 @@ class ContractIrTest {
         assertThat(second.getBytes(StandardCharsets.UTF_8)).isEqualTo(first.getBytes(StandardCharsets.UTF_8));
         assertThat(IrJson.write(IrJson.parse(first, "api.ir.json"))).isEqualTo(first);
 
-        assertThat(first).startsWith("{\n  \"irVersion\": 3,\n  \"apiBasePath\": \"/api\",\n  \"apiMajor\": 2,\n")
+        assertThat(first).startsWith("{\n  \"irVersion\": 4,\n  \"apiBasePath\": \"/api\",\n  \"apiMajor\": 2,\n")
                 .endsWith("}\n").doesNotContain("\r").doesNotContain("\t");
         assertThat(first.lines()).allSatisfy(line ->
                 assertThat(line.length() - line.stripLeading().length()).isEven());
@@ -246,7 +246,7 @@ class ContractIrTest {
 
         assertThat(json).isEqualTo("""
                 {
-                  "irVersion": 3,
+                  "irVersion": 4,
                   "apiBasePath": "/api",
                   "apiMajor": 3,
                   "entities": [],
@@ -312,7 +312,7 @@ class ContractIrTest {
 
         assertMalformed(valid + "{}", "Trailing token");
         assertMalformed(valid + "x", "Unrecognized token");
-        assertMalformed(valid.replaceFirst("\"irVersion\": 3,", "\"irVersion\": 3, \"irVersion\": 3,"),
+        assertMalformed(valid.replaceFirst("\"irVersion\": 4,", "\"irVersion\": 4, \"irVersion\": 4,"),
                 "Duplicate field 'irVersion'");
         assertMalformed(valid.replaceFirst("\"sensitive\": (true|false),", "\"sensitive\": true, \"sensitive\": $1,"),
                 "Duplicate field 'sensitive'");
