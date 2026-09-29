@@ -84,21 +84,94 @@ class MappingGateTest {
     @Test
     void aPageSizeCeilingAppearingOrFallingIsABreakingInputChange() {
         assertThat(boundChanges(paged(null), paged(100))).containsExactly(
-                tuple("returns.bound.pageSizeCeiling", Direction.INPUT, null, "100", Classification.BREAKING));
+                tuple("returns.bound.maxResults", Direction.INPUT, null, "100", Classification.BREAKING));
         assertThat(boundChanges(paged(100), paged(50))).containsExactly(
-                tuple("returns.bound.pageSizeCeiling", Direction.INPUT, "100", "50", Classification.BREAKING));
+                tuple("returns.bound.maxResults", Direction.INPUT, "100", "50", Classification.BREAKING));
         Difference fall = single(compare(op(API, QUERY_MAPPING, "id", paged(100)),
                 op(API, QUERY_MAPPING, "id", paged(50))));
-        assertThat(ContractGate.message(fall, 1)).contains("returns.bound.pageSizeCeiling 100 → 50 (input)",
+        assertThat(ContractGate.message(fall, 1)).contains("returns.bound.maxResults 100 → 50 (input)",
                 "Requests for pages larger than 50 are rejected", REMEDY);
     }
 
     @Test
     void aPageSizeCeilingRisingOrDisappearingIsCompatible() {
         assertThat(boundChanges(paged(50), paged(100))).containsExactly(
-                tuple("returns.bound.pageSizeCeiling", Direction.INPUT, "50", "100", Classification.COMPATIBLE));
+                tuple("returns.bound.maxResults", Direction.INPUT, "50", "100", Classification.COMPATIBLE));
         assertThat(boundChanges(paged(50), paged(null))).containsExactly(
-                tuple("returns.bound.pageSizeCeiling", Direction.INPUT, "50", null, Classification.COMPATIBLE));
+                tuple("returns.bound.maxResults", Direction.INPUT, "50", null, Classification.COMPATIBLE));
+    }
+
+    @Test
+    void aLimitRoleOverAnExistingMaximumAddsNoCeiling() {
+        // List<X> find(@Max(100) Long id) gains @AgenticParam(paging = LIMIT): the accepted inputs are unchanged
+        List<Difference> differences = ContractGate.compare(op(API, "id", Bound.NONE, "100"),
+                op(API, "id", limit(100), "100"));
+
+        assertThat(differences).extracting(Difference::change, Difference::classification).containsExactly(
+                tuple("returns.bound.limitParameter", Classification.INFORMATIONAL),
+                tuple("returns.bound.style", Classification.INFORMATIONAL));
+    }
+
+    @Test
+    void aMaximumChangeUnderAMatchingCeilingIsReportedOnceAsAParameterChange() {
+        List<Difference> differences = ContractGate.compare(op(API, "id", limit(100), "100"),
+                op(API, "id", limit(50), "50"));
+
+        assertThat(differences).extracting(Difference::change, Difference::classification)
+                .containsExactly(tuple("maximum", Classification.BREAKING));
+    }
+
+    @Test
+    void aCeilingBelowWhatTheBaselineAcceptedIsABreakingInputChange() {
+        assertThat(ContractGate.compare(op(API, "id", Bound.NONE, "100"), op(API, "id", limit(50), "100")))
+                .extracting(Difference::change, Difference::direction, Difference::before, Difference::after,
+                        Difference::classification)
+                .contains(tuple("returns.bound.maxResults", Direction.INPUT, null, "50", Classification.BREAKING));
+        // A ceiling at the baseline maximum becomes a real one when it falls below it
+        assertThat(ContractGate.compare(op(API, "id", limit(100), "100"), op(API, "id", limit(50), "100")))
+                .extracting(Difference::change, Difference::direction, Difference::before, Difference::after,
+                        Difference::classification)
+                .containsExactly(tuple("returns.bound.maxResults", Direction.INPUT, "100", "50", Classification.BREAKING));
+    }
+
+    @Test
+    void aCeilingThatRejectsNothingTheBaselineAcceptedIsCompatible() {
+        // @Max 50 → 100 widens the parameter; the new ceiling of 80 still accepts every baseline page size
+        List<Difference> differences = ContractGate.compare(op(API, "id", limit(null), "50"),
+                op(API, "id", limit(80), "100"));
+
+        assertThat(differences).extracting(Difference::change, Difference::direction, Difference::classification)
+                .containsExactlyInAnyOrder(tuple("maximum", Direction.INPUT, Classification.COMPATIBLE),
+                        tuple("returns.bound.maxResults", Direction.INPUT, Classification.COMPATIBLE));
+    }
+
+    @Test
+    void aDeclaredBoundBecomingALimitOfTheSameValueIsComparedPerDirection() {
+        // Over @Max(50): the result bound disappears as an output; the ceiling adds nothing as an input
+        assertThat(ContractGate.compare(op(API, "id", declared(50), "50"), op(API, "id", limit(50), "50")))
+                .extracting(Difference::change, Difference::direction, Difference::classification).containsExactlyInAnyOrder(
+                        tuple("returns.bound.maxResults", Direction.OUTPUT, Classification.BREAKING),
+                        tuple("returns.bound.style", Direction.INPUT, Classification.INFORMATIONAL),
+                        tuple("returns.bound.limitParameter", Direction.INPUT, Classification.INFORMATIONAL));
+        // Without a maximum, limits above 50 were accepted and are now rejected
+        assertThat(ContractGate.compare(op(API, "id", declared(50), null), op(API, "id", limit(50), null)))
+                .extracting(Difference::change, Difference::direction, Difference::before, Difference::after,
+                        Difference::classification).containsExactlyInAnyOrder(
+                        tuple("returns.bound.maxResults", Direction.OUTPUT, "50", null, Classification.BREAKING),
+                        tuple("returns.bound.maxResults", Direction.INPUT, null, "50", Classification.BREAKING),
+                        tuple("returns.bound.style", Direction.INPUT, "DECLARED", "LIMIT", Classification.INFORMATIONAL),
+                        tuple("returns.bound.limitParameter", Direction.INPUT, null, "id",
+                                Classification.INFORMATIONAL));
+    }
+
+    @Test
+    void aPagedBoundBecomingANonPagedOneLiftsTheCeilingAndBoundsTheResult() {
+        assertThat(boundChanges(paged(100), declared(50))).containsExactlyInAnyOrder(
+                tuple("returns.bound.maxResults", Direction.OUTPUT, null, "50", Classification.COMPATIBLE),
+                tuple("returns.bound.maxResults", Direction.INPUT, "100", null, Classification.COMPATIBLE),
+                tuple("returns.bound.envelope", Direction.OUTPUT, "PAGE", "NONE", Classification.BREAKING),
+                tuple("returns.bound.style", Direction.INPUT, "PAGEABLE", "DECLARED", Classification.INFORMATIONAL),
+                tuple("returns.bound.limitParameter", Direction.INPUT, "pageable", null, Classification.INFORMATIONAL));
     }
 
     // ------------------------------------------------------------ rest
@@ -111,7 +184,7 @@ class MappingGateTest {
 
         assertThat(status).extracting(Difference::change, Difference::direction, Difference::before,
                 Difference::after, Difference::classification)
-                .containsExactly("rest.status", Direction.OUTPUT, "200", "201", Classification.BREAKING);
+                .containsExactlyInAnyOrder("rest.status", Direction.OUTPUT, "200", "201", Classification.BREAKING);
         assertThat(ContractGate.message(status, 1)).contains(PATH + ": rest.status 200 → 201 (output)",
                 "REST clients check the success status", REMEDY);
     }
@@ -124,8 +197,8 @@ class MappingGateTest {
 
         assertThat(in).extracting(Difference::change, Difference::direction, Difference::before,
                 Difference::after, Difference::classification)
-                .containsExactly("parameter 0.in", Direction.INPUT, "QUERY", "BODY", Classification.BREAKING);
-        assertThat(ContractGate.message(in, 1)).contains("parameter 0.in QUERY → BODY (input)",
+                .containsExactlyInAnyOrder("rest.parameterIn[0]", Direction.INPUT, "QUERY", "BODY", Classification.BREAKING);
+        assertThat(ContractGate.message(in, 1)).contains("rest.parameterIn[0] QUERY → BODY (input)",
                 "REST clients send the parameter 'id' in the query", REMEDY);
     }
 
@@ -137,10 +210,10 @@ class MappingGateTest {
 
         assertThat(single(compare(op(BOTH, byId, "id", Bound.NONE), op(BOTH, byOrderId, "id", Bound.NONE))))
                 .extracting(Difference::change, Difference::classification)
-                .containsExactly("rest.path", Classification.COMPATIBLE);
+                .containsExactlyInAnyOrder("rest.path", Classification.COMPATIBLE);
         assertThat(single(compare(op(BOTH, byId, "id", Bound.NONE), op(BOTH, items, "id", Bound.NONE))))
                 .extracting(Difference::change, Difference::classification)
-                .containsExactly("rest.path", Classification.BREAKING);
+                .containsExactlyInAnyOrder("rest.path", Classification.BREAKING);
     }
 
     @Test
@@ -150,12 +223,12 @@ class MappingGateTest {
         Rest body = new Rest("POST", "/orders", 200, List.of("BODY"));
 
         assertThat(compare(op(API, byId, "id", Bound.NONE), op(API, byOrderId, "orderId", Bound.NONE)))
-                .extracting(Difference::change, Difference::classification).containsExactly(
+                .extracting(Difference::change, Difference::classification).containsExactlyInAnyOrder(
                         tuple("parameter 0.name", Classification.COMPATIBLE),
                         tuple("rest.path", Classification.COMPATIBLE));
         assertThat(single(compare(op(API, body, "order", Bound.NONE), op(API, body, "draft", Bound.NONE))))
                 .extracting(Difference::change, Difference::classification)
-                .containsExactly("parameter 0.name", Classification.COMPATIBLE);
+                .containsExactlyInAnyOrder("parameter 0.name", Classification.COMPATIBLE);
     }
 
     @Test
@@ -164,11 +237,35 @@ class MappingGateTest {
 
         assertThat(single(compare(op(BOTH, body, "order", Bound.NONE), op(BOTH, body, "draft", Bound.NONE))))
                 .extracting(Difference::change, Difference::classification)
-                .containsExactly("parameter 0.name", Classification.BREAKING);
+                .containsExactlyInAnyOrder("parameter 0.name", Classification.BREAKING);
         assertThat(single(compare(op(API, QUERY_MAPPING, "id", Bound.NONE),
                 op(API, QUERY_MAPPING, "orderId", Bound.NONE))))
                 .extracting(Difference::change, Difference::classification)
-                .containsExactly("parameter 0.name", Classification.BREAKING);
+                .containsExactlyInAnyOrder("parameter 0.name", Classification.BREAKING);
+    }
+
+    @Test
+    void renamingAPathParameterOfAnOperationApiOnlyOnOneSideOnlyStaysBreaking() {
+        Rest byId = new Rest("GET", "/orders/{id}", 200, List.of("PATH"));
+        Rest byOrderId = new Rest("GET", "/orders/{orderId}", 200, List.of("PATH"));
+
+        assertThat(compare(op(API, byId, "id", Bound.NONE), op(BOTH, byOrderId, "orderId", Bound.NONE)))
+                .extracting(Difference::change, Difference::classification).contains(
+                        tuple("parameter 0.name", Classification.BREAKING));
+        assertThat(compare(op(BOTH, byId, "id", Bound.NONE), op(API, byOrderId, "orderId", Bound.NONE)))
+                .extracting(Difference::change, Difference::classification).contains(
+                        tuple("parameter 0.name", Classification.BREAKING));
+    }
+
+    @Test
+    void renamingAParameterWhileMovingItToTheQueryIsBreakingTwice() {
+        Rest body = new Rest("POST", "/orders", 200, List.of("BODY"));
+        Rest query = new Rest("POST", "/orders", 200, List.of("QUERY"));
+
+        assertThat(compare(op(API, body, "order", Bound.NONE), op(API, query, "draft", Bound.NONE)))
+                .extracting(Difference::change, Difference::classification).containsExactlyInAnyOrder(
+                        tuple("rest.parameterIn[0]", Classification.BREAKING),
+                        tuple("parameter 0.name", Classification.BREAKING));
     }
 
     @Test
@@ -200,11 +297,26 @@ class MappingGateTest {
         return new Bound("PAGEABLE", "PAGE", "pageable", null, ceiling);
     }
 
+    private static Bound limit(Integer ceiling) {
+        return new Bound("LIMIT", "NONE", "id", null, ceiling);
+    }
+
+    /** {@link #op} with the query mapping, and {@code maximum} as the parameter's Phase 3 maximum. */
+    private static ContractIr op(List<String> channels, String parameter, Bound bound, String maximum) {
+        return op(channels, QUERY_MAPPING, parameter, bound,
+                new EffectiveConstraints(null, false, maximum, false, null, null, null, null, List.of(), false));
+    }
+
     /** A document of one operation, {@code OrderService.find(Long)}, active from major 1. */
     private static ContractIr op(List<String> channels, Rest rest, String parameter, Bound bound) {
+        return op(channels, rest, parameter, bound, EffectiveConstraints.NONE);
+    }
+
+    private static ContractIr op(List<String> channels, Rest rest, String parameter, Bound bound,
+                                 EffectiveConstraints constraints) {
         Operation op = new Operation("shop.OrderService", "find", "find", channels, "Find",
                 channels.contains("API") ? rest : null,
-                List.of(new Parameter(parameter, "java.lang.Long", "", List.of(), true, EffectiveConstraints.NONE)),
+                List.of(new Parameter(parameter, "java.lang.Long", "", List.of(), true, constraints)),
                 new Return("java.util.List<java.lang.String>", "COLLECTION", null, null, bound), Hints.NONE,
                 new OperationLifecycle(1, Integer.MAX_VALUE, 0, ""));
         return new ContractIr(ContractIr.IR_VERSION, "/api", 1, List.of(), List.of(op));

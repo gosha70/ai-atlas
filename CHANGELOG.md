@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **The ai-atlas dependency version no longer follows the project version.** `agentic { version }`, the version of the `annotations`, `processor` and `runtime` dependencies the Gradle plugin adds, defaulted to the consuming project's `version`. So building an application with `-Pversion=2.0.0`, or `version = "2.0.0"`, silently selected ai-atlas `2.0.0`. It now defaults to the plugin's own version, which the plugin writes into its jar at build time. An explicit `agentic { version }` still wins. When the plugin cannot determine its own version (a development build of the plugin), the build fails and asks for an explicit `agentic { version }`; it never falls back to the project version. **Action:** a project that relied on the old default, with its own version equal to the ai-atlas version it wanted, now gets the plugin's version; set `agentic { version }` if the two differ on purpose.
+
+### Contract IR version 4 (Phase 5 foundation)
+Documented in `docs/contract-governance.md`.
+- **Contract IR `irVersion 4`.** Every operation's `returns` records its `bound` (`style`, `envelope`, `limitParameter`, `cursorParameter`, `maxResults`), and every API operation's `rest` its success `status` and each parameter's location in `parameterIn` (`PATH`, `QUERY` or `BODY`). They record the effective contract, which today is the bound `NONE`/`NONE`, status 200 and every parameter in the query. Version 1 to 3 baselines migrate exactly to those values, with no lock-mode difference; `atlasAccept` writes version 4. A version 4 document missing one of the slots is malformed. The demo baseline is regenerated as version 4. Every other generated file is unchanged.
+- **Gate rules.** A changed `rest.status` or envelope is a breaking output change, and a changed parameter location a breaking input change. A path that changes only in its `{name}` variables is compatible, and so is renaming a path or body parameter of an operation served only on the API channel. A result bound appearing or falling is compatible, and disappearing or rising breaking. A page-size ceiling that rejects a page size the baseline accepted is breaking, and any other ceiling change compatible. A paging role declared or removed on an existing parameter is `informational`. The remedy is a new major or `atlasAccept`.
+
 ### Explicit REST metadata and an opt-in CRUD convention
 Documented in `docs/rest-mapping.md`.
 - **`ai.atlas.rest` flag** (`true`/`false`, default `false`; Gradle `agentic { rest }`, which also reaches `atlasAcceptCompile`; the CLI passes `-Aai.atlas.rest` through). With it off, every operation keeps the RPC mapping and any REST declaration is a compile error naming the route still served. With it off, or on with nothing declared, every generated source and resource is byte-identical to before.
@@ -16,11 +24,6 @@ Documented in `docs/rest-mapping.md`.
 - **Runtime.** The deprecation manifest records route templates such as `DELETE /api/v1/orders/{id}`, and `DeprecationHeaderFilter` matches them with Spring's `PathPattern`, preferring an exact path and then the most specific template.
 - **MCP is unchanged.** Tool classes and `mcp-tools.json` are byte-identical with and without REST metadata.
 - **Contract IR.** Each API operation's `rest` records the effective `status` and `parameterIn` of its resolved mapping (Contract IR version 4, below), so the gate classifies a changed status or parameter location, and turning the flag on without declaring anything writes a byte-identical IR.
-
-### Contract IR version 4 (Phase 5 foundation)
-Documented in `docs/contract-governance.md`.
-- **Contract IR `irVersion 4`.** Every operation's `returns` records its `bound` (`style`, `envelope`, `limitParameter`, `cursorParameter`, `maxResults`), and every API operation's `rest` its success `status` and each parameter's location in `parameterIn` (`PATH`, `QUERY` or `BODY`). They record the effective contract, which today is the bound `NONE`/`NONE`, status 200 and every parameter in the query. Version 1 to 3 baselines migrate exactly to those values, with no lock-mode difference; `atlasAccept` writes version 4. A version 4 document missing one of the slots is malformed. The demo baseline is regenerated as version 4. Every other generated file is unchanged.
-- **Gate rules.** A changed `rest.status` or envelope is a breaking output change, and a changed parameter location a breaking input change. A path that changes only in its `{name}` variables is compatible, and so is renaming a path or body parameter of an operation served only on the API channel. A result bound appearing or falling is compatible, and disappearing or rising breaking. A page-size ceiling appearing or falling is breaking, and rising or disappearing compatible. A paging role declared or removed on an existing parameter is `informational`. The remedy is a new major or `atlasAccept`.
 
 ### Per-channel field projections
 Documented in `docs/channel-projections.md` and `docs/contract-governance.md`.

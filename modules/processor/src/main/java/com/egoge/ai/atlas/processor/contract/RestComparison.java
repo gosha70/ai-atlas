@@ -26,7 +26,7 @@ final class RestComparison {
     private static final String C_HTTP_METHOD = "rest.httpMethod";
     private static final String C_REST_PATH = "rest.path";
     private static final String C_REST_STATUS = "rest.status";
-    private static final String C_PARAMETER = "parameter ";
+    private static final String C_PARAMETER_IN = "rest.parameterIn";
     private static final List<String> API_ONLY = List.of("API");
 
     private RestComparison() {
@@ -53,14 +53,14 @@ final class RestComparison {
         diff(differences, path, C_HTTP_METHOD, Direction.INPUT, before.httpMethod(), after.httpMethod(), true,
                 "REST clients call the operation with this HTTP method", operationRemedy);
         diff(differences, path, C_REST_PATH, Direction.INPUT, before.path(), after.path(),
-                !route(before).equals(route(after)), "REST clients call the operation at this path", operationRemedy);
+                !before.route().equals(after.route()), "REST clients call the operation at this path", operationRemedy);
         String remedy = ContractComparison.newMajorRemedy(major, "a REST mapping has no lifecycle of its own");
         diff(differences, path, C_REST_STATUS, Direction.OUTPUT, String.valueOf(before.status()),
                 String.valueOf(after.status()), true, "REST clients check the success status", remedy);
         int shared = Math.min(before.parameterIn().size(), after.parameterIn().size());
         for (int i = 0; i < shared; i++) {
-            diff(differences, path, C_PARAMETER + i + ".in", Direction.INPUT, before.in(i), after.in(i), true,
-                    "REST clients send the parameter '" + old.parameters().get(i).name() + "' in the "
+            diff(differences, path, C_PARAMETER_IN + "[" + i + "]", Direction.INPUT, before.in(i), after.in(i),
+                    true, "REST clients send the parameter '" + old.parameters().get(i).name() + "' in the "
                             + before.in(i).toLowerCase(Locale.ROOT), remedy);
         }
     }
@@ -77,11 +77,6 @@ final class RestComparison {
 
     private static boolean unnamed(String location) {
         return Rest.PATH.equals(location) || Rest.BODY.equals(location);
-    }
-
-    /** The path with every variable name erased: the route clients call. */
-    private static String route(Rest rest) {
-        return rest.routeKey().substring(rest.httpMethod().length() + 1);
     }
 
     private static void diff(List<Difference> differences, String path, String change, Direction direction,

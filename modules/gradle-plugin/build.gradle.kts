@@ -21,6 +21,24 @@ gradlePlugin {
     }
 }
 
+// The plugin's own version, as a resource the plugin reads at run time: the default ai-atlas
+// dependency version, independent of the consumer's project.version
+val pluginVersionDir = layout.buildDirectory.dir("generated/plugin-version")
+val generatePluginVersion = tasks.register("generatePluginVersion") {
+    val version = project.version.toString()
+    val outputDir = pluginVersionDir
+    inputs.property("version", version)
+    outputs.dir(outputDir)
+    doLast {
+        val file = outputDir.get().file("com/egoge/ai/atlas/plugin/ai-atlas-plugin.properties").asFile
+        file.parentFile.mkdirs()
+        file.writeText("version=$version\n")
+    }
+}
+sourceSets.main {
+    resources.srcDir(generatePluginVersion)
+}
+
 // Functional test source set for Gradle TestKit
 val functionalTest by sourceSets.creating
 
@@ -59,4 +77,8 @@ dependencies {
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
+}
+
+tasks.test {
+    systemProperty("ai.atlas.test.version", project.version.toString())
 }

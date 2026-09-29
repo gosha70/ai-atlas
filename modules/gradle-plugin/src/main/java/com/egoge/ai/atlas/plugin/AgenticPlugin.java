@@ -29,9 +29,12 @@ import org.gradle.workers.WorkerExecutionException;
 import org.gradle.workers.WorkerExecutor;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.regex.Matcher;
@@ -68,6 +71,8 @@ public class AgenticPlugin implements Plugin<Project> {
     private static final String PROCESSOR_MODULE = "ai-atlas-processor";
     private static final Pattern PROCESSOR_JAR = Pattern.compile(PROCESSOR_MODULE + "-(.+)\\.jar");
     private static final Pattern PLUGIN_JAR = Pattern.compile("-(\\d[^/]*)\\.jar$");
+    /** The resource, next to this class, holding the plugin's version, written by its build. */
+    static final String VERSION_RESOURCE = "ai-atlas-plugin.properties";
 
     @Override
     public void apply(Project project) {
@@ -77,8 +82,9 @@ public class AgenticPlugin implements Plugin<Project> {
                 .create("agentic", AgenticExtension.class);
 
         // Defaults
-        extension.getVersion().convention(
-                project.provider(() -> project.getVersion().toString()));
+        // The plugin's own version, never the consumer's project.version: releasing an application as
+        // 2.0.0 must not select ai-atlas 2.0.0. Read only when agentic { version } is not set.
+        extension.getVersion().convention(project.provider(() -> dependencyVersion(ownVersion())));
         extension.getGroup().convention("com.egoge");
         extension.getMcpEnabled().convention(true);
         extension.getRestEnabled().convention(true);
@@ -225,13 +231,53 @@ public class AgenticPlugin implements Plugin<Project> {
         }
     }
 
-    private static String pluginVersion() {
+    /**
+     * The ai-atlas version {@code agentic { version }} defaults to: this plugin's own version.
+     *
+     * @param pluginVersion the plugin's version, or {@code null} when it cannot be determined
+     * @return the version
+     * @throws GradleException when {@code pluginVersion} is {@code null}, asking for an explicit
+     *                         {@code agentic { version }}; it never falls back to the project version
+     */
+    static String dependencyVersion(String pluginVersion) {
+        if (pluginVersion == null) {
+            throw new GradleException("The ai-atlas Gradle plugin cannot determine its own version (a development"
+                    + " build), so it cannot choose the ai-atlas dependency version. Set it explicitly:"
+                    + " agentic { version.set(\"<ai-atlas version>\") }. The project version is never used for it.");
+        }
+        return pluginVersion;
+    }
+
+    /**
+     * This plugin's version: the {@value #VERSION_RESOURCE} resource its build writes, else the
+     * jar's {@code Implementation-Version}, else the version in the jar's file name.
+     *
+     * @return the version, or {@code null} when none of these is available
+     */
+    static String ownVersion() {
+        try (InputStream in = AgenticPlugin.class.getResourceAsStream(VERSION_RESOURCE)) {
+            if (in != null) {
+                Properties properties = new Properties();
+                properties.load(in);
+                String version = properties.getProperty("version");
+                if (version != null && !version.isBlank()) {
+                    return version.trim();
+                }
+            }
+        } catch (IOException e) {
+            // fall through to the jar's metadata
+        }
         String version = AgenticPlugin.class.getPackage().getImplementationVersion();
         if (version == null) {
             CodeSource source = AgenticPlugin.class.getProtectionDomain().getCodeSource();
             Matcher jar = source == null ? null : PLUGIN_JAR.matcher(source.getLocation().getPath());
             version = jar != null && jar.find() ? jar.group(1) : null;
         }
+        return version;
+    }
+
+    private static String pluginVersion() {
+        String version = ownVersion();
         return version != null ? version : "(development build)";
     }
 

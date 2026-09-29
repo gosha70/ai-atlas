@@ -52,23 +52,11 @@ final class IrBoundJson {
         }
         JsonNode node = IrJson.object(returns, K_BOUND);
         return new Bound(IrJson.string(node, K_STYLE), IrJson.string(node, K_ENVELOPE),
-                nullableString(node, K_LIMIT_PARAMETER), nullableString(node, K_CURSOR_PARAMETER),
+                IrJson.nullableString(node, K_LIMIT_PARAMETER), IrJson.nullableString(node, K_CURSOR_PARAMETER),
                 nullableInteger(node, K_MAX_RESULTS));
     }
 
-    private static String nullableString(JsonNode node, String key) {
-        return present(node, key).isNull() ? null : IrJson.string(node, key);
-    }
-
     private static Integer nullableInteger(JsonNode node, String key) {
-        return present(node, key).isNull() ? null : IrJson.integer(node, key);
-    }
-
-    private static JsonNode present(JsonNode node, String key) {
-        JsonNode value = node.get(key);
-        if (value == null) {
-            throw new IllegalArgumentException("missing '" + key + "'");
-        }
-        return value;
+        return IrJson.required(node, key).isNull() ? null : IrJson.integer(node, key);
     }
 }
