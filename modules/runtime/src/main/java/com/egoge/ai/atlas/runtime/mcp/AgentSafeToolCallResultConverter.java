@@ -24,9 +24,16 @@ import java.lang.reflect.Type;
  * AI's converter.
  *
  * <p>AI-ATLAS applies it to every {@code @Tool} method it registers that declares no result converter
- * of its own, and, through {@link AgentSafeToolCallbacks}, to every callback of the application's
- * own {@code ToolCallbackProvider}, {@code ToolCallback} and {@code List<ToolCallback>} beans that
+ * of its own, and, through {@link AgentSafeMcpToolSpecifications}, to every callback Spring AI's MCP
+ * server serves from the application's own {@code ToolCallbackProvider},
+ * {@code List<ToolCallbackProvider>}, {@code ToolCallback} and {@code List<ToolCallback>} beans that
  * would use Spring AI's default converter.
+ *
+ * <p>Built reflectively, from {@code @Tool(resultConverter = AgentSafeToolCallResultConverter.class)},
+ * it cannot tell which application it serves: it takes the settings of the one running application
+ * context whose class loader is the thread's, or of the only running one, and the default (flat)
+ * settings otherwise. Either way it keeps the whitelist, and a tool served over MCP is rebuilt around
+ * its own context's converter.
  */
 public final class AgentSafeToolCallResultConverter implements ToolCallResultConverter {
 

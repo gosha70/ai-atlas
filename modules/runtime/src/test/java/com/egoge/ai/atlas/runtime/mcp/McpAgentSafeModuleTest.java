@@ -6,6 +6,7 @@ package com.egoge.ai.atlas.runtime.mcp;
 import com.egoge.ai.atlas.runtime.json.AgentSafeModule;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -63,6 +64,23 @@ class McpAgentSafeModuleTest {
 
             assertThat(McpOwnProviderResultTest.text(client, "opted_in", "{}"))
                     .isEqualTo("{\"id\":2,\"name\":\"Grace\"}");
+        }
+    }
+
+    @Test
+    void reflectivelyInstantiatedConverterKeepsEachContextsSettingsOverMcp() throws Exception {
+        try (ConfigurableApplicationContext enriched = McpOwnProviderResultTest.start(
+                McpOwnProviderFixtures.OptedInApplication.class, "SYNC_STREAMABLE", "ai.atlas.json.enriched=true");
+             ConfigurableApplicationContext flat = McpOwnProviderResultTest.start(
+                     McpOwnProviderFixtures.OptedInApplication.class, "STATELESS");
+             RawMcpClient enrichedClient = McpOwnProviderResultTest.client("SYNC_STREAMABLE", enriched);
+             RawMcpClient flatClient = McpOwnProviderResultTest.client("STATELESS", flat)) {
+            enrichedClient.initialize();
+            flatClient.initialize();
+
+            assertThat(McpOwnProviderResultTest.text(flatClient, "opted_in", "{}"))
+                    .isEqualTo("{\"id\":2,\"name\":\"Grace\"}");
+            assertEnriched(JSON.readTree(McpOwnProviderResultTest.text(enrichedClient, "opted_in", "{}")), "Grace");
         }
     }
 

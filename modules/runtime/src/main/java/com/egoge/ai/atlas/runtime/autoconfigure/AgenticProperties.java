@@ -35,12 +35,28 @@ public class AgenticProperties {
     public static class Mcp {
         private boolean enabled = true;
 
+        /**
+         * Fail startup, rather than log a WARNING, when the MCP server serves an application tool
+         * whose results AI-ATLAS cannot keep to the @AgenticField whitelist: a tool callback of a
+         * class whose result conversion it cannot see, or an @McpTool method that returns an
+         * @AgenticEntity. A tool AI-ATLAS registers itself always fails startup then.
+         */
+        private boolean failOnUnprotectedTools = false;
+
         public boolean isEnabled() {
             return enabled;
         }
 
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
+        }
+
+        public boolean isFailOnUnprotectedTools() {
+            return failOnUnprotectedTools;
+        }
+
+        public void setFailOnUnprotectedTools(boolean failOnUnprotectedTools) {
+            this.failOnUnprotectedTools = failOnUnprotectedTools;
         }
     }
 

@@ -33,6 +33,7 @@ import java.util.Map;
 final class McpOwnProviderFixtures {
 
     static final String OPAQUE_ECHO = "opaque_echo";
+    static final String INTERFACE_TOOL = "interface_greet";
 
     private McpOwnProviderFixtures() {
     }
@@ -84,6 +85,26 @@ final class McpOwnProviderFixtures {
         @Bean
         ToolCallbackProvider opaquePersonProvider() {
             return ToolCallbackProvider.from(new OpaqueCallback("get_person"));
+        }
+    }
+
+    /**
+     * An opaque callback named like the {@code @Tool} method of a {@code @Service} bean that is a JDK
+     * interface proxy, which AI-ATLAS skips: not a tool AI-ATLAS registers.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @EnableAutoConfiguration
+    @Import(ProxiedToolBeanTest.InterfaceProxyToolConfiguration.class)
+    static class InterfaceProxiedServiceApplication {
+
+        @Bean
+        ProxiedToolBeanTest.GreetingToolService greetingToolService() {
+            return new ProxiedToolBeanTest.GreetingToolService();
+        }
+
+        @Bean
+        ToolCallbackProvider opaqueGreetingProvider() {
+            return ToolCallbackProvider.from(new OpaqueCallback(INTERFACE_TOOL));
         }
     }
 

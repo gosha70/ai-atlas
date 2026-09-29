@@ -44,6 +44,8 @@ class McpOwnProviderResultTest {
     private static final String SYNC_STREAMABLE = "SYNC_STREAMABLE";
     private static final String STATELESS = "STATELESS";
     private static final String ASYNC_SSE = "ASYNC_SSE";
+    private static final String ASYNC_STREAMABLE = "ASYNC_STREAMABLE";
+    private static final String STATELESS_ASYNC = "STATELESS_ASYNC";
     private static final String NO_CONVERSION = "spring.ai.mcp.server.tool-callback-converter=false";
 
     /** The generated tool through the application's provider, and application-only entity tools. */
@@ -51,7 +53,7 @@ class McpOwnProviderResultTest {
             "fn_person", "listed_person");
 
     @ParameterizedTest
-    @ValueSource(strings = {SYNC_SSE, SYNC_STREAMABLE, STATELESS, ASYNC_SSE})
+    @ValueSource(strings = {SYNC_SSE, SYNC_STREAMABLE, STATELESS, ASYNC_SSE, ASYNC_STREAMABLE, STATELESS_ASYNC})
     void generatedToolServedByTheApplicationsOwnProviderKeepsTheWhitelist(String server) throws Exception {
         try (ConfigurableApplicationContext context = start(McpOwnProviderFixtures.OwnProviderApplication.class,
                 server);
@@ -64,7 +66,7 @@ class McpOwnProviderResultTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {SYNC_SSE, SYNC_STREAMABLE, STATELESS, ASYNC_SSE})
+    @ValueSource(strings = {SYNC_SSE, SYNC_STREAMABLE, STATELESS, ASYNC_SSE, ASYNC_STREAMABLE, STATELESS_ASYNC})
     void applicationOnlyEntityToolsKeepTheWhitelist(String server) throws Exception {
         try (ConfigurableApplicationContext context = start(McpOwnProviderFixtures.OwnProviderApplication.class,
                 server);
@@ -83,7 +85,7 @@ class McpOwnProviderResultTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {SYNC_SSE, SYNC_STREAMABLE, STATELESS, ASYNC_SSE})
+    @ValueSource(strings = {SYNC_SSE, SYNC_STREAMABLE, STATELESS, ASYNC_SSE, ASYNC_STREAMABLE, STATELESS_ASYNC})
     void otherResultsOfApplicationToolsAreSpringAiJson(String server) throws Exception {
         try (ConfigurableApplicationContext context = start(McpOwnProviderFixtures.OwnProviderApplication.class,
                 server);
@@ -108,17 +110,30 @@ class McpOwnProviderResultTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {SYNC_SSE, SYNC_STREAMABLE, STATELESS, ASYNC_SSE})
+    @ValueSource(strings = {SYNC_SSE, SYNC_STREAMABLE, STATELESS, ASYNC_SSE, ASYNC_STREAMABLE, STATELESS_ASYNC})
     void protectedCallbacksKeepTheirDefinitionAndReturnDirect(String server) throws Exception {
         try (ConfigurableApplicationContext context = start(McpOwnProviderFixtures.OwnProviderApplication.class,
                 server);
              RawMcpClient client = client(server, context)) {
             client.initialize();
 
-            ToolCallback direct = named(context, "app_direct");
+            // The application's own beans are left as they are: only the callbacks the MCP server serves change
+            ToolCallback raw = named(context, "app_direct");
+            assertThat(raw.call("{}")).contains(SSN);
+            AgentSafeToolCallbacks protection = context.getBean(AgentSafeToolCallbacks.class);
+            ToolCallback direct = protection.protect(raw, "test");
+            assertThat(direct.getToolDefinition()).isEqualTo(raw.getToolDefinition());
             assertThat(direct.getToolMetadata().returnDirect()).isTrue();
-            assertThat(named(context, "app_person").getToolMetadata().returnDirect()).isFalse();
+            assertThat(protection.protect(named(context, "app_person"), "test").getToolMetadata().returnDirect())
+                    .isFalse();
             assertThat(direct.call("{}")).isEqualTo("{\"id\":1,\"name\":\"Ada\"}");
+            // In process, as for ChatClient.toolCallbacks
+            ToolCallbackProvider appProvider = context.getBean("appToolProvider", ToolCallbackProvider.class);
+            for (ToolCallback callback : protection.agentSafe(appProvider)) {
+                if (callback.getToolDefinition().name().equals("app_person")) {
+                    assertThat(callback.call("{}")).isEqualTo("{\"id\":1,\"name\":\"Ada\"}");
+                }
+            }
             List<String> names = new ArrayList<>();
             client.request("tools/list", "{}").path("tools").forEach(tool -> {
                 names.add(tool.path("name").asText());
@@ -133,7 +148,7 @@ class McpOwnProviderResultTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {SYNC_SSE, SYNC_STREAMABLE, STATELESS, ASYNC_SSE})
+    @ValueSource(strings = {SYNC_SSE, SYNC_STREAMABLE, STATELESS, ASYNC_SSE, ASYNC_STREAMABLE, STATELESS_ASYNC})
     void opaqueCallbackServingAGeneratedToolFailsStartup(String server) {
         assertThatThrownBy(() -> start(McpOwnProviderFixtures.OpaqueGeneratedToolApplication.class, server).close())
                 .satisfies(e -> assertThat(rootCause(e))
@@ -145,14 +160,45 @@ class McpOwnProviderResultTest {
     }
 
     @Test
-    void unrelatedOpaqueCallbackIsLeftAloneWithOneDebugLine(CapturedOutput output) throws Exception {
+    void opaqueGeneratedToolRemedyNamesTheSwitchWhenAiAtlasMcpIsOff() {
+        assertThatThrownBy(() -> start(McpOwnProviderFixtures.OpaqueGeneratedToolApplication.class, SYNC_STREAMABLE,
+                "ai.atlas.mcp.enabled=false").close())
+                .satisfies(e -> assertThat(rootCause(e))
+                        .isInstanceOf(IllegalStateException.class)
+                        .hasMessageContaining("MCP tool 'get_person'")
+                        .hasMessageContaining("set ai.atlas.mcp.enabled=true so AI-ATLAS registers it"));
+        assertThatThrownBy(() -> start(McpOwnProviderFixtures.OpaqueGeneratedToolApplication.class, SYNC_STREAMABLE)
+                .close())
+                .satisfies(e -> assertThat(rootCause(e)).hasMessageNotContaining("ai.atlas.mcp.enabled"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {SYNC_STREAMABLE, STATELESS})
+    void opaqueCallbackNamedLikeASkippedInterfaceProxiedToolIsOnlyReported(String server, CapturedOutput output)
+            throws Exception {
+        try (ConfigurableApplicationContext context = start(
+                McpOwnProviderFixtures.InterfaceProxiedServiceApplication.class, server);
+             RawMcpClient client = client(server, context)) {
+            client.initialize();
+            assertThat(text(client, McpOwnProviderFixtures.INTERFACE_TOOL, "{}"))
+                    .isEqualTo("\"" + McpOwnProviderFixtures.OpaqueCallback.RESULT + "\"");
+            assertThat(output).containsOnlyOnce("MCP tool '" + McpOwnProviderFixtures.INTERFACE_TOOL
+                    + "' is served by ToolCallbackProvider bean 'opaqueGreetingProvider'");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {SYNC_STREAMABLE, STATELESS, ASYNC_STREAMABLE})
+    void unrelatedOpaqueCallbackIsServedWithOneWarning(String server, CapturedOutput output) throws Exception {
         try (ConfigurableApplicationContext context = start(McpOwnProviderFixtures.OwnProviderApplication.class,
-                SYNC_STREAMABLE, "logging.level.com.egoge.ai.atlas.runtime.mcp=DEBUG");
-             RawMcpClient client = client(SYNC_STREAMABLE, context)) {
+                server);
+             RawMcpClient client = client(server, context)) {
             client.initialize();
             client.request("tools/list", "{}");
-            assertThat(output).containsOnlyOnce("MCP tool '" + McpOwnProviderFixtures.OPAQUE_ECHO
-                    + "' from ToolCallbackProvider bean 'opaqueToolProvider'");
+            assertThat(output).containsOnlyOnce("MCP tool '"
+                    + McpOwnProviderFixtures.OPAQUE_ECHO + "' is served by ToolCallbackProvider bean "
+                    + "'opaqueToolProvider' through a " + McpOwnProviderFixtures.OpaqueCallback.class.getName())
+                    .contains("its results are not whitelisted");
         }
     }
 
@@ -183,6 +229,14 @@ class McpOwnProviderResultTest {
             case STATELESS -> properties.add("spring.ai.mcp.server.protocol=STATELESS");
             case ASYNC_SSE -> {
                 properties.add("spring.ai.mcp.server.protocol=SSE");
+                properties.add("spring.ai.mcp.server.type=ASYNC");
+            }
+            case STATELESS_ASYNC -> {
+                properties.add("spring.ai.mcp.server.protocol=STATELESS");
+                properties.add("spring.ai.mcp.server.type=ASYNC");
+            }
+            case ASYNC_STREAMABLE -> {
+                properties.add("spring.ai.mcp.server.protocol=STREAMABLE");
                 properties.add("spring.ai.mcp.server.type=ASYNC");
             }
             default -> throw new IllegalArgumentException(server);

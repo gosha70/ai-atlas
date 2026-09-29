@@ -63,9 +63,10 @@ import java.util.Set;
  * keywords and requiredness merged into Spring AI's derived input schema, and with the listed
  * behavioural hints as its MCP {@code annotations}. Every other tool keeps its derived schema.
  * No {@link ToolCallbackProvider} is registered then, so every tool name comes from one path. A tool
- * the application's own {@code ToolCallbackProvider} bean also provides is left to that provider,
- * with a WARNING, so each name is registered once, while Spring AI's tool-callback conversion
- * ({@code spring.ai.mcp.server.tool-callback-converter}, on by default) registers that provider's
+ * the application's own {@code ToolCallbackProvider}, {@code List<ToolCallbackProvider>},
+ * {@code ToolCallback} or {@code List<ToolCallback>} bean also serves is left to that bean, with a
+ * WARNING, so each name is registered once, while Spring AI's tool-callback conversion
+ * ({@code spring.ai.mcp.server.tool-callback-converter}, on by default) registers that bean's
  * tools. With the conversion off, nothing registers them, so AI-ATLAS registers the tool itself.
  *
  * <p>On an ASYNC or STATELESS server the tools are registered through a lazy
@@ -73,7 +74,7 @@ import java.util.Set;
  *
  * <p>On both, each tool's result is serialized with {@link AgentSafeToolCallResultConverter}, so
  * {@code @AgenticEntity} results keep their {@code @AgenticField} whitelist over MCP too. A tool left
- * to the application's own beans keeps it through {@link AgentSafeToolCallbacks}.
+ * to the application's own beans keeps it through {@link AgentSafeMcpToolSpecifications}.
  *
  * <p>Both are lazy to avoid circular dependencies with the MCP server auto-configuration: tool
  * beans are scanned when the MCP server first reads the tools, not at bean creation time.
@@ -279,7 +280,7 @@ public class AgenticMcpConfiguration {
             // Only Spring AI's tool-callback conversion registers the application's providers; without it,
             // a tool left to them would not be served at all
             Map<String, String> providedByApplication = toolCallbackConversionActive(context)
-                    ? applicationProvidedToolNames(context) : Map.of();
+                    ? ApplicationToolBeans.toolNames(context) : Map.of();
             McpServerProperties properties = serverProperties.getIfAvailable();
             List<SyncToolSpecification> result = new ArrayList<>();
             int applied = 0;
@@ -289,10 +290,9 @@ public class AgenticMcpConfiguration {
                 if (provider != null) {
                     // Spring AI registers the application's providers itself; a second registration of
                     // the same name fails startup
-                    log.warn("AI-ATLAS: MCP tool '{}' is registered by the application's own ToolCallbackProvider "
-                            + "bean '{}', so AI-ATLAS does not register it and its generated constraints and "
-                            + "hints are not applied; its results still keep the @AgenticField whitelist",
-                            name, provider);
+                    log.warn("AI-ATLAS: MCP tool '{}' is registered by the application's own {}, so AI-ATLAS "
+                            + "does not register it and its generated constraints and hints are not applied; its "
+                            + "results still keep the @AgenticField whitelist", name, provider);
                     continue;
                 }
                 String mimeType = properties != null ? properties.getToolResponseMimeType().get(name) : null;
@@ -373,22 +373,6 @@ public class AgenticMcpConfiguration {
         return context.getBeanNamesForType(ToolCallbackConverterAutoConfiguration.class, false, false).length > 0;
     }
 
-    /**
-     * The tool names the application's own {@link ToolCallbackProvider} beans register, each with the
-     * first bean that provides it. On a SYNC server AI-ATLAS registers no provider, so every one found
-     * belongs to the application, and Spring AI registers its tools itself while its tool-callback
-     * conversion is active.
-     */
-    private static Map<String, String> applicationProvidedToolNames(ApplicationContext context) {
-        Map<String, String> names = new LinkedHashMap<>();
-        context.getBeansOfType(ToolCallbackProvider.class).forEach((bean, provider) -> {
-            for (ToolCallback callback : provider.getToolCallbacks()) {
-                names.putIfAbsent(callback.getToolDefinition().name(), bean);
-            }
-        });
-        return names;
-    }
-
     private static ToolCallback[] resolveCallbacks(ApplicationContext context) {
         List<Object> toolBeans = new ArrayList<>();
 
@@ -428,7 +412,8 @@ public class AgenticMcpConfiguration {
      * Rebuilds each callback Spring AI derived, with the same definition and metadata, to serialize its
      * result with {@link AgentSafeToolCallResultConverter} (issue #50): Spring AI's default converter
      * uses its own {@code ObjectMapper}, without {@code AgentSafeModule}, so an entity result would
-     * reach the client with every getter. A method that names its own result converter keeps it.
+     * reach the client with every getter. A method that names its own result converter keeps it,
+     * unless it names {@code AgentSafeToolCallResultConverter}, which is replaced by the context's own.
      */
     private static ToolCallback[] withAgentSafeResults(ApplicationContext context, List<Object> toolBeans,
                                                        ToolCallback[] callbacks) {
@@ -438,7 +423,8 @@ public class AgenticMcpConfiguration {
         for (Object bean : toolBeans) {
             for (Method method : ReflectionUtils.getDeclaredMethods(AopUtils.getTargetClass(bean))) {
                 Tool tool = AnnotationUtils.findAnnotation(method, Tool.class);
-                if (tool != null && tool.resultConverter() == DefaultToolCallResultConverter.class
+                if (tool != null && (tool.resultConverter() == DefaultToolCallResultConverter.class
+                        || tool.resultConverter() == AgentSafeToolCallResultConverter.class)
                         && ReflectionUtils.USER_DECLARED_METHODS.matches(method)) {
                     String name = ToolUtils.getToolName(method);
                     beans.put(name, bean);
@@ -446,7 +432,9 @@ public class AgenticMcpConfiguration {
                 }
             }
         }
-        ToolCallResultConverter converter = new AgentSafeToolCallResultConverter(AgentSafeToolCallbacks.module(context));
+        AgentSafeToolCallbacks protection = context.getBeanProvider(AgentSafeToolCallbacks.class).getIfUnique();
+        ToolCallResultConverter converter = protection != null ? protection.converter()
+                : new AgentSafeToolCallResultConverter(AgentSafeToolCallbacks.module(context));
         ToolCallback[] result = new ToolCallback[callbacks.length];
         for (int i = 0; i < callbacks.length; i++) {
             ToolCallback callback = callbacks[i];

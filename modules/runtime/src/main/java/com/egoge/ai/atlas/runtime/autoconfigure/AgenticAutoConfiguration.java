@@ -4,8 +4,10 @@
 package com.egoge.ai.atlas.runtime.autoconfigure;
 
 import com.egoge.ai.atlas.runtime.json.AgentSafeModule;
+import com.egoge.ai.atlas.runtime.mcp.AgentSafeMcpToolSpecifications;
 import com.egoge.ai.atlas.runtime.mcp.AgentSafeToolCallbacks;
 import com.egoge.ai.atlas.runtime.mcp.AgenticMcpConfiguration;
+import com.egoge.ai.atlas.runtime.mcp.McpToolEntityCheck;
 import com.egoge.ai.atlas.runtime.security.DeprecationHeaderFilter;
 import com.egoge.ai.atlas.runtime.security.DtoResponseBodyAdvice;
 import com.egoge.ai.atlas.runtime.security.PiiAuditInterceptor;
@@ -30,14 +32,15 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * <ul>
  *   <li>MCP tool auto-discovery via {@link AgenticMcpConfiguration}</li>
  *   <li>The {@code @AgenticField} whitelist for the application's own MCP tools via
- *       {@link AgentSafeToolCallbacks}</li>
+ *       {@link AgentSafeMcpToolSpecifications} and {@link AgentSafeToolCallbacks}</li>
  *   <li>PII audit interceptor for generated REST endpoints</li>
  * </ul>
  */
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @EnableConfigurationProperties(AgenticProperties.class)
-@Import({AgenticMcpConfiguration.class, AgentSafeToolCallbacks.class})
+@Import({AgenticMcpConfiguration.class, AgentSafeToolCallbacks.class, AgentSafeMcpToolSpecifications.class,
+        McpToolEntityCheck.class})
 public class AgenticAutoConfiguration implements WebMvcConfigurer {
 
     private final AgenticProperties properties;
