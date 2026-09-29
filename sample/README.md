@@ -74,7 +74,7 @@ agentic {
 ```
 
 The plugin + `agentic { }` block automatically:
-- Adds `annotations`, `processor`, and `runtime` dependencies using the configured version
+- Adds `annotations`, `processor`, and `runtime` dependencies at `agentic { version }`, which defaults to the plugin's own version (never the project's `version`)
 - Wires `-Aai.atlas.api.major=2` and related compiler options
 - Generates DTOs, REST controllers, OpenAPI specs, and version metadata
 

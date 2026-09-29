@@ -288,8 +288,11 @@ public final class ContractProjection {
 
     // ---------------------------------------------------------------- operation IDs
 
-    /** One active API operation, in the order the OpenAPI document lists them. */
-    private record OperationSite(String operation, String path, String httpMethodName,
+    /**
+     * One active API operation, in the order the OpenAPI document lists them; {@code route} is its
+     * path with every {@code {name}} variable as {@code {}} ({@link ContractIr.Rest#route()}).
+     */
+    private record OperationSite(String operation, String route, String httpMethodName,
                                  String serviceSimpleName, String methodName) {
     }
 
@@ -300,7 +303,7 @@ public final class ContractProjection {
                 continue;
             }
             String service = op.service().substring(op.service().lastIndexOf('.') + 1);
-            sites.add(new OperationSite(op.id(), ir.apiBasePath() + "/v" + major + op.rest().path(),
+            sites.add(new OperationSite(op.id(), ir.apiBasePath() + "/v" + major + op.rest().route(),
                     op.rest().httpMethod().toLowerCase(Locale.ROOT), service, op.method()));
         }
         return sites;
@@ -308,9 +311,10 @@ public final class ContractProjection {
 
     /**
      * Assigns a unique operationId to every site: a method name used by one operation only is
-     * kept; shared ones, in (path, HTTP method) order, get {@code {Service}_{method}_{httpMethod}}
-     * plus the smallest free {@code _N} suffix if taken. Sites sharing both path and HTTP method are
-     * duplicate REST mappings, reported as errors; among them IR order decides.
+     * kept; shared ones, in (route, HTTP method) order, get {@code {Service}_{method}_{httpMethod}}
+     * plus the smallest free {@code _N} suffix if taken. Sites sharing both route and HTTP method,
+     * such as {@code /orders/{id}} and {@code /orders/{orderId}}, are duplicate REST mappings,
+     * reported as errors; among them IR order decides.
      */
     private static Map<String, String> assignOperationIds(List<OperationSite> entries) {
         Map<String, Long> nameCounts = entries.stream()
@@ -327,7 +331,7 @@ public final class ContractProjection {
                 shared.add(i);
             }
         }
-        shared.sort(Comparator.<Integer, String>comparing(i -> entries.get(i).path())
+        shared.sort(Comparator.<Integer, String>comparing(i -> entries.get(i).route())
                 .thenComparing(i -> entries.get(i).httpMethodName()));
         for (int i : shared) {
             OperationSite entry = entries.get(i);

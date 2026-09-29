@@ -4,9 +4,14 @@
 package com.egoge.ai.atlas.processor.contract;
 
 import com.egoge.ai.atlas.processor.AgenticProcessor;
+import com.egoge.ai.atlas.processor.constraints.EffectiveConstraints;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Bound;
+import com.egoge.ai.atlas.processor.contract.ContractIr.Hints;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Operation;
+import com.egoge.ai.atlas.processor.contract.ContractIr.OperationLifecycle;
+import com.egoge.ai.atlas.processor.contract.ContractIr.Parameter;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Rest;
+import com.egoge.ai.atlas.processor.contract.ContractIr.Return;
 import com.google.testing.compile.Compilation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -15,6 +20,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -38,6 +44,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class IrVersion4Test {
 
+    private static final List<String> API = List.of("API");
     private static final String LOCKED = "-A" + AgenticProcessor.OPT_CONTRACT_LOCKED + "=true";
     /** The bound of every operation today, as the document carries it. */
     private static final String NO_BOUND = """
@@ -174,6 +181,99 @@ class IrVersion4Test {
         assertThat(Rest.rpc("POST", "/a/b", 2)).isEqualTo(new Rest("POST", "/a/b", 200, List.of("QUERY", "QUERY")));
         assertThat(Rest.rpc("GET", "/a/b", 0).parameterIn()).isEmpty();
         assertThat(new Rest("GET", "/orders/{id}", 200, List.of("PATH")).routeKey()).isEqualTo("GET /orders/{}");
+    }
+
+    @Test
+    void aBoundContradictingItsStyleIsMalformed() {
+        String valid = IrJson.write(document(List.of("API"), Rest.rpc("POST", "/orders/find", 3), Bound.NONE));
+        assertThat(valid).contains(NO_BOUND);
+
+        assertMalformed(valid.replace(NO_BOUND, bound("NONE", "\"limit\"", "null", "null")),
+                "style NONE names no 'limitParameter' or 'cursorParameter'");
+        assertMalformed(valid.replace(NO_BOUND, bound("NONE", "null", "\"after\"", "null")),
+                "style NONE names no 'limitParameter' or 'cursorParameter'");
+        assertMalformed(valid.replace(NO_BOUND, bound("LIMIT", "null", "null", "50")),
+                "style LIMIT must name its 'limitParameter'");
+        assertMalformed(valid.replace(NO_BOUND, bound("PAGEABLE", "\"limit\"", "\"after\"", "null")),
+                "only style LIMIT names a 'cursorParameter', got style PAGEABLE");
+        assertMalformed(valid.replace(NO_BOUND, bound("DECLARED", "null", "null", "null")),
+                "style DECLARED must set 'maxResults'");
+    }
+
+    @Test
+    void anOperationWhoseSlotsContradictEachOtherIsMalformed() {
+        Rest byId = new Rest("GET", "/orders/{id}", 200, List.of("PATH", "QUERY", "QUERY"));
+        Bound limit = new Bound("LIMIT", "NONE", "limit", "after", 50);
+
+        assertMalformed(document(API, byId, new Bound("LIMIT", "NONE", "size", null, null)),
+                "operation 'shop.OrderService#find(java.lang.Long,java.lang.Integer,java.lang.String)': the bound"
+                        + " names 'size', which is not one of its parameters [id, limit, after]");
+        assertMalformed(document(API, byId, new Bound("LIMIT", "NONE", "limit", "cursor", null)),
+                "the bound names 'cursor'");
+        assertMalformed(document(API, new Rest("GET", "/orders/{orderId}", 200, List.of("PATH", "QUERY", "QUERY")),
+                limit), "PATH parameter 'id' has no {id} variable in the path /orders/{orderId}");
+        assertMalformed(document(API, new Rest("GET", "/orders", 200, List.of("PATH", "QUERY", "QUERY")), limit),
+                "PATH parameter 'id' has no {id} variable in the path /orders");
+        assertMalformed(document(API, new Rest("POST", "/orders", 200, List.of("BODY", "QUERY", "BODY")), Bound.NONE),
+                "more than one parameter is the BODY");
+        assertMalformed(IrJson.write(document(API, byId, limit)).replace("\"API\"", "\"AI\""),
+                "is not on the API channel, so 'rest' must be null");
+        assertMalformed(IrJson.write(document(API, Rest.rpc("POST", "/orders/find", 3), Bound.NONE))
+                        .replaceAll("\"rest\": \\{[^}]*}", "\"rest\": null"),
+                "is on the API channel, so 'rest' must not be null");
+    }
+
+    @Test
+    void aConsistentMappingAndBoundRoundTrip() throws Exception {
+        ContractIr ir = document(API, new Rest("GET", "/orders/{id}", 200, List.of("PATH", "QUERY", "QUERY")),
+                new Bound("LIMIT", "NONE", "limit", "after", 50));
+        ContractIr body = document(API, new Rest("POST", "/orders", 201, List.of("BODY", "QUERY", "QUERY")),
+                new Bound("DECLARED", "NONE", null, null, 10));
+
+        assertThat(IrJson.parse(IrJson.write(ir), "api.ir.json")).isEqualTo(ir);
+        assertThat(IrJson.parse(IrJson.write(body), "api.ir.json")).isEqualTo(body);
+    }
+
+    @Test
+    void version1And2DocumentsWithApiOperationsMigrateToTheRpcMapping() throws Exception {
+        Rest rpc = Rest.rpc("POST", "/orders/find", 3);
+        String v3 = asVersion3(IrJson.write(document(List.of("AI", "API"), rpc, Bound.NONE)));
+        String v2 = v3.replace("\"irVersion\": 3", "\"irVersion\": 2");
+        String v1 = v2.replace("\"irVersion\": 2", "\"irVersion\": 1")
+                .replaceAll(",\n\\s*\"required\": true,\n\\s*\"constraints\": \\{}", "")
+                .replaceAll("\n\\s*\"hints\": \\{},", "");
+        assertThat(v1).contains("\"irVersion\": 1").doesNotContain("\"required\"", "\"hints\"");
+
+        for (String document : List.of(v1, v2, v3)) {
+            Operation op = IrJson.parse(document, ".atlas/api.ir.json").operations().get(0);
+            assertThat(op.rest()).isEqualTo(rpc);
+            assertThat(op.returns().bound()).isEqualTo(Bound.NONE);
+        }
+    }
+
+    /** {@link #NO_BOUND} with the given JSON values. */
+    private static String bound(String style, String limitParameter, String cursorParameter, String maxResults) {
+        return NO_BOUND.replace("\"style\": \"NONE\"", "\"style\": \"" + style + "\"")
+                .replace("\"limitParameter\": null", "\"limitParameter\": " + limitParameter)
+                .replace("\"cursorParameter\": null", "\"cursorParameter\": " + cursorParameter)
+                .replace("\"maxResults\": null", "\"maxResults\": " + maxResults);
+    }
+
+    /** A document of {@code OrderService.find(Long id, Integer limit, String after)}, without entities. */
+    private static ContractIr document(List<String> channels, Rest rest, Bound bound) {
+        List<Parameter> parameters = new ArrayList<>();
+        for (String[] p : new String[][] {{"id", "java.lang.Long"}, {"limit", "java.lang.Integer"},
+                {"after", "java.lang.String"}}) {
+            parameters.add(new Parameter(p[0], p[1], "", List.of(), true, EffectiveConstraints.NONE));
+        }
+        Operation op = new Operation("shop.OrderService", "find", "find", channels, "Find", rest, parameters,
+                new Return("java.util.List<java.lang.String>", "COLLECTION", null, null, bound), Hints.NONE,
+                new OperationLifecycle(1, Integer.MAX_VALUE, 0, ""));
+        return new ContractIr(ContractIr.IR_VERSION, "/api", 1, List.of(), List.of(op));
+    }
+
+    private static void assertMalformed(ContractIr ir, String detail) {
+        assertMalformed(IrJson.write(ir), detail);
     }
 
     private static void assertMalformed(String json, String detail) {

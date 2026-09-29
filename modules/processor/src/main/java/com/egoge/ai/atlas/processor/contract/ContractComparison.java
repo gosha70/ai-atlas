@@ -383,7 +383,7 @@ final class ContractComparison {
                 "The DTO the operation returns changes", operationRemedy());
         diff(path, C_RETURN + C_REFERENCE, Direction.OUTPUT, ref(r0.reference()), ref(r1.reference()), true,
                 "The DTO the operation returns changes", operationRemedy());
-        BoundComparison.compare(path, r0.bound(), r1.bound(), major, differences);
+        BoundComparison.compare(path, old, now, major, differences);
         diff(path, C_DESCRIPTION, Direction.INPUT, old.description(), now.description(), false, null, null);
         diff(path, C_LIFECYCLE, Direction.INPUT, str(old.lifecycle()), str(now.lifecycle()), false, null, null);
         if (old.hints() != null && now.hints() != null) {
