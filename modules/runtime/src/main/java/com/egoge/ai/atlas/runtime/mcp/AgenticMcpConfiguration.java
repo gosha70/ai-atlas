@@ -3,6 +3,7 @@
  */
 package com.egoge.ai.atlas.runtime.mcp;
 
+import com.egoge.ai.atlas.runtime.json.AgentSafeModule;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -17,7 +18,11 @@ import org.springframework.ai.mcp.server.common.autoconfigure.properties.McpServ
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.execution.DefaultToolCallResultConverter;
+import org.springframework.ai.tool.execution.ToolCallResultConverter;
+import org.springframework.ai.tool.method.MethodToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
+import org.springframework.ai.tool.support.ToolUtils;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -42,6 +47,7 @@ import java.io.UncheckedIOException;
 import java.lang.reflect.Method;
 import java.util.AbstractList;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -65,6 +71,9 @@ import java.util.Set;
  *
  * <p>On an ASYNC or STATELESS server the tools are registered through a lazy
  * {@link ToolCallbackProvider}, with Spring AI's derived schemas only.
+ *
+ * <p>On both, each tool's result is serialized with {@link AgentSafeToolCallResultConverter}, so
+ * {@code @AgenticEntity} results keep their {@code @AgenticField} whitelist over MCP too.
  *
  * <p>Both are lazy to avoid circular dependencies with the MCP server auto-configuration: tool
  * beans are scanned when the MCP server first reads the tools, not at bean creation time.
@@ -407,10 +416,51 @@ public class AgenticMcpConfiguration {
         }
 
         log.info("AI-ATLAS: Registered {} MCP tool bean(s)", toolBeans.size());
-        return MethodToolCallbackProvider.builder()
+        ToolCallback[] callbacks = MethodToolCallbackProvider.builder()
                 .toolObjects(toolBeans.toArray())
                 .build()
                 .getToolCallbacks();
+        return withAgentSafeResults(context, toolBeans, callbacks);
+    }
+
+    /**
+     * Rebuilds each callback Spring AI derived, with the same definition and metadata, to serialize its
+     * result with {@link AgentSafeToolCallResultConverter} (issue #50): Spring AI's default converter
+     * uses its own {@code ObjectMapper}, without {@code AgentSafeModule}, so an entity result would
+     * reach the client with every getter. A method that names its own result converter keeps it.
+     */
+    private static ToolCallback[] withAgentSafeResults(ApplicationContext context, List<Object> toolBeans,
+                                                       ToolCallback[] callbacks) {
+        // The methods and beans Spring AI derives the callbacks from, the same way it does
+        Map<String, Object> beans = new HashMap<>();
+        Map<String, Method> methods = new HashMap<>();
+        for (Object bean : toolBeans) {
+            for (Method method : ReflectionUtils.getDeclaredMethods(AopUtils.getTargetClass(bean))) {
+                Tool tool = AnnotationUtils.findAnnotation(method, Tool.class);
+                if (tool != null && tool.resultConverter() == DefaultToolCallResultConverter.class
+                        && ReflectionUtils.USER_DECLARED_METHODS.matches(method)) {
+                    String name = ToolUtils.getToolName(method);
+                    beans.put(name, bean);
+                    methods.put(name, method);
+                }
+            }
+        }
+        ToolCallResultConverter converter = new AgentSafeToolCallResultConverter(context
+                .getBeanProvider(AgentSafeModule.class)
+                .getIfAvailable(() -> new AgentSafeModule(false, true, true)));
+        ToolCallback[] result = new ToolCallback[callbacks.length];
+        for (int i = 0; i < callbacks.length; i++) {
+            ToolCallback callback = callbacks[i];
+            Method method = methods.get(callback.getToolDefinition().name());
+            result[i] = method == null ? callback : MethodToolCallback.builder()
+                    .toolDefinition(callback.getToolDefinition())
+                    .toolMetadata(callback.getToolMetadata())
+                    .toolMethod(method)
+                    .toolObject(beans.get(callback.getToolDefinition().name()))
+                    .toolCallResultConverter(converter)
+                    .build();
+        }
+        return result;
     }
 
     /**
