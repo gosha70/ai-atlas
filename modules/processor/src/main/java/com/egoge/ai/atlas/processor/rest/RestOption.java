@@ -3,7 +3,6 @@
  */
 package com.egoge.ai.atlas.processor.rest;
 
-import com.egoge.ai.atlas.annotations.AgenticExposed.RestStyle;
 import com.egoge.ai.atlas.annotations.AgenticParam;
 import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.generator.RestControllerGenerator;
@@ -43,7 +42,7 @@ import java.util.regex.Pattern;
  *
  * <p>Each of the HTTP method, the path, the status and each parameter's location resolves on its
  * own: an explicit {@code @Rest} or {@code @AgenticParam(in)}, else the CRUD rule the method
- * matches in a {@link RestStyle#CRUD} service, else the RPC mapping. The resource is
+ * matches in a {@code RestStyle.CRUD} service, else the RPC mapping. The resource is
  * {@code @Rest(resource)}, else the service's kebab-case name.
  *
  * <p><b>CRUD rules</b>, matched on the method name and the parameter shape; a scalar is a
@@ -74,7 +73,8 @@ public final class RestOption {
     /** The API channel. */
     private static final String API = "API";
     private static final String PREFIX = "[ai-atlas] ";
-    private static final String CRUD = RestStyle.CRUD.name();
+    // A constant string, not the annotation enum: initialising the processor loads no annotation class
+    private static final String CRUD = "CRUD";
     private static final Pattern PATH = Pattern.compile("(/([A-Za-z0-9._~-]+|\\{[A-Za-z_$][A-Za-z0-9_$]*}))*");
     private static final Pattern VARIABLE = Pattern.compile("\\{([^}]+)}");
     private static final Pattern RESOURCE = Pattern.compile("[A-Za-z0-9._~-]+");
