@@ -165,7 +165,7 @@ Marks a service class or individual method for MCP tool, REST controller, and Op
 | `apiUntil` | int | `-1` (inherit) | Maximum major API version, inclusive (framework default: `Integer.MAX_VALUE`) |
 | `apiDeprecatedSince` | int | `-1` (inherit) | Major version at which this method became deprecated (framework default: `0`) |
 | `apiReplacement` | String | `"\0"` (inherit) | Migration guidance for deprecated methods (framework default: `""`) |
-| `maxResults` | int | `-1` (none) | Method-level only. The most elements a collection result holds, or on a method taking a `Pageable` the page-size ceiling; declared, never enforced by truncation. Needs `ai.atlas.collections=true` (see [Collection exposure safety](collection-safety.md)) |
+| `maxResults` | int | none | Method-level only. The most elements a collection result holds, or on a method taking a `Pageable` the page-size ceiling; declared, never enforced by truncation. At least 1: an explicit value below 1, `-1` included, is an error. Needs `ai.atlas.collections=true` (see [Collection exposure safety](collection-safety.md)) |
 
 ### Type-Level Usage
 

@@ -26,7 +26,8 @@ require_file docs/collection-safety.md || true
 require_file CHANGELOG.md || true
 
 for text in ai.atlas.collections Pageable maxResults "paging = LIMIT" CURSOR PageResult SliceResult \
-        sortable ai.atlas.strict @AgenticBound returns.bound "irVersion 4" "never paginates or truncates"; do
+        sortable ai.atlas.strict @AgenticBound returns.bound "irVersion 4" "never paginates or truncates" \
+        "rejected, never clamped" max-page-size Optional; do
     require_text docs/collection-safety.md "$text"
 done
 for text in ai.atlas.collections maxResults PageResult sortable returns.bound; do

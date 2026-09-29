@@ -2,7 +2,8 @@
 
 An exposed method that returns a collection can put a whole table into one REST response or one
 agent's context. Behind one opt-in flag, ai-atlas classifies every exposed method that returns a
-collection, iterable, array, `Stream` or `Map`:
+collection, iterable, array, `Stream` or `Map`, or an `Optional` of one. A `byte[]` is a binary
+payload, not a collection:
 
 ```
 collection return
@@ -62,11 +63,33 @@ has no dependency on Spring Data.
 |---|---|
 | REST controller | The `Pageable` parameter is left unannotated, so Spring Data's `PageableHandlerMethodArgumentResolver` binds `page`, `size` and `sort`. |
 | MCP tool class | The `Pageable` becomes `page` (optional, `0` when omitted) and `size` (required). The tool passes `PageRequest.of(page, size)`. There is no generated default page size, and no `sort`. |
-| `mcp-tools.json` | `page` `{integer, minimum 0}` and `size` `{integer, minimum 1}`, with `size` required. |
-| OpenAPI | `page`, `size`, and, when allow-listed, `sort` query parameters. None is required and no defaults are published, as those are application configuration (`spring.data.web.pageable.*`). |
+| `mcp-tools.json` | `page` `{integer, minimum 0}` and `size` `{integer, minimum 1}`, plus `maximum` with a page-size ceiling, with `size` required. |
+| OpenAPI | `page` (`minimum 0`), `size` (`minimum 1`, plus `maximum` with a ceiling), and, when allow-listed, `sort` query parameters. None is required and no defaults are published, as those are application configuration (`spring.data.web.pageable.*`): a request without `size` gets the application's default page size, `spring.data.web.pageable.default-page-size` (20 unless configured). |
 
 No `pageable` parameter appears on any surface. A `List` or `Set` return is bounded by `size` and
 keeps its shape.
+
+#### Out-of-range paging input is rejected, never clamped
+
+Both wrappers reject a page or size outside the published range, naming the input and its range.
+They never clamp one into range.
+
+- **MCP.** A missing `size`, a `size` below 1 or above the ceiling (the largest `int` without one),
+  and a `page` below 0 or above the largest `int` fail the call before the service runs, for example
+  `[ai-atlas] recent: size must be an integer from 1 to 3; got 4`. A value that is not a JSON integer,
+  such as `2.7` or `"abc"`, or one beyond the range of a `long`, is rejected earlier, by Spring AI's
+  argument conversion, with Spring AI's own message.
+- **REST.** Spring Data's resolver clamps what it reads: a `size` below 1 or not a number becomes the
+  default, a `size` above its maximum page size (`spring.data.web.pageable.max-page-size`, 2000
+  unless configured) becomes that maximum, and a negative `page` becomes 0. So the controller also
+  reads the raw `page` and `size` query parameters and answers `400` for a `page` below 0 or not an
+  integer, a `size` below 1, not an integer or above the ceiling, and a `size` the resolver changed,
+  such as one above the application's maximum page size, with or without a ceiling. A request
+  without `size` gets the application's default page size; when that default is above the ceiling,
+  or the application's default is unpaged and a ceiling is declared, it is rejected, saying `size`
+  is required there. The checks read the parameters by their default names, `page` and `size`, the
+  names OpenAPI publishes, so they assume `spring.data.web.pageable` keeps those names and adds no
+  prefix.
 
 ### A declared limit, and a cursor
 
@@ -99,16 +122,28 @@ public List<Order> recent() { ... }
 
 - It declares that a known-small result holds at most `N` elements. It is method-level only: a
   class-level value is a compile ERROR. `N` must be at least 1, on a method returning a collection,
-  iterable, array, `Stream` or `Map`.
+  iterable, array or `Map`, or an `Optional` of one. Any value written explicitly is a declaration:
+  `maxResults = -1`, the value of `AgenticExposed.NO_MAX_RESULTS`, is an ERROR like `0`, not the
+  default. Leaving it out declares no bound.
+- On a `Stream` result it is an ERROR, unless the method takes a `Pageable`, where it is the page-size
+  ceiling: a stream has no schema to publish `maxItems` on, and the runtime cannot count it without
+  consuming it. Return a `List`, or take a `Pageable`.
 - It is published as OpenAPI `maxItems: N` on the response array (`maxProperties` on a map, and
-  `maxItems` on an envelope's `content`), and as "Returns at most N results." in the MCP tool
-  description.
+  `maxItems` on an envelope's `content`; an `Optional` is described as its content), and as
+  "Returns at most N results." in the MCP tool description.
 - **It is declared, not enforced.** The wrappers never truncate. Each generated wrapper method
   carries `@AgenticBound(maxResults = N)`, and the runtime logs a WARN when a result holds more,
   returning it unchanged (see [Runtime](#runtime)).
 - **On a paged method it is the page-size ceiling.** With a `Pageable`, `maxResults` is published
-  as `maximum` on `size` in the MCP tool, `mcp-tools.json` and OpenAPI. A larger `size` is
-  rejected in both wrappers: MCP fails the call, and REST answers `400`. It is never clamped.
+  as `maximum` on `size` in OpenAPI and `mcp-tools.json`, and in the MCP tool description ("pass size
+  (at least 1, at most N)"). The input schema Spring AI derives from the tool class carries no range,
+  as Spring AI builds it from the Java parameter types. With `ai.atlas.constraints` on, a SYNC MCP
+  server merges `mcp-tools.json` into it, so the schema it serves carries `minimum` and `maximum`;
+  without it, or on an ASYNC or STATELESS server, MCP clients learn the range from the description. A
+  larger `size` is rejected in both wrappers: MCP fails the call, and REST answers `400`. It is never
+  clamped (see [Out-of-range paging input](#out-of-range-paging-input-is-rejected-never-clamped)).
+- A `Pageable` without a ceiling is reported like a `LIMIT` without a maximum: the MCP tool accepts
+  any `int` page size. See [Diagnostics](#diagnostics).
 - A `LIMIT` and `maxResults` on one method is an ERROR. Declare the limit's ceiling with `@Max`.
 - With `ai.atlas.constraints` on, a Bean Validation `@Size(max = N)` on the method, a return-value
   constraint, is the same declaration. When both are declared they must agree, or it is an ERROR.
@@ -169,8 +204,22 @@ It is a WARNING on both channels. Under `ai.atlas.strict` it is an ERROR for ope
 the AI channel, and stays a WARNING for API-only operations. Only operations active at the
 configured major are reported.
 
+An unbounded paging input is reported the same way, with the same severities:
+- a `Pageable` with no page-size ceiling (`maxResults`), whether or not `ai.atlas.constraints` is
+  on, since the ceiling is read either way:
+
+  ```
+  [ai-atlas] shop.OrderService#byStatus takes a Pageable with no page-size ceiling, so a client can
+  ask for the whole result set in one page. Declare the largest page size with
+  @AgenticExposed(maxResults = N)
+  ```
+- with `ai.atlas.constraints` on, a `LIMIT` with no maximum (see
+  [A declared limit](#a-declared-limit-and-a-cursor)).
+
 Misuse is a compile ERROR:
-- `maxResults` below 1, on a method that does not return a collection, or on the class;
+- `maxResults` below 1, including an explicit `-1`, on a method that does not return a collection
+  (a `byte[]` included), or on the class;
+- `maxResults`, or `@Size(max)`, on a `Stream` result without a `Pageable`;
 - a paging role on a method that does not return a collection;
 - a `LIMIT` that is not an `int`, `long` or `short`;
 - two `Pageable` parameters, or two parameters with the same role;
@@ -198,8 +247,9 @@ OrderServiceMcpTool#top declares. The result is passed through unchanged; page t
 - On MCP, the check runs where the runtime already rebuilds each tool callback around its
   agent-safe result converter: both the tools AI-ATLAS registers and those the application's own
   providers serve.
-- A collection, map, array or envelope `content` is counted. A `Stream` is not, as counting it
-  would consume it.
+- A collection, map, array or envelope `content` is counted, and so is the content of an
+  `Optional`; an empty one holds none. A `Stream` is not, as counting it would consume it, which is
+  why a bound on one is a compile ERROR.
 
 The operator learns that the bound is wrong without an outage. For real enforcement, declare the
 bound as `@Size(max = N)` on a `@Validated` service.
