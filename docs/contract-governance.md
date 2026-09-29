@@ -175,7 +175,8 @@ a change from the gate:
   without a `limitParameter`, a `cursorParameter` on any style other than `LIMIT`, or `DECLARED`
   without `maxResults`;
 - a `limitParameter` or `cursorParameter` that names none of the operation's parameters;
-- a `PATH` parameter whose name no `{name}` variable of the path carries, or more than one `BODY`;
+- a `PATH` parameter whose name no `{name}` variable of the path carries, a `{name}` variable that
+  names no `PATH` parameter, or more than one `BODY`;
 - a `rest` object on an operation without the `API` channel, or `rest: null` on one with it.
 
 ## Projection at a major

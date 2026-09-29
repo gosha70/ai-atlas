@@ -93,7 +93,8 @@ final class RestComparison {
 
     /**
      * Whether a path variable now binds another parameter. A variable that names no parameter, which
-     * a document read from disk never has, leaves the bindings unknown, and only the route counts.
+     * {@link IrConsistency} rejects in every document read from disk, can occur only in an IR built in
+     * memory; it leaves the bindings unknown, and only the route counts.
      */
     private static boolean rebound(List<Integer> before, List<Integer> after) {
         return !before.contains(-1) && !after.contains(-1) && !before.equals(after);
