@@ -9,6 +9,7 @@ import com.egoge.ai.atlas.annotations.AgenticField;
 import com.egoge.ai.atlas.annotations.Hint;
 import com.egoge.ai.atlas.processor.constraints.ConstraintReader;
 import com.egoge.ai.atlas.processor.constraints.EffectiveConstraints;
+import com.egoge.ai.atlas.processor.contract.ContractIr.Bound;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Entity;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Field;
 import com.egoge.ai.atlas.processor.contract.ContractIr.FieldLifecycle;
@@ -268,15 +269,16 @@ public final class IrBuilder {
         }
         Rest rest = null;
         if (channels.contains(API_CHANNEL)) {
-            rest = new Rest(parameters.isEmpty() ? GET : POST,
+            // The effective mapping the generators serve: 200, every parameter a query parameter
+            rest = Rest.rpc(parameters.isEmpty() ? GET : POST,
                     "/" + RestControllerGenerator.toKebabCase(service.getSimpleName().toString())
-                            + "/" + RestControllerGenerator.toKebabCase(methodName));
+                            + "/" + RestControllerGenerator.toKebabCase(methodName), parameters.size());
         }
         ClassName returnType = AttributeResolver.resolveReturnEntityType(
                 methodAnnotation, typeAnnotation, method, env.getTypeUtils());
         Return returns = new Return(typeString(method.getReturnType()),
                 ReturnTypeValidator.resolveReturnKind(method, env.getTypeUtils(), env.getElementUtils()).name(),
-                returnType != null ? returnType.canonicalName() : null, null);
+                returnType != null ? returnType.canonicalName() : null, null, Bound.NONE);
         OperationLifecycle lifecycle = new OperationLifecycle(
                 AttributeResolver.resolveIntAttr(methodAnnotation, typeAnnotation, AgenticExposed::apiSince, 1),
                 AttributeResolver.resolveIntAttr(methodAnnotation, typeAnnotation, AgenticExposed::apiUntil,
@@ -388,7 +390,8 @@ public final class IrBuilder {
                     ? new TypeRef(returns.returnType(), returned.dtoClassName().canonicalName()) : null;
             irOperations.add(new Operation(op.service(), op.method(), op.toolName(), op.channels(),
                     op.description(), op.rest(), op.parameters(),
-                    new Return(returns.javaType(), returns.returnKind(), returns.returnType(), reference),
+                    new Return(returns.javaType(), returns.returnKind(), returns.returnType(), reference,
+                            returns.bound()),
                     op.hints(), op.lifecycle()));
         }
         irOperations.sort(Comparator.comparing(Operation::service).thenComparing(Operation::signature));
