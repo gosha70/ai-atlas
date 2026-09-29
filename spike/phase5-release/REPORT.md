@@ -43,6 +43,16 @@ Abbreviations: `plugin/` is `modules/gradle-plugin/src/main/java/com/egoge/ai/at
   `agentic { releaseVersion }`, defaulting to `project.version`, and accepts only `MAJOR.MINOR.PATCH`
   (Q1).
 
+**Owner decisions (2026-09-29)** are recorded in `ISSUE-DRAFT.md`. They supersede the
+recommendations in §7 where they differ:
+- `agentic { version }` stops defaulting to `project.version`;
+- a resource must come from the same compilation as the IR;
+- the baseline is compared by canonical equality;
+- a breaking change within the same API major fails by default, even after `atlasAccept`;
+- channel loss and an empty contract count as removals;
+- the history check is split from tag verification;
+- deprecation credit comes from tagged releases.
+
 ---
 
 ## 1. The Gradle plugin tasks today
@@ -212,7 +222,7 @@ shipped". A release gives it that second meaning, by snapshot, without changing 
 | `releasesAreByteForByteDeterministic` | Deleting a release, running `clean` and releasing again gives identical bytes for every file. |
 
 The run used `./gradlew build -x javadoc -Porg.gradle.java.installations.paths=/usr/lib/jvm/java-17-openjdk-amd64,/usr/lib/jvm/java-21-openjdk-amd64 --continue`.
-It ended `BUILD SUCCESSFUL`. The plugin's functional suites all pass: 46 tests, including these 11, with 0 failures and 0 skipped. Every existing processor, runtime, CLI and demo test also passes, and the golden snapshots are unchanged because no processor file was touched. JDK 17 had to be installed in the container for the toolchain.
+**The build passed with javadoc excluded.** This is not an unrestricted full build: `javadoc` was skipped as instructed. The plugin's functional suites pass: 46 tests, including these 11, with 0 failures and 0 skipped. The processor, runtime, CLI and demo tests in that build pass too, and no processor file was touched. JDK 17 had to be installed in the container for the toolchain.
 
 **Known prototype limits, deliberately left for the real phase:**
 - The surface reduction (`ReleaseAction.published`) lives in the plugin. It belongs in the processor
