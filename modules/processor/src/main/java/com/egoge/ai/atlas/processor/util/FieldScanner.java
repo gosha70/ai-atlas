@@ -3,6 +3,7 @@
  */
 package com.egoge.ai.atlas.processor.util;
 
+import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.egoge.ai.atlas.annotations.AgenticField;
 import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.egoge.ai.atlas.processor.model.FieldModel.CollectionKind;
@@ -18,6 +19,7 @@ import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.MirroredTypeException;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.TypeVariable;
 import javax.lang.model.type.WildcardType;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
@@ -58,6 +60,23 @@ public final class FieldScanner {
    * @return every valid annotated field, in DTO declaration order
    */
   public static List<ScannedField> scanAll(TypeElement typeElement, ProcessingEnvironment processingEnv) {
+    return scanAll(typeElement, processingEnv, false);
+  }
+
+  /**
+   * Scans as {@link #scanAll(TypeElement, ProcessingEnvironment)} does, with
+   * {@code ai.atlas.projections=true} in effect when {@code projections} is set: a field of an
+   * unannotated subtype of an {@code @AgenticEntity}, or a collection, iterable or array of one, is an
+   * ERROR unless an {@code @AgenticField(type)} naming an entity resolves it, and such a hint on a
+   * direct field takes effect, so it must be assignable from the field's type.
+   *
+   * @param typeElement   the entity class to scan
+   * @param processingEnv the annotation processing environment (for type hierarchy checks)
+   * @param projections   whether {@code ai.atlas.projections=true}
+   * @return every valid annotated field, in DTO declaration order
+   */
+  public static List<ScannedField> scanAll(TypeElement typeElement, ProcessingEnvironment processingEnv,
+                                           boolean projections) {
     if (typeElement == null) {
       return Collections.emptyList();
     }
@@ -146,8 +165,23 @@ public final class FieldScanner {
 
           Messager messager = processingEnv.getMessager();
 
+          // With projections, an entity hint on a direct field of another type takes effect
+          boolean directHint = projections && collectionKind == CollectionKind.NONE
+              && isEntity(hintMirror) && !isEntity(fieldType);
+          if (directHint
+              && !typeUtils.isAssignable(typeUtils.erasure(fieldType), typeUtils.erasure(hintMirror))) {
+            messager.printMessage(
+                Diagnostic.Kind.ERROR,
+                "@AgenticField(type = " + hintMirror + ") is not assignable from field type "
+                    + fieldType + " on field '" + fieldName + "' — generated code would pass "
+                    + fieldType + " as " + hintMirror,
+                field
+            );
+            hintTypeName = null;
+          }
+
           // Warn if type hint is set on a non-collection/non-iterable/non-array field
-          if (hintTypeName != null && collectionKind == CollectionKind.NONE) {
+          if (hintTypeName != null && collectionKind == CollectionKind.NONE && !directHint) {
             messager.printMessage(
                 Diagnostic.Kind.WARNING,
                 "@AgenticField(type = ...) on non-collection field '"
@@ -179,6 +213,11 @@ public final class FieldScanner {
                 hintTypeName = null;
               }
             }
+          }
+
+          if (projections) {
+            checkSubtypeReference(typeElement, field, collectionKind, hintTypeName != null ? hintMirror : null,
+                typeUtils, elementUtils, messager);
           }
 
           // Read version attributes
@@ -258,6 +297,38 @@ public final class FieldScanner {
     }
 
     return allFields;
+  }
+
+  /**
+   * An ERROR on a field referring to an unannotated subtype of an {@code @AgenticEntity}, directly or
+   * as a collection, iterable or array element, without a hint naming an entity: its DTO would copy
+   * the raw subtype, whose getters the channel projection cannot reach.
+   */
+  private static void checkSubtypeReference(TypeElement entity, VariableElement field, CollectionKind kind,
+                                            TypeMirror hint, Types typeUtils, Elements elementUtils,
+                                            Messager messager) {
+    TypeMirror referred = kind == CollectionKind.NONE ? field.asType()
+        : resolveElementTypeForValidation(field.asType(), kind, typeUtils, elementUtils);
+    if (referred instanceof TypeVariable variable) {
+      referred = variable.getUpperBound();
+    }
+    TypeElement target = referred == null ? null : ReturnedTypes.entityOf(referred, typeUtils);
+    if (target == null || target.equals(typeUtils.asElement(referred)) || isEntity(hint)) {
+      return;
+    }
+    String subtype = typeUtils.asElement(referred).getSimpleName().toString();
+    String name = target.getSimpleName().toString();
+    messager.printMessage(Diagnostic.Kind.ERROR, "[ai-atlas] Field '" + field.getSimpleName() + "' of "
+        + entity.getSimpleName() + " refers to " + subtype + ", a subtype of the @AgenticEntity " + name
+        + ", so its DTO would copy the raw " + subtype + ", every getter of it, which"
+        + " ai.atlas.projections=true cannot project per channel. Declare "
+        + (kind == CollectionKind.NONE ? "the field as " : "its element type as ") + name
+        + ", or add @AgenticField(type = " + name + ".class)", field);
+  }
+
+  /** Whether a type is a class annotated {@code @AgenticEntity}. */
+  private static boolean isEntity(TypeMirror type) {
+    return type instanceof DeclaredType declared && declared.asElement().getAnnotation(AgenticEntity.class) != null;
   }
 
   /**

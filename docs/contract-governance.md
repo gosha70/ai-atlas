@@ -18,7 +18,7 @@ model, projected at the configured major.
 
 | Key | Meaning |
 |-----|---------|
-| `irVersion` | Version of the document format. This ai-atlas writes `2` |
+| `irVersion` | Version of the document format. This ai-atlas writes `3` |
 | `apiBasePath` | The configured REST base path (`ai.atlas.api.basePath`) |
 | `apiMajor` | The configured major (`ai.atlas.api.major`) the document was emitted for. In a baseline, this is the **published major M** the gate protects |
 | `entities` | Every `@AgenticEntity`, ordered by qualified class name |
@@ -31,8 +31,8 @@ model, projected at the configured major.
 `ARRAY`), `elementType`, `typeHint` (`@AgenticField(type = …)`), `reference` (the referenced
 `entity` and its `dto`), `enumType`, `allowedValues` (explicit values or the enum constants),
 `openEnum`, `sensitive`, `checkCircularReference`, `description`, `lifecycle`
-(`sinceVersion`, `removedInVersion`, `deprecatedSinceVersion`, `deprecatedMessage`), and
-`constraints`.
+(`sinceVersion`, `removedInVersion`, `deprecatedSinceVersion`, `deprecatedMessage`),
+`constraints`, and `channels`.
 
 **Operation:** `service`, `method`, `toolName`, `channels`, `description`, `rest` (`httpMethod`
 and `path`, without the base path and version prefix; `null` off the API channel), `parameters`
@@ -50,6 +50,13 @@ only when `true`; `patterns` is a list of `{regex, flags}` objects sorted by reg
 A parameter's `required` is its resolved requiredness. **Hints** hold `readOnly`, `destructive`,
 `idempotent` and `openWorld`, each `true`, `false` or absent when undeclared. The IR records
 constraints and hints whether or not `ai.atlas.constraints` is on.
+
+A field's **`channels`** are the channels whose responses carry it, sorted and always present:
+`["AI", "API"]`, `["AI"]` or `["API"]`. They record its **effective** eligibility, which is
+`["AI", "API"]` for every field unless `ai.atlas.projections` is on and the field declares fewer
+with `@AgenticField(channels)` (see [Per-channel field projections](channel-projections.md)). The
+IR records the declaration only: it never records the name of an AI record, which is derived and
+never reaches the wire.
 
 ### Format
 
@@ -89,7 +96,18 @@ its migration, and are never rejected.
 
 The gate never reports a change from an unknown baseline value, in gate mode or in lock mode. So
 upgrading ai-atlas does not fail a project, even a locked one, whose baseline is still version 1.
-Run `atlasAccept` to write a version-2 baseline; from then on, constraint changes are compared.
+Run `atlasAccept` to write a current baseline; from then on, constraint changes are compared.
+
+### Migration from `irVersion` 2 to `irVersion 3`
+
+`irVersion 3` adds `Field.channels`. Nothing before it could narrow a field's channels, so the
+migration is **exact**, not unknown: every field of a version-1 or version-2 baseline is migrated to
+`["AI", "API"]`. A version-2 baseline therefore shows no difference against the same contract built
+with `ai.atlas.projections` off, in gate mode or lock mode, and needs no special case. `atlasAccept`
+writes version 3.
+
+A document that declares `irVersion 3` and has a field whose `channels` is missing, `null`, empty,
+unsorted, repeated, or names anything other than `AI` and `API` is malformed.
 
 ## Projection at a major
 
@@ -193,6 +211,28 @@ are its parameters, bound as query parameters, and ai-atlas generates no request
 field's constraints only describe what responses already satisfy. Hints are client guidance.
 Neither breaks a client.
 
+### Field channels
+
+For each field active at M in both documents, per channel C (`AI` or `API`), reported as the change
+`channels.C` with the field's channels before → after:
+
+| Change | Classification |
+|--------|----------------|
+| The field loses C, and its entity is **reachable** on C in the baseline | **Breaking** (output) |
+| The field loses C, and its entity is not reachable on C | Compatible |
+| The field gains C | Compatible |
+| An entity's AI record appears or disappears (the change `aiRecord`, `shared` → `separate` or back) | `informational` |
+
+An entity is **reachable on C** when an operation active at M on channel C returns it, or when a
+field on C of a reachable entity refers to it, directly or through a collection, iterable or array. A field of
+an entity no client of C can receive is invisible to that channel, so narrowing it breaks no one.
+Turning `ai.atlas.projections` on with a declaration is gated like any other change: a baseline
+written with the flag off records every field on both channels.
+
+An entity's AI record is the separate record MCP tools return when its AI and API projections
+differ. Its name never reaches the wire, so it appearing or disappearing is informational. The DTO
+name, which REST, OpenAPI and Java clients use, keeps the breaking `dtoName` rule.
+
 ### Diagnostics
 
 Each breaking difference is a compile ERROR, reported on the declaration when it still exists in
@@ -211,6 +251,7 @@ the compilation and without an element otherwise. The message names:
 | Removed or changed operation, including its effective return schema | `@AgenticExposed(apiUntil = M)` on the old operation, plus a replacement with `apiSince = M+1` |
 | Narrowed input constraint or newly required parameter | A replacement operation with `apiSince = M+1` (and `apiUntil = M` on the old one) |
 | Changed `operationId` | Give the operation(s) whose addition caused it a method name that does not collide, or `apiSince = M+1` on them |
+| A field losing a channel it is reachable on | Publish it in a new major (`ai.atlas.api.major = M+1`, then `atlasAccept`): a field's channels have no lifecycle of their own |
 | Changed DTO name, DTO package, `includeTypeInfo` or `apiBasePath` | Restore the previous value |
 | Added value on a closed response enum | `openEnum = true`, if clients tolerate unknown values |
 | Empty contract | Restore the annotations, or accept the removal |
@@ -260,7 +301,8 @@ inactive at M and the document's own `apiMajor`. The error lists each differing 
 A missing baseline is also an ERROR naming the expected path and `atlasAccept`.
 
 Every constraint, requiredness and hint difference counts in lock mode, `informational` ones
-included, except a change from an unknown value in a migrated version-1 baseline.
+included, except a change from an unknown value in a migrated version-1 baseline. So does every
+change to a field's `channels`, compatible or not.
 
 Lock mode makes every contract change, even a description edit, go through `atlasAccept`, so each
 one reaches review as a diff of the baseline.
@@ -278,7 +320,9 @@ agentic {
 
 The plugin passes them as `ai.atlas.contract.baseline` (absolute path) and
 `ai.atlas.contract.locked` to the main source set's `compileJava` only; no other compilation
-receives them, so test sources are never compared against the main baseline. The baseline file is
+receives them, so test sources are never compared against the main baseline. `agentic { projections }`
+also reaches `atlasAcceptCompile`, because it decides the channels the accepted baseline records
+(see [Per-channel field projections](channel-projections.md#the-aiatlasprojections-flag)). The baseline file is
 an optional input of `compileJava`, so creating, editing or accepting it re-runs the gate.
 
 The plugin and the processor must be the same ai-atlas version. `atlasContractCheck` and

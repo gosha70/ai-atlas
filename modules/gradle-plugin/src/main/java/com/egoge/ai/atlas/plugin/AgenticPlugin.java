@@ -106,8 +106,9 @@ public class AgenticPlugin implements Plugin<Project> {
 
     /**
      * The contract gate (FR-015, FR-016): the baseline and lock options, and the constraints
-     * option (FR-020), go to the main {@code compileJava} only, {@code atlasContractCheck} checks an empty contract before
-     * {@code classes}, and {@code atlasAccept} writes the baseline.
+     * option (FR-020), go to the main {@code compileJava} only, {@code atlasContractCheck} checks an
+     * empty contract before {@code classes}, and {@code atlasAccept} writes the baseline. The
+     * projections option goes to the main {@code compileJava} and to {@code atlasAcceptCompile}.
      */
     private void configureContract(Project project, AgenticExtension extension) {
         TaskContainer tasks = project.getTasks();
@@ -121,6 +122,10 @@ public class AgenticPlugin implements Plugin<Project> {
         contractArguments.getLocked().set(extension.getContractLocked());
         contractArguments.getConstraints().set(extension.getConstraints());
         compileJava.configure(task -> task.getOptions().getCompilerArgumentProviders().add(contractArguments));
+        // Not a contract option: atlasAcceptCompile inherits it, as it decides the IR's field channels
+        ProjectionsArguments projectionsArguments = project.getObjects().newInstance(ProjectionsArguments.class);
+        projectionsArguments.getProjections().set(extension.getProjections());
+        compileJava.configure(task -> task.getOptions().getCompilerArgumentProviders().add(projectionsArguments));
 
         // Named in the message a processor the plugin cannot run fails with
         Provider<String> processorVersion = processorPath.getIncoming().getArtifacts().getResolvedArtifacts()

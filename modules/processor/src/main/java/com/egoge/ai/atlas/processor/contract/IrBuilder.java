@@ -55,6 +55,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
@@ -93,6 +94,10 @@ public final class IrBuilder {
 
     private final ProcessingEnvironment env;
     private final ConstraintReader constraintReader;
+    /** A field's effective channels, sorted, by entity class name and field name. */
+    private final BiFunction<String, String, List<String>> channels;
+    /** Whether a direct field's entity type hint is in effect, as {@code ai.atlas.projections=true} has it. */
+    private final boolean directHints;
     private final Map<String, EntityModel> entities = new TreeMap<>();
     private final Map<String, Operation> operations = new TreeMap<>();
     /** {@code entity#field} of every field declared {@code openEnum = true}. */
@@ -102,11 +107,25 @@ public final class IrBuilder {
     private boolean written = false;
 
     /**
-     * @param env the processing environment of the compilation
+     * @param env      the processing environment of the compilation
+     * @param channels a field's effective channels, sorted, by entity class name and field name
      */
-    public IrBuilder(ProcessingEnvironment env) {
+    public IrBuilder(ProcessingEnvironment env, BiFunction<String, String, List<String>> channels) {
+        this(env, channels, false);
+    }
+
+    /**
+     * @param env         the processing environment of the compilation
+     * @param channels    a field's effective channels, sorted, by entity class name and field name
+     * @param directHints whether a direct field's {@code @AgenticField(type)} naming an entity makes
+     *                    the field refer to it, as with {@code ai.atlas.projections=true}
+     */
+    public IrBuilder(ProcessingEnvironment env, BiFunction<String, String, List<String>> channels,
+                     boolean directHints) {
         this.env = env;
         this.constraintReader = new ConstraintReader(env);
+        this.channels = channels;
+        this.directHints = directHints;
     }
 
     /**
@@ -354,7 +373,8 @@ public final class IrBuilder {
             for (FieldModel field : entity.fields()) {
                 String key = className + "#" + field.name();
                 fields.add(field(field, openEnums.contains(key),
-                        fieldConstraints.getOrDefault(key, EffectiveConstraints.NONE)));
+                        fieldConstraints.getOrDefault(key, EffectiveConstraints.NONE),
+                        channels.apply(className, field.name())));
             }
             irEntities.add(new Entity(className, entity.dtoName(),
                     entity.dtoPackageName(), entity.displayName(), entity.classDescription(),
@@ -375,15 +395,17 @@ public final class IrBuilder {
         return new ContractIr(ContractIr.IR_VERSION, apiBasePath, apiMajor, irEntities, irOperations);
     }
 
-    private Field field(FieldModel field, boolean openEnum, EffectiveConstraints constraints) {
-        EntityRefResolver.EntityRef ref = EntityRefResolver.resolve(field, entities);
+    private Field field(FieldModel field, boolean openEnum, EffectiveConstraints constraints,
+                        List<String> fieldChannels) {
+        EntityRefResolver.EntityRef ref = EntityRefResolver.resolve(
+                directHints ? EntityRefResolver.directHinted(field, entities) : field, entities);
         return new Field(field.name(), field.displayName(), field.typeName().toString(),
                 field.collectionKind().name(), typeString(field.elementTypeName()),
                 typeString(field.hintTypeName()),
                 ref != null ? new TypeRef(ref.entityClass().canonicalName(), ref.dtoClass().canonicalName()) : null,
                 field.enumType(), field.enumValues(), openEnum, field.sensitive(), field.checkCircularReference(),
-                field.description(), constraints, new FieldLifecycle(field.sinceVersion(), field.removedInVersion(),
-                        field.deprecatedSinceVersion(), field.deprecatedMessage()));
+                field.description(), constraints, fieldChannels, new FieldLifecycle(field.sinceVersion(),
+                        field.removedInVersion(), field.deprecatedSinceVersion(), field.deprecatedMessage()));
     }
 
     /**

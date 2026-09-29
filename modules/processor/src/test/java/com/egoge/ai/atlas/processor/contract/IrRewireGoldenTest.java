@@ -47,6 +47,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * {@code golden/ir-rewire/expected/<case>/}, keyed by output location ({@code SOURCE_OUTPUT/…},
  * {@code CLASS_OUTPUT/…}). The new {@code META-INF/ai-atlas/} files are not part of the snapshot.
  *
+ * <p>With {@code ai.atlas.projections=true} and no {@code @AgenticField(channels)} declared, every
+ * case must generate the same snapshot: the channel projections agree, so no AI record appears.
+ *
  * <p>Recapture only on a deliberate output change: {@code ./gradlew :modules:processor:test
  * --tests '*IrRewireGoldenTest' -Pai.atlas.golden.capture=true}.
  */
@@ -120,6 +123,18 @@ class IrRewireGoldenTest {
         verifyOrCapture(goldenCase.name(), actual);
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("fixtureCases")
+    void fixtureOutputWithProjectionsOnAndNoDeclarationMatchesTheGoldenSnapshot(GoldenCase goldenCase)
+            throws IOException {
+        Map<String, String> options = new TreeMap<>(goldenCase.options());
+        options.put(AgenticProcessor.OPT_PROJECTIONS, "true");
+        Map<String, String> actual = compileFixture(new GoldenCase(goldenCase.name(), goldenCase.fixture(), options,
+                goldenCase.expectSuccess(), goldenCase.laterRound()));
+
+        verify(goldenCase.name(), actual);
+    }
+
     @Test
     void laterRoundServiceIsInTheOpenApiDocumentAndTheDeprecationManifest() throws IOException {
         Map<String, String> actual = compileFixture(LATER_ROUND);
@@ -142,6 +157,17 @@ class IrRewireGoldenTest {
 
     @Test
     void demoOutputMatchesTheGoldenSnapshot(@TempDir Path outputDir) throws IOException {
+        verifyOrCapture(DEMO_CASE, generateDemo(outputDir, Map.of()));
+    }
+
+    @Test
+    void demoOutputWithProjectionsOnMatchesTheGoldenSnapshot(@TempDir Path outputDir) throws IOException {
+        verify(DEMO_CASE, generateDemo(outputDir, Map.of(AgenticProcessor.OPT_PROJECTIONS, "true")));
+    }
+
+    /** Every generated source and resource of the demo, with {@code extraOptions} over the build's own. */
+    private static Map<String, String> generateDemo(Path outputDir, Map<String, String> extraOptions)
+            throws IOException {
         Path demoSources = pathProperty(DEMO_SOURCES_PROPERTY);
         Path generationInputs = pathProperty(DEMO_INPUTS_PROPERTY);
         assumeTrue(demoSources != null && generationInputs != null,
@@ -158,6 +184,7 @@ class IrRewireGoldenTest {
                 options.put(key.substring(OPTION_PREFIX.length()), inputs.getProperty(key));
             }
         }
+        options.putAll(extraOptions);
         List<Path> classpath = Arrays.stream(inputs.getProperty(CLASSPATH_KEY).split(File.pathSeparator))
                 .filter(entry -> !entry.isBlank())
                 .map(Path::of)
@@ -171,7 +198,7 @@ class IrRewireGoldenTest {
                 (file.relativePath().endsWith(JAVA_SUFFIX) ? SOURCE_OUTPUT : CLASS_OUTPUT)
                         + file.relativePath(), file.content()));
         assertThat(actual).isNotEmpty();
-        verifyOrCapture(DEMO_CASE, actual);
+        return actual;
     }
 
     /**
@@ -245,6 +272,11 @@ class IrRewireGoldenTest {
             }
             return;
         }
+        verify(caseName, actual);
+    }
+
+    private static void verify(String caseName, Map<String, String> actual) throws IOException {
+        Path expectedRoot = EXPECTED.resolve(caseName);
         assertThat(expectedRoot).as("golden snapshot for %s", caseName).isDirectory();
 
         Map<String, String> expected = new TreeMap<>();

@@ -164,4 +164,21 @@ public @interface AgenticField {
      * and OpenAPI schema descriptions to guide consumers toward the replacement.
      */
     String deprecatedMessage() default "";
+
+    /**
+     * The channels whose responses carry this field. The default, {@code {INHERIT}}, makes the
+     * field eligible for every channel, as a field was before channels existed: a response carries
+     * it on whichever channel the operation is exposed on.
+     *
+     * <p>An explicit value narrows eligibility. A response carries only the fields eligible for the
+     * channel serving it, so {@code channels = {Channel.API}} keeps the field out of MCP tool
+     * results, and {@code channels = {Channel.AI}} keeps it out of REST responses and the OpenAPI
+     * document. Eligibility can only remove a field from a channel: a field without
+     * {@code @AgenticField} is on no channel, whatever this attribute says elsewhere.
+     *
+     * <p>Requires the processor option {@code ai.atlas.projections=true}. Without it, any explicit
+     * value is a compile error, because the field would still be served on every channel. An empty
+     * array, or {@code INHERIT} mixed with explicit values, is a compile error.
+     */
+    AgenticExposed.Channel[] channels() default { AgenticExposed.Channel.INHERIT };
 }

@@ -3,6 +3,7 @@
  */
 package com.egoge.ai.atlas.processor.contract;
 
+import com.egoge.ai.atlas.processor.AgenticProcessor;
 import com.egoge.ai.atlas.processor.contract.ContractGate.Classification;
 import com.egoge.ai.atlas.processor.contract.ContractGate.Difference;
 import com.egoge.ai.atlas.processor.contract.ContractGate.Direction;
@@ -12,12 +13,17 @@ import com.egoge.ai.atlas.processor.contract.ContractIr.Operation;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Parameter;
 import com.egoge.ai.atlas.processor.contract.ContractIr.TypeRef;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.egoge.ai.atlas.processor.contract.ContractGate.DOCUMENT_PATH;
@@ -29,7 +35,10 @@ import static com.egoge.ai.atlas.processor.contract.ContractGate.OPERATION_PATH;
  * One comparison of a baseline and a fresh IR, both projected at the baseline's published major
  * M, classifying every difference by direction (FR-009, FR-010), with input constraints and
  * requiredness compared by narrowing and output constraints and hints informational
- * (constraints-and-hints FR-008, FR-009). Used through
+ * (constraints-and-hints FR-008, FR-009). A field losing a channel breaks the channel's clients
+ * when its entity is reachable, through a chain of fields on that channel, from an operation
+ * active on it; gaining a channel is compatible, and an entity's AI record appearing or
+ * disappearing is informational, as MCP clients never see its name. Used through
  * {@link ContractGate#compare}.
  */
 final class ContractComparison {
@@ -64,11 +73,16 @@ final class ContractComparison {
     private static final String C_RETURN_TYPE = "returnType";
     private static final String C_CONSTRAINTS = "constraints";
     private static final String C_HINTS = "hints";
+    private static final String C_AI_RECORD = "aiRecord";
+    private static final String SEPARATE = "separate";
+    private static final String SHARED = "shared";
 
     private final ContractIr baseline;
     private final ContractIr fresh;
     private final int major;
     private final List<Difference> differences = new ArrayList<>();
+    /** The entities of the baseline each channel's clients can receive at M, by channel. */
+    private final Map<String, Set<String>> reachable = new HashMap<>();
 
     ContractComparison(ContractIr baseline, ContractIr fresh) {
         this.baseline = baseline;
@@ -92,10 +106,15 @@ final class ContractComparison {
     private void compareEntities() {
         Map<String, Entity> before = activeEntities(baseline);
         Map<String, Entity> after = activeEntities(fresh);
+        ChannelProjection channelsBefore = channelProjection(baseline);
+        ChannelProjection channelsAfter = channelProjection(fresh);
         for (Entity old : before.values()) {
             Entity current = after.get(old.className());
             if (current != null) {
                 compareEntity(old, current);
+                informational(ENTITY_PATH + old.className(), C_AI_RECORD, Direction.OUTPUT,
+                        channelsBefore.splits(old.className()) ? SEPARATE : SHARED,
+                        channelsAfter.splits(old.className()) ? SEPARATE : SHARED);
             } else {
                 breaking(ENTITY_PATH + old.className(), C_REMOVED, Direction.OUTPUT,
                         old.dtoPackage() + "." + old.dtoName(), null,
@@ -158,6 +177,7 @@ final class ContractComparison {
                         "Responses no longer carry the field", fieldRemedy());
             } else {
                 compareField(path, field, now);
+                compareChannels(path, className, field, now);
             }
         }
         for (Field field : after.values()) {
@@ -204,6 +224,65 @@ final class ContractComparison {
             informational(path, C_CONSTRAINTS, Direction.OUTPUT, render(IrConstraintsJson.write(old.constraints())),
                     render(IrConstraintsJson.write(now.constraints())));
         }
+    }
+
+    /**
+     * A channel the field loses is breaking when the baseline's clients of that channel can receive
+     * the entity, and compatible otherwise; a channel it gains is compatible.
+     */
+    private void compareChannels(String path, String className, Field old, Field now) {
+        for (String channel : Field.EVERY_CHANNEL) {
+            boolean before = old.channels().contains(channel);
+            boolean after = now.channels().contains(channel);
+            String change = C_CHANNELS + "." + channel;
+            if (before && !after && reachable(channel).contains(className)) {
+                breaking(path, change, Direction.OUTPUT, list(old.channels()), list(now.channels()),
+                        "Clients of the " + channel + " channel no longer receive the field",
+                        "publish it in a new major (" + AgenticProcessor.OPT_API_MAJOR + " = " + (major + 1)
+                                + ", then " + ContractGate.ACCEPT_TASK + "), as a field's channels have no"
+                                + " lifecycle of their own");
+            } else if (before != after) {
+                compatible(path, change, Direction.OUTPUT, list(old.channels()), list(now.channels()));
+            }
+        }
+    }
+
+    /**
+     * The baseline entities clients of {@code channel} can receive at M: those an operation active
+     * on the channel returns, and those a field on the channel refers to from one of them.
+     */
+    private Set<String> reachable(String channel) {
+        return reachable.computeIfAbsent(channel, c -> {
+            Map<String, Entity> entities = new HashMap<>();
+            baseline.entities().forEach(entity -> entities.put(entity.className(), entity));
+            Deque<String> pending = new ArrayDeque<>();
+            for (Operation op : activeOperations(baseline).values()) {
+                if (op.channels().contains(c) && op.returns().reference() != null) {
+                    pending.add(op.returns().reference().entity());
+                }
+            }
+            Set<String> result = new HashSet<>();
+            while (!pending.isEmpty()) {
+                String className = pending.pop();
+                if (result.add(className)) {
+                    for (Field field : activeFields(entities.get(className)).values()) {
+                        if (field.channels().contains(c) && field.reference() != null) {
+                            pending.add(field.reference().entity());
+                        }
+                    }
+                }
+            }
+            return result;
+        });
+    }
+
+    /** The channel projection of a document's entities at M, with each field's recorded channels. */
+    private ChannelProjection channelProjection(ContractIr ir) {
+        Map<String, List<String>> channels = new HashMap<>();
+        ir.entities().forEach(entity -> entity.fields().forEach(field ->
+                channels.put(entity.className() + "#" + field.name(), field.channels())));
+        return ChannelProjection.of(ContractProjection.of(ir, major).entities(),
+                (className, fieldName) -> channels.get(className + "#" + fieldName), className -> className);
     }
 
     private String fieldRemedy() {

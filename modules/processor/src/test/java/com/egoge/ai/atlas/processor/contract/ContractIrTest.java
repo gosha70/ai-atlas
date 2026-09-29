@@ -201,7 +201,7 @@ class ContractIrTest {
         assertThat(second.getBytes(StandardCharsets.UTF_8)).isEqualTo(first.getBytes(StandardCharsets.UTF_8));
         assertThat(IrJson.write(IrJson.parse(first, "api.ir.json"))).isEqualTo(first);
 
-        assertThat(first).startsWith("{\n  \"irVersion\": 2,\n  \"apiBasePath\": \"/api\",\n  \"apiMajor\": 2,\n")
+        assertThat(first).startsWith("{\n  \"irVersion\": 3,\n  \"apiBasePath\": \"/api\",\n  \"apiMajor\": 2,\n")
                 .endsWith("}\n").doesNotContain("\r").doesNotContain("\t");
         assertThat(first.lines()).allSatisfy(line ->
                 assertThat(line.length() - line.stripLeading().length()).isEven());
@@ -246,7 +246,7 @@ class ContractIrTest {
 
         assertThat(json).isEqualTo("""
                 {
-                  "irVersion": 2,
+                  "irVersion": 3,
                   "apiBasePath": "/api",
                   "apiMajor": 3,
                   "entities": [],
@@ -312,7 +312,7 @@ class ContractIrTest {
 
         assertMalformed(valid + "{}", "Trailing token");
         assertMalformed(valid + "x", "Unrecognized token");
-        assertMalformed(valid.replaceFirst("\"irVersion\": 2,", "\"irVersion\": 2, \"irVersion\": 2,"),
+        assertMalformed(valid.replaceFirst("\"irVersion\": 3,", "\"irVersion\": 3, \"irVersion\": 3,"),
                 "Duplicate field 'irVersion'");
         assertMalformed(valid.replaceFirst("\"sensitive\": (true|false),", "\"sensitive\": true, \"sensitive\": $1,"),
                 "Duplicate field 'sensitive'");

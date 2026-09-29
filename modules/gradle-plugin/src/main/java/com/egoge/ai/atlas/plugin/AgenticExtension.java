@@ -100,4 +100,15 @@ public abstract class AgenticExtension {
      * {@code META-INF/ai-atlas/mcp-tools.json} is generated with each tool's input schema and hints.
      */
     public abstract Property<Boolean> getConstraints();
+
+    /**
+     * Per-channel field projections. Unset by default, and then not passed to the compilation,
+     * whose processor defaults to false; a value set here overrides one in
+     * {@code options.compilerArgs}. When true, {@code @AgenticField(channels)} narrows the channels
+     * whose responses carry a field: the REST controllers and the OpenAPI document keep each
+     * entity's DTO, and the MCP tool classes return a separate AI record wherever the two
+     * projections differ. When false, an explicit {@code @AgenticField(channels)} fails the
+     * compilation.
+     */
+    public abstract Property<Boolean> getProjections();
 }

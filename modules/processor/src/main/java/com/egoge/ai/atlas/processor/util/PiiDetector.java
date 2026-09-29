@@ -70,6 +70,19 @@ public final class PiiDetector {
   }
 
   /**
+   * Whether a field name matches the PII patterns of the {@code ai.atlas.pii.patterns} options.
+   *
+   * @param fieldName     the field name to check
+   * @param processingEnv the processing environment (options and messager)
+   * @return whether the name looks like PII
+   */
+  public static boolean matches(String fieldName, ProcessingEnvironment processingEnv) {
+    Pattern pattern = buildPattern(processingEnv.getOptions().get("ai.atlas.pii.patterns"),
+        processingEnv.getOptions().get("ai.atlas.pii.patterns.file"), processingEnv.getMessager());
+    return pattern != null && pattern.matcher(fieldName).find();
+  }
+
+  /**
    * Checks if a field name matches known PII patterns and emits a
    * NOTE-level diagnostic if it does.
    *
