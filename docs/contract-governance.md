@@ -175,7 +175,8 @@ a change from the gate:
   without a `limitParameter`, a `cursorParameter` on any style other than `LIMIT`, or `DECLARED`
   without `maxResults`;
 - a `limitParameter` or `cursorParameter` that names none of the operation's parameters;
-- a `PATH` parameter whose name no `{name}` variable of the path carries, or more than one `BODY`;
+- a `PATH` parameter whose name no `{name}` variable of the path carries, a `{name}` variable that
+  names no `PATH` parameter, or more than one `BODY`;
 - a `rest` object on an operation without the `API` channel, or `rest: null` on one with it.
 
 ## Projection at a major
@@ -241,7 +242,7 @@ can change while the Java signature stays the same, for example a `List<?>` meth
 | A channel is removed from an operation | **Breaking** |
 | The MCP tool name changes | **Breaking** |
 | The REST HTTP method or path changes | **Breaking** |
-| The REST path changes only in the names of its `{name}` variables | Compatible |
+| The REST path changes only in the names of its `{name}` variables, each position still binding the same parameter | Compatible |
 | A parameter's REST location (`parameterIn`) changes | **Breaking** |
 | The OpenAPI `operationId` changes, including a rename caused only by another operation being added (a second API-exposed `find()` in another service turns the existing `find` into a qualified ID) | **Breaking** |
 | A value is removed from an input parameter's enum constants | **Breaking** |
@@ -280,10 +281,13 @@ Phase 3 maximum, such as `@Max(100)`, which the constraint rules above already g
 - a `LIMIT` ceiling at or above its limit parameter's effective maximum on the same side adds
   nothing, and counts as no ceiling. Declaring `@AgenticParam(paging = LIMIT)` on
   `find(@Max(100) int limit)` with a ceiling of 100 reports only the informational paging role;
-- the ceiling is compared only when what it adds differs between the two sides. `@Max(100)` with a
-  ceiling of 100 becoming `@Max(50)` with a ceiling of 50 is one breaking `maximum` change;
-- a ceiling that remains is **breaking** when it is below every page size the baseline accepted:
-  the baseline ceiling, and the baseline maximum of the same limit parameter. Otherwise it is
+- the ceiling is compared only when what it adds differs between the two sides, or when it limits
+  another parameter. `@Max(100)` with a ceiling of 100 becoming `@Max(50)` with a ceiling of 50 is
+  one breaking `maximum` change;
+- a ceiling that remains is **breaking** when it is below every page size the baseline accepted
+  for the parameter it limits: the baseline ceiling, only if it limited the same parameter, and
+  that parameter's baseline maximum. A `Pageable` ceiling of 50 moving to a previously unlimited
+  `size` parameter is breaking at 80 as at 50, as `size=90` was accepted. Otherwise it is
   compatible. `@Max(50)` with no ceiling becoming `@Max(100)` with a ceiling of 80 rejects nothing
   that was accepted, so both changes are compatible.
 

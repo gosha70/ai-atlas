@@ -83,7 +83,9 @@ public class AgenticPlugin implements Plugin<Project> {
 
         // Defaults
         // The plugin's own version, never the consumer's project.version: releasing an application as
-        // 2.0.0 must not select ai-atlas 2.0.0. Read only when agentic { version } is not set.
+        // 2.0.0 must not select ai-atlas 2.0.0. Read only when agentic { version } is not set. When the
+        // plugin's version is unknown, resolving it throws, so isPresent() and getOrNull() throw too
+        // instead of reporting it absent.
         extension.getVersion().convention(project.provider(() -> dependencyVersion(ownVersion())));
         extension.getGroup().convention("com.egoge");
         extension.getMcpEnabled().convention(true);
@@ -241,8 +243,9 @@ public class AgenticPlugin implements Plugin<Project> {
      */
     static String dependencyVersion(String pluginVersion) {
         if (pluginVersion == null) {
-            throw new GradleException("The ai-atlas Gradle plugin cannot determine its own version (a development"
-                    + " build), so it cannot choose the ai-atlas dependency version. Set it explicitly:"
+            throw new GradleException("The ai-atlas Gradle plugin cannot determine its own version (its classes"
+                    + " were loaded without the version resource its build writes and without jar metadata), so it"
+                    + " cannot choose the ai-atlas dependency version. Set it explicitly:"
                     + " agentic { version.set(\"<ai-atlas version>\") }. The project version is never used for it.");
         }
         return pluginVersion;
