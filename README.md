@@ -543,7 +543,7 @@ agentic {
 }
 ```
 
-The plugin automatically adds `annotations` to `implementation`, `processor` to `annotationProcessor`, and `runtime` to `implementation` — no manual dependency declarations needed. The `agentic { }` extension configures API versioning and MCP generation.
+The plugin automatically adds `annotations` to `implementation`, `processor` to `annotationProcessor`, and `runtime` to `implementation` — no manual dependency declarations needed. It adds them at the plugin's own version, never at your project's `version`, so releasing your application as `2.0.0` does not select ai-atlas `2.0.0`. Set `agentic { version.set("…") }` only to pin a different ai-atlas version; a development build of the plugin that cannot determine its own version requires it. The `agentic { }` extension configures API versioning and MCP generation.
 
 ### Option B: Manual dependencies
 
