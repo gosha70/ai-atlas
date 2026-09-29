@@ -67,6 +67,7 @@ Marks a field for inclusion in the generated DTO. Fields without this annotation
 | `deprecatedSinceVersion` | int | `0` | Major version at which this field became deprecated (`0` = not deprecated) |
 | `deprecatedMessage` | String | `""` | Migration guidance for deprecated fields |
 | `channels` | Channel[] | `{INHERIT}` | Which channels' responses carry the field: `AI` (MCP tools), `API` (REST + OpenAPI), or both. `INHERIT` means every channel. Needs `ai.atlas.projections=true` (see [Per-Channel Field Projections](channel-projections.md)) |
+| `input` | boolean | `true` | Whether a REST request body may set the field. `false` leaves it out of the entity's generated `<Entity>Input` record, for fields such as an `id`. Only meaningful with `ai.atlas.rest=true` (see [REST Mapping](rest-mapping.md#request-bodies-and-input-records)) |
 
 ### Example
 
@@ -165,6 +166,7 @@ Marks a service class or individual method for MCP tool, REST controller, and Op
 | `apiUntil` | int | `-1` (inherit) | Maximum major API version, inclusive (framework default: `Integer.MAX_VALUE`) |
 | `apiDeprecatedSince` | int | `-1` (inherit) | Major version at which this method became deprecated (framework default: `0`) |
 | `apiReplacement` | String | `"\0"` (inherit) | Migration guidance for deprecated methods (framework default: `""`) |
+| `rest` | Rest | `@Rest` (the RPC mapping) | Explicit REST mapping: `method`, `path` and `status` on a method; `style` (`RPC` or `CRUD`) and `resource` on a class. Needs `ai.atlas.rest=true` (see [REST Mapping](rest-mapping.md)) |
 
 ### Type-Level Usage
 
@@ -230,6 +232,10 @@ For each `@AgenticExposed` service, the processor generates:
 3. **OpenAPI Spec** — paths and schemas appended to `META-INF/openapi/openapi.json`
 
 ### REST Endpoint Conventions
+
+These are the RPC mapping, which every operation keeps unless `ai.atlas.rest=true` and
+`@AgenticExposed(rest = @Rest(...))` or the opt-in CRUD convention maps it otherwise; see
+[REST Mapping](rest-mapping.md).
 
 - Base path: service class name in kebab-case (`OrderService` → `/api/v1/order-service/`)
 - Method path: method name in kebab-case (`findById` → `/find-by-id`)

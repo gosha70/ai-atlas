@@ -64,6 +64,8 @@ means "not set":
 
 - `description` (default `""`): when non-empty, becomes the parameter's description.
 - `required`, of `Requiredness { DEFAULT, REQUIRED, OPTIONAL }` (default `DEFAULT`).
+- `in`, of `In { DEFAULT, PATH, QUERY, BODY }` (default `DEFAULT`): where a REST request carries
+  the parameter. It needs `ai.atlas.rest=true`; see [REST Mapping](rest-mapping.md#parameter-locations).
 
 ```java
 public List<Order> search(
