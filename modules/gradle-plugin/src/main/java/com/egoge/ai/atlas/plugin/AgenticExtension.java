@@ -21,7 +21,11 @@ import org.gradle.api.provider.Property;
 public abstract class AgenticExtension {
 
     /**
-     * AI-ATLAS framework version. Defaults to the project version.
+     * The version of the ai-atlas {@code annotations}, {@code processor} and {@code runtime}
+     * dependencies the plugin adds. Defaults to this plugin's own version, which the plugin and
+     * processor require to match. It never defaults to the project's own version, so releasing the
+     * project under any version leaves the ai-atlas version unchanged. When the plugin cannot
+     * determine its own version (a development build), it must be set explicitly.
      */
     public abstract Property<String> getVersion();
 

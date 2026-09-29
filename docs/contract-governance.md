@@ -328,7 +328,8 @@ an optional input of `compileJava`, so creating, editing or accepting it re-runs
 The plugin and the processor must be the same ai-atlas version. `atlasContractCheck` and
 `atlasAccept` call the processor found on the `annotationProcessor` classpath, so pinning
 `agentic { version }` to a different release than the plugin's makes them fail with a message naming
-both versions. Align `agentic { version }` with the plugin's version, or remove the pin.
+both versions. Align `agentic { version }` with the plugin's version, or remove the pin: the plugin
+then uses its own version.
 
 ### Processor options
 

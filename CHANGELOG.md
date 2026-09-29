@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **The ai-atlas dependency version no longer follows the project version.** `agentic { version }`, the version of the `annotations`, `processor` and `runtime` dependencies the Gradle plugin adds, defaulted to the consuming project's `version`. So building an application with `-Pversion=2.0.0`, or `version = "2.0.0"`, silently selected ai-atlas `2.0.0`. It now defaults to the plugin's own version, which the plugin writes into its jar at build time. An explicit `agentic { version }` still wins. When the plugin cannot determine its own version (a development build of the plugin), the build fails and asks for an explicit `agentic { version }`; it never falls back to the project version. **Action:** a project that relied on the old default, with its own version equal to the ai-atlas version it wanted, now gets the plugin's version; set `agentic { version }` if the two differ on purpose.
+
 ### Per-channel field projections
 Documented in `docs/channel-projections.md` and `docs/contract-governance.md`.
 - **`@AgenticField(channels)`.** A field can be eligible for the `API` channel only, the `AI` channel only, or both. The default, `INHERIT`, means every channel, so an undeclared field behaves as before. An empty array, or `INHERIT` mixed with explicit values, is a compile error. Eligibility only narrows the `@AgenticField` whitelist: an unannotated field is still on no channel.
