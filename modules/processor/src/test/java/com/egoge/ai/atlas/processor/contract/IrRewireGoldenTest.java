@@ -135,6 +135,22 @@ class IrRewireGoldenTest {
         verify(goldenCase.name(), actual);
     }
 
+    /**
+     * Spike (Phase 5): with {@code ai.atlas.collections} on and no paging contract or bound declared,
+     * the fixtures' collection returns only draw WARNINGs; every generated file is unchanged.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("fixtureCases")
+    void fixtureOutputWithCollectionsOnAndNoDeclarationMatchesTheGoldenSnapshot(GoldenCase goldenCase)
+            throws IOException {
+        Map<String, String> options = new TreeMap<>(goldenCase.options());
+        options.put(com.egoge.ai.atlas.processor.generator.CollectionsOption.OPTION, "true");
+        Map<String, String> actual = compileFixture(new GoldenCase(goldenCase.name(), goldenCase.fixture(), options,
+                goldenCase.expectSuccess(), goldenCase.laterRound()));
+
+        verify(goldenCase.name(), actual);
+    }
+
     @Test
     void laterRoundServiceIsInTheOpenApiDocumentAndTheDeprecationManifest() throws IOException {
         Map<String, String> actual = compileFixture(LATER_ROUND);
@@ -163,6 +179,11 @@ class IrRewireGoldenTest {
     @Test
     void demoOutputWithProjectionsOnMatchesTheGoldenSnapshot(@TempDir Path outputDir) throws IOException {
         verify(DEMO_CASE, generateDemo(outputDir, Map.of(AgenticProcessor.OPT_PROJECTIONS, "true")));
+    }
+
+    @Test
+    void demoOutputWithCollectionsOnMatchesTheGoldenSnapshot(@TempDir Path outputDir) throws IOException {
+        verify(DEMO_CASE, generateDemo(outputDir, Map.of(com.egoge.ai.atlas.processor.generator.CollectionsOption.OPTION, "true")));
     }
 
     /** Every generated source and resource of the demo, with {@code extraOptions} over the build's own. */

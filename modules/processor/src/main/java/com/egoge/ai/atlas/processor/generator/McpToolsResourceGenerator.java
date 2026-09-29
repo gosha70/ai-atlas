@@ -90,7 +90,16 @@ public final class McpToolsResourceGenerator {
      */
     public static void generate(List<ServiceModel> services, int apiMajor, ConstraintSurfaces constraints,
                                 Filer filer, Messager messager) {
-        Map<String, Object> document = document(services, apiMajor, constraints);
+        generate(services, apiMajor, constraints, null, filer, messager);
+    }
+
+    /**
+     * Writes the tool specifications, each paged tool's input schema taking page and size in place
+     * of its Pageable when {@code collections} is not {@code null} ({@code ai.atlas.collections} on).
+     */
+    public static void generate(List<ServiceModel> services, int apiMajor, ConstraintSurfaces constraints,
+                                Map<String, PagingContract> collections, Filer filer, Messager messager) {
+        Map<String, Object> document = document(services, apiMajor, constraints, collections);
         if (!constraints.beanValidation() && !((List<?>) document.get(K_TOOLS)).isEmpty()) {
             // One NOTE per compilation: the tool classes were generated without Bean Validation (FR-016)
             messager.printMessage(Diagnostic.Kind.NOTE, "[ai-atlas] " + McpToolGenerator.VALIDATION_API_PROBE
@@ -116,6 +125,11 @@ public final class McpToolsResourceGenerator {
     }
 
     static Map<String, Object> document(List<ServiceModel> services, int apiMajor, ConstraintSurfaces constraints) {
+        return document(services, apiMajor, constraints, null);
+    }
+
+    static Map<String, Object> document(List<ServiceModel> services, int apiMajor, ConstraintSurfaces constraints,
+                                        Map<String, PagingContract> collections) {
         List<Tool> tools = new ArrayList<>();
         for (ServiceModel service : services) {
             for (MethodModel method : service.methods()) {
@@ -130,7 +144,8 @@ public final class McpToolsResourceGenerator {
         for (Tool tool : tools) {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put(K_NAME, tool.name());
-            entry.put(K_INPUT_SCHEMA, inputSchema(tool.method(), tool.operation(), constraints));
+            entry.put(K_INPUT_SCHEMA, inputSchema(tool.method(), tool.operation(), constraints,
+                    collections != null ? collections.get(tool.operationKey()) : null));
             entry.put(K_ANNOTATIONS, annotations(tool.operation().hints()));
             entries.add(entry);
         }
@@ -140,11 +155,17 @@ public final class McpToolsResourceGenerator {
     }
 
     private static Map<String, Object> inputSchema(MethodModel method, ContractIr.Operation operation,
-                                                   ConstraintSurfaces constraints) {
+                                                   ConstraintSurfaces constraints, PagingContract paging) {
         Map<String, Object> properties = new LinkedHashMap<>();
         List<Object> required = new ArrayList<>();
         for (int i = 0; i < method.parameters().size(); i++) {
             ParameterModel param = method.parameters().get(i);
+            if (paging != null && paging.replaces(i)) {
+                properties.put(PagingContract.PAGE_PARAM, pagingInput(0, "Zero-based page number; 0 when omitted"));
+                properties.put(PagingContract.SIZE_PARAM, pagingInput(1, "Page size: the most results to return, at least 1"));
+                required.add(PagingContract.SIZE_PARAM);
+                continue;
+            }
             ContractIr.Parameter irParam = ConstraintSurfaces.parameter(operation, i, param);
             Map<String, Object> property = type(param.typeName(), irParam.enumConstants(), constraints);
             property.put(K_DESCRIPTION, param.description().isEmpty() ? param.name() : param.description());
@@ -161,6 +182,14 @@ public final class McpToolsResourceGenerator {
         schema.put(K_REQUIRED, required);
         schema.put(K_ADDITIONAL_PROPERTIES, false);
         return schema;
+    }
+
+    private static Map<String, Object> pagingInput(int minimum, String description) {
+        Map<String, Object> property = new LinkedHashMap<>();
+        property.put(K_TYPE, T_INTEGER);
+        property.put("minimum", minimum);
+        property.put(K_DESCRIPTION, description);
+        return property;
     }
 
     /** The declared hints only, under MCP's {@code ToolAnnotations} keys. */

@@ -94,8 +94,23 @@ public final class OpenApiGenerator {
       String apiBasePath, int apiMajor, String infoVersion,
       ConstraintSurfaces constraints,
       Filer filer, Messager messager) {
+    generate(entities, services, operationIds, apiBasePath, apiMajor, infoVersion, constraints, null, filer,
+        messager);
+  }
+
+  /**
+   * Generates the document, with each operation's paging contract when {@code collections} is not
+   * {@code null} ({@code ai.atlas.collections} on).
+   */
+  public static void generate(
+      List<EntityModel> entities,
+      List<ServiceModel> services,
+      Map<String, String> operationIds,
+      String apiBasePath, int apiMajor, String infoVersion,
+      ConstraintSurfaces constraints, Map<String, PagingContract> collections,
+      Filer filer, Messager messager) {
     OpenAPI openAPI = buildSpec(entities, services, operationIds, apiBasePath, apiMajor, infoVersion,
-        constraints);
+        constraints, collections);
 
     try {
       String json = serializeToJson(openAPI);
@@ -133,6 +148,16 @@ public final class OpenApiGenerator {
       Map<String, String> operationIds,
       String apiBasePath, int apiMajor, String infoVersion,
       ConstraintSurfaces constraints) {
+    return buildSpec(entities, services, operationIds, apiBasePath, apiMajor, infoVersion, constraints, null);
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"}) // swagger-models schemas() accepts raw Map<String, Schema>
+  static OpenAPI buildSpec(
+      List<EntityModel> entities,
+      List<ServiceModel> services,
+      Map<String, String> operationIds,
+      String apiBasePath, int apiMajor, String infoVersion,
+      ConstraintSurfaces constraints, Map<String, PagingContract> collections) {
     OpenAPI openAPI = new OpenAPI();
     openAPI.openapi(OPENAPI_VERSION);
     openAPI.info(new Info()
@@ -166,7 +191,8 @@ public final class OpenApiGenerator {
         paths.addPathItem(entry.path(), pathItem);
       }
       pathItem.operation(entry.httpMethod(), buildOperation(entry.method(), operationId, apiMajor,
-          constraints != null ? constraints.operation(entry.operationKey()) : null, constraints));
+          constraints != null ? constraints.operation(entry.operationKey()) : null, constraints,
+          collections != null ? collections.get(entry.operationKey()) : null));
     }
     openAPI.paths(paths);
 
@@ -261,7 +287,8 @@ public final class OpenApiGenerator {
    * @param constraints the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
    */
   private static Operation buildOperation(MethodModel method, String operationId, int apiMajor,
-                                          ContractIr.Operation irOperation, ConstraintSurfaces constraints) {
+                                          ContractIr.Operation irOperation, ConstraintSurfaces constraints,
+                                          PagingContract paging) {
     Operation operation = new Operation();
     operation.operationId(operationId);
     operation.summary(method.description());
@@ -272,6 +299,12 @@ public final class OpenApiGenerator {
     // Arguments are query parameters, matching the controller's @RequestParam binding
     for (int i = 0; i < method.parameters().size(); i++) {
       ParameterModel param = method.parameters().get(i);
+      if (paging != null && paging.replaces(i)) {
+        // What Spring Data's PageableHandlerMethodArgumentResolver reads for the Pageable; its
+        // defaults and page-size cap are application configuration, so none is published
+        pageableParameters().forEach(operation::addParametersItem);
+        continue;
+      }
       Parameter parameter = new Parameter()
           .in("query")
           .name(param.name())
@@ -294,7 +327,7 @@ public final class OpenApiGenerator {
 
     // Response
     ApiResponse response200 = new ApiResponse().description("Success");
-    Content content = buildResponseContent(method);
+    Content content = paging != null ? pagedResponseContent(method, paging) : buildResponseContent(method);
     if (content != null) {
       response200.content(content);
     }
@@ -352,6 +385,54 @@ public final class OpenApiGenerator {
       return jsonContent(new ArraySchema().items(mapJavaTypeToSchema(elementType.toString())));
     }
     return jsonContent(new Schema<>().type("object"));
+  }
+
+  /** Spring Data's page, size and sort query parameters, none required. */
+  private static List<Parameter> pageableParameters() {
+    return List.of(
+        new Parameter().in("query").name(PagingContract.PAGE_PARAM).required(false)
+            .description("Zero-based page number")
+            .schema(new Schema<>().type("integer").format("int32").minimum(java.math.BigDecimal.ZERO)),
+        new Parameter().in("query").name(PagingContract.SIZE_PARAM).required(false)
+            .description("Page size")
+            .schema(new Schema<>().type("integer").format("int32").minimum(java.math.BigDecimal.ONE)),
+        new Parameter().in("query").name(PagingContract.SORT_PARAM).required(false)
+            .description("Sort order: property[,asc|desc], repeatable")
+            .schema(new ArraySchema().items(new Schema<>().type("string"))));
+  }
+
+  /**
+   * The response of an operation with a paging contract: the Page or Slice envelope the controller
+   * returns, or its plain array with a declared bound as {@code maxItems}.
+   */
+  @SuppressWarnings({"rawtypes", "unchecked"}) // swagger-models properties() accepts raw Map<String, Schema>
+  private static Content pagedResponseContent(MethodModel method, PagingContract paging) {
+    Content plain = buildResponseContent(method);
+    if (paging.envelope() == PagingContract.Envelope.NONE) {
+      Schema<?> schema = plain != null && plain.get(APPLICATION_JSON) != null
+          ? plain.get(APPLICATION_JSON).getSchema() : null;
+      if (schema instanceof ArraySchema array && paging.maxResults() != -1) {
+        array.maxItems(paging.maxResults());
+      }
+      return plain;
+    }
+    Schema<?> items = method.returnDtoType() != null
+        ? new Schema<>().$ref("#/components/schemas/" + method.returnDtoType().simpleName())
+        : paging.elementType() != null ? mapJavaTypeToSchema(paging.elementType().toString())
+        : new Schema<>().type("object");
+    Map<String, Schema<?>> properties = new LinkedHashMap<>();
+    properties.put("content", new ArraySchema().items(items));
+    properties.put("number", new Schema<>().type("integer").format("int32"));
+    properties.put("size", new Schema<>().type("integer").format("int32"));
+    properties.put("hasNext", new Schema<>().type("boolean"));
+    if (paging.envelope() == PagingContract.Envelope.PAGE) {
+      properties.put("totalElements", new Schema<>().type("integer").format("int64"));
+      properties.put("totalPages", new Schema<>().type("integer").format("int32"));
+    }
+    Schema<?> envelope = new Schema<>().type("object")
+        .required(new ArrayList<>(properties.keySet()));
+    envelope.properties((Map) properties);
+    return jsonContent(envelope);
   }
 
   private static Content jsonContent(Schema<?> schema) {

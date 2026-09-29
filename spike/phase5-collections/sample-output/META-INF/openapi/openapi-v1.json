@@ -1,0 +1,327 @@
+{
+  "openapi" : "3.0.3",
+  "info" : {
+    "title" : "AI-ATLAS Generated API",
+    "description" : "Auto-generated API from @AgenticExposed services",
+    "version" : "1.0.0"
+  },
+  "paths" : {
+    "/api/v1/order-service/by-status" : {
+      "post" : {
+        "summary" : "Orders in a status, a page at a time",
+        "operationId" : "byStatus",
+        "parameters" : [ {
+          "name" : "status",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "page",
+          "in" : "query",
+          "description" : "Zero-based page number",
+          "required" : false,
+          "schema" : {
+            "minimum" : 0,
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "description" : "Page size",
+          "required" : false,
+          "schema" : {
+            "minimum" : 1,
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "sort",
+          "in" : "query",
+          "description" : "Sort order: property[,asc|desc], repeatable",
+          "required" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "required" : [ "content", "number", "size", "hasNext", "totalElements", "totalPages" ],
+                  "type" : "object",
+                  "properties" : {
+                    "content" : {
+                      "type" : "array",
+                      "items" : {
+                        "$ref" : "#/components/schemas/OrderDto"
+                      }
+                    },
+                    "number" : {
+                      "type" : "integer",
+                      "format" : "int32"
+                    },
+                    "size" : {
+                      "type" : "integer",
+                      "format" : "int32"
+                    },
+                    "hasNext" : {
+                      "type" : "boolean"
+                    },
+                    "totalElements" : {
+                      "type" : "integer",
+                      "format" : "int64"
+                    },
+                    "totalPages" : {
+                      "type" : "integer",
+                      "format" : "int32"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/order-service/recent" : {
+      "post" : {
+        "summary" : "Recent orders, a slice at a time",
+        "operationId" : "recent",
+        "parameters" : [ {
+          "name" : "page",
+          "in" : "query",
+          "description" : "Zero-based page number",
+          "required" : false,
+          "schema" : {
+            "minimum" : 0,
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "description" : "Page size",
+          "required" : false,
+          "schema" : {
+            "minimum" : 1,
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "sort",
+          "in" : "query",
+          "description" : "Sort order: property[,asc|desc], repeatable",
+          "required" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "required" : [ "content", "number", "size", "hasNext" ],
+                  "type" : "object",
+                  "properties" : {
+                    "content" : {
+                      "type" : "array",
+                      "items" : {
+                        "$ref" : "#/components/schemas/OrderDto"
+                      }
+                    },
+                    "number" : {
+                      "type" : "integer",
+                      "format" : "int32"
+                    },
+                    "size" : {
+                      "type" : "integer",
+                      "format" : "int32"
+                    },
+                    "hasNext" : {
+                      "type" : "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/order-service/list" : {
+      "get" : {
+        "summary" : "Every order",
+        "operationId" : "list",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/OrderDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/order-service/top" : {
+      "get" : {
+        "summary" : "The top orders",
+        "operationId" : "top",
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "maxItems" : 2,
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/OrderDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/order-service/search" : {
+      "post" : {
+        "summary" : "Search orders",
+        "operationId" : "search",
+        "parameters" : [ {
+          "name" : "text",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "after",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/OrderDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/order-service/after" : {
+      "post" : {
+        "summary" : "Orders after a cursor",
+        "operationId" : "after",
+        "parameters" : [ {
+          "name" : "cursor",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/OrderDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/order-service/find" : {
+      "post" : {
+        "summary" : "One order",
+        "operationId" : "find",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OrderDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "OrderDto" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "Order id",
+            "format" : "int64"
+          },
+          "status" : {
+            "type" : "string",
+            "description" : "Status"
+          }
+        },
+        "description" : "A customer order"
+      }
+    }
+  }
+}

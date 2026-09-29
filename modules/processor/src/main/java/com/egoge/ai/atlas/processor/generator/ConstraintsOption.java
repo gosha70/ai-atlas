@@ -74,8 +74,18 @@ public final class ConstraintsOption {
      */
     public void generateToolSpecifications(List<ServiceModel> services, int apiMajor, ContractProjection projection,
                                            ProcessingEnvironment env) {
+        generateToolSpecifications(services, apiMajor, projection, null, env);
+    }
+
+    /**
+     * As {@link #generateToolSpecifications(List, int, ContractProjection, ProcessingEnvironment)},
+     * with the paging contracts, or {@code null} when {@code ai.atlas.collections} is off.
+     */
+    public void generateToolSpecifications(List<ServiceModel> services, int apiMajor, ContractProjection projection,
+                                           java.util.Map<String, PagingContract> collections,
+                                           ProcessingEnvironment env) {
         if (enabled) {
-            McpToolsResourceGenerator.generate(services, apiMajor, surfaces(projection), env.getFiler(),
+            McpToolsResourceGenerator.generate(services, apiMajor, surfaces(projection), collections, env.getFiler(),
                     env.getMessager());
         }
     }

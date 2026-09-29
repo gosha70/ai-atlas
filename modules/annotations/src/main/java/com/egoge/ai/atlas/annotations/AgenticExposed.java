@@ -143,4 +143,13 @@ public @interface AgenticExposed {
      * {@link #readOnly()}.
      */
     Hint openWorld() default Hint.UNSET;
+
+    /**
+     * <strong>Spike (Phase 5, epic #23 &sect;8).</strong> Declares that the method's collection result
+     * is known to hold at most this many elements, so exposing it without a paging contract is safe.
+     * Read only with the processor option {@code ai.atlas.collections} on, on the method only (a
+     * class-level value is an ERROR). The bound is declared, not enforced: the generated wrappers
+     * never truncate a result. {@code -1} (default) declares no bound.
+     */
+    int maxResults() default -1;
 }

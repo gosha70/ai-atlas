@@ -28,6 +28,11 @@ dependencies {
     testImplementation(platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.spring.boot.get()}"))
     testImplementation("org.springframework:spring-web")
     testImplementation(libs.spring.ai.mcp.server)
+    // Spring Data paging types and MockMvc for the Phase 5 collections spike: the processor reads
+    // Pageable/Page/Slice by name only, and the tests call the generated controller as Spring MVC would
+    testImplementation("org.springframework.data:spring-data-commons")
+    testImplementation("org.springframework:spring-webmvc")
+    testImplementation("org.springframework:spring-test")
     // Bean Validation annotations for constraint fixtures; the processor reads them by name only
     testImplementation("jakarta.validation:jakarta.validation-api")
     // FR-017a consistency and FR-014/FR-017 schema validity — test-only, never on the processor's

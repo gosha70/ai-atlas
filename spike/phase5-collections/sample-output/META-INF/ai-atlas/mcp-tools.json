@@ -1,0 +1,143 @@
+{
+  "tools": [
+    {
+      "name": "after",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "cursor"
+          }
+        },
+        "required": [
+          "cursor"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {}
+    },
+    {
+      "name": "byStatus",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "status"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Zero-based page number; 0 when omitted"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Page size: the most results to return, at least 1"
+          }
+        },
+        "required": [
+          "status",
+          "size"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {}
+    },
+    {
+      "name": "find",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "id"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {}
+    },
+    {
+      "name": "list",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {}
+    },
+    {
+      "name": "recent",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Zero-based page number; 0 when omitted"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Page size: the most results to return, at least 1"
+          }
+        },
+        "required": [
+          "size"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {}
+    },
+    {
+      "name": "search",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "text"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "limit"
+          },
+          "after": {
+            "type": "string",
+            "description": "after"
+          }
+        },
+        "required": [
+          "text",
+          "limit",
+          "after"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {}
+    },
+    {
+      "name": "top",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {}
+    }
+  ]
+}

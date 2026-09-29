@@ -12,6 +12,7 @@ import com.egoge.ai.atlas.processor.model.ServiceModel.ReturnKind;
 import com.egoge.ai.atlas.processor.util.VersionSelector;
 import com.palantir.javapoet.AnnotationSpec;
 import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.FieldSpec;
 import com.palantir.javapoet.JavaFile;
 import com.palantir.javapoet.MethodSpec;
@@ -25,6 +26,9 @@ import javax.annotation.processing.Messager;
 import javax.lang.model.element.Modifier;
 import javax.tools.Diagnostic;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Generates Spring {@code @RestController} classes with request mappings
@@ -54,8 +58,22 @@ public final class RestControllerGenerator {
     public static void generate(ServiceModel model, String packageName,
                                 String apiBasePath, int apiMajor, ConstraintSurfaces constraints,
                                 Filer filer, Messager messager) {
+        generate(model, packageName, apiBasePath, apiMajor, constraints, null, filer, messager);
+    }
+
+    /**
+     * Generates a REST controller class and writes it to the filer.
+     *
+     * @param constraints the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
+     * @param collections the paging contracts by operation identity, or {@code null} when
+     *                    {@code ai.atlas.collections} is off
+     */
+    public static void generate(ServiceModel model, String packageName,
+                                String apiBasePath, int apiMajor, ConstraintSurfaces constraints,
+                                Map<String, PagingContract> collections, Filer filer, Messager messager) {
         String controllerName = model.serviceClassName().simpleName() + "RestController";
-        TypeSpec controllerSpec = buildControllerSpec(model, controllerName, apiBasePath, apiMajor, constraints);
+        TypeSpec controllerSpec = buildControllerSpec(model, ClassName.get(packageName, controllerName), apiBasePath,
+                apiMajor, constraints, collections);
         if (controllerSpec == null) {
             messager.printMessage(Diagnostic.Kind.NOTE,
                     "[ai-atlas] Skipped REST controller for " + model.serviceClassName().simpleName()
@@ -79,6 +97,13 @@ public final class RestControllerGenerator {
 
     static TypeSpec buildControllerSpec(ServiceModel model, String controllerName,
                                         String apiBasePath, int apiMajor, ConstraintSurfaces constraints) {
+        return buildControllerSpec(model, ClassName.get("", controllerName), apiBasePath, apiMajor, constraints, null);
+    }
+
+    static TypeSpec buildControllerSpec(ServiceModel model, ClassName controllerClass, String apiBasePath,
+                                        int apiMajor, ConstraintSurfaces constraints,
+                                        Map<String, PagingContract> collections) {
+        String controllerName = controllerClass.simpleName();
         // Filter to API-channel methods only
         var apiMethods = model.methods().stream()
                 .filter(m -> m.channels().contains("API") && VersionSelector.isActive(m, apiMajor))
@@ -113,11 +138,15 @@ public final class RestControllerGenerator {
                 .build());
 
         // Endpoint methods
+        List<PagingContract> contracts = new ArrayList<>();
         for (MethodModel method : apiMethods) {
-            ContractIr.Operation irOperation = constraints != null
-                    ? constraints.operation(ContractProjection.operationKey(serviceType, method)) : null;
-            classBuilder.addMethod(buildEndpointMethod(method, apiMajor, irOperation));
+            String key = ContractProjection.operationKey(serviceType, method);
+            ContractIr.Operation irOperation = constraints != null ? constraints.operation(key) : null;
+            PagingContract paging = collections != null ? collections.get(key) : null;
+            contracts.add(paging);
+            classBuilder.addMethod(buildEndpointMethod(method, apiMajor, irOperation, paging, controllerClass));
         }
+        PagingContract.envelopeRecords(contracts).forEach(classBuilder::addType);
 
         return classBuilder.build();
     }
@@ -127,7 +156,8 @@ public final class RestControllerGenerator {
      *                    {@code null} when {@code ai.atlas.constraints} is off
      */
     private static MethodSpec buildEndpointMethod(MethodModel method, int apiMajor,
-                                                  ContractIr.Operation irOperation) {
+                                                  ContractIr.Operation irOperation, PagingContract paging,
+                                                  ClassName controllerClass) {
         String path = "/" + toKebabCase(method.methodName());
         boolean hasParams = !method.parameters().isEmpty();
 
@@ -153,7 +183,9 @@ public final class RestControllerGenerator {
 
         // Return type
         boolean isCollection = method.returnKind() != ReturnKind.NONE;
-        if (method.returnDtoType() != null) {
+        if (paging != null && paging.envelope() != PagingContract.Envelope.NONE) {
+            methodBuilder.returns(paging.envelopeType(controllerClass, method));
+        } else if (method.returnDtoType() != null) {
             if (isCollection) {
                 methodBuilder.returns(ParameterizedTypeName.get(
                         ClassName.get("java.util", "List"), method.returnDtoType()));
@@ -168,6 +200,11 @@ public final class RestControllerGenerator {
         for (int i = 0; i < method.parameters().size(); i++) {
             ParameterModel param = method.parameters().get(i);
             ParameterSpec.Builder paramBuilder = ParameterSpec.builder(param.typeName(), param.name());
+            if (paging != null && paging.replaces(i)) {
+                // Unannotated: Spring Data's PageableHandlerMethodArgumentResolver binds page, size and sort
+                methodBuilder.addParameter(paramBuilder.build());
+                continue;
+            }
             if (irOperation != null && !ConstraintSurfaces.parameter(irOperation, i, param).required()) {
                 // An OPTIONAL parameter (FR-015); required ones keep the plain binding
                 paramBuilder.addAnnotation(AnnotationSpec.builder(REQUEST_PARAM)
@@ -184,6 +221,8 @@ public final class RestControllerGenerator {
 
         if (method.returnType().equals(TypeName.VOID)) {
             methodBuilder.addStatement("service.$L($L)", method.methodName(), callArgs);
+        } else if (paging != null && paging.envelope() != PagingContract.Envelope.NONE) {
+            paging.addEnvelopeStatements(methodBuilder, controllerClass, method, CodeBlock.of("$L", callArgs));
         } else if (method.returnDtoType() != null && method.returnEntityType() != null) {
             addMappingStatement(methodBuilder, method, callArgs);
         } else {

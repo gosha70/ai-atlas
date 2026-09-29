@@ -9,6 +9,7 @@ import com.egoge.ai.atlas.processor.contract.ContractGate;
 import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.contract.IrBuilder;
 import com.egoge.ai.atlas.processor.generator.ApiVersionPropertiesGenerator;
+import com.egoge.ai.atlas.processor.generator.CollectionsOption;
 import com.egoge.ai.atlas.processor.generator.ConstraintsOption;
 import com.egoge.ai.atlas.processor.generator.DeprecationManifestGenerator;
 import com.egoge.ai.atlas.processor.generator.McpToolGenerator;
@@ -65,7 +66,7 @@ import java.util.Set;
         "ai.atlas.pii.patterns", "ai.atlas.pii.patterns.file",
         "ai.atlas.api.basePath", "ai.atlas.api.major", "ai.atlas.openapi.infoVersion",
         "ai.atlas.strict", "ai.atlas.contract.baseline", "ai.atlas.contract.locked", "ai.atlas.constraints",
-        "ai.atlas.projections"
+        "ai.atlas.projections", "ai.atlas.collections"
 })
 public class AgenticProcessor extends AbstractProcessor {
 
@@ -95,6 +96,7 @@ public class AgenticProcessor extends AbstractProcessor {
     private Diagnostic.Kind qualityKind;
     private ConstraintsOption constraints;
     private ProjectionsOption projections;
+    private CollectionsOption collections;
 
     @Override public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
     @Override
@@ -108,6 +110,7 @@ public class AgenticProcessor extends AbstractProcessor {
         versionConfigValid &= constraints != null;
         projections = ProjectionsOption.resolve(OPT_PROJECTIONS, processingEnv);
         versionConfigValid &= projections != null;
+        versionConfigValid &= (collections = CollectionsOption.resolve(CollectionsOption.OPTION, processingEnv)) != null;
         if (projections != null) {
             contractIr = new IrBuilder(processingEnv, projections::channels, projections.enabled());
         }
@@ -171,10 +174,10 @@ public class AgenticProcessor extends AbstractProcessor {
                 OpenApiGenerator.generate(projections.openApiEntities(entityRegistry),
                         serviceRegistry, projection.operationIds(),
                         apiBasePath, apiMajor, openApiInfoVersion, constraints.surfaces(projection),
-                        processingEnv.getFiler(), processingEnv.getMessager());
+                        collections.contracts(), processingEnv.getFiler(), processingEnv.getMessager());
                 openApiGenerated = true;
             }
-            constraints.generateToolSpecifications(serviceRegistry, apiMajor, projection, processingEnv);
+            constraints.generateToolSpecifications(serviceRegistry, apiMajor, projection, collections.contracts(), processingEnv);
             if (!apiVersionPropertiesGenerated) {
                 ApiVersionPropertiesGenerator.generate(apiBasePath, apiMajor,
                         processingEnv.getFiler(), processingEnv.getMessager());
@@ -187,13 +190,10 @@ public class AgenticProcessor extends AbstractProcessor {
             }
             return false;
         }
-
         // Phase 1: Process @AgenticEntity entities → generate DTOs
         processEntities(roundEnv);
-
         // Phase 2: Process @AgenticExposed services → generate MCP tools + REST controllers
         processServices(roundEnv);
-
         return true;
     }
 
@@ -390,6 +390,7 @@ public class AgenticProcessor extends AbstractProcessor {
                         serviceType, method, methodModel, typeAnnotation, apiMajor);
                 QualityDiagnostics.reportMissingHints(qualityKind, processingEnv.getMessager(), serviceType, method,
                         methodModel, constraints.enabled() ? contractIr.operation(operationId).hints() : null, apiMajor);
+                collections.check(serviceType, method, methodModel, typeAnnotation, operationId, qualityKind, apiMajor);
             }
         }
         return operationIds;
@@ -402,9 +403,9 @@ public class AgenticProcessor extends AbstractProcessor {
         ServiceModel model = projection.service(ClassName.get(serviceType), operationIds);
         serviceRegistry.add(model);
         McpToolGenerator.generate(projections.toolModel(model, entityRegistry), generatedPackage, apiMajor, constraints.surfaces(projection),
-                processingEnv.getFiler(), processingEnv.getMessager());
+                collections.contracts(), processingEnv.getFiler(), processingEnv.getMessager());
         RestControllerGenerator.generate(model, generatedPackage, apiBasePath, apiMajor,
-                constraints.surfaces(projection), processingEnv.getFiler(), processingEnv.getMessager());
+                constraints.surfaces(projection), collections.contracts(), processingEnv.getFiler(), processingEnv.getMessager());
     }
 
     private MethodModel buildMethodModel(ExecutableElement method, AgenticExposed typeAnnotation) {
