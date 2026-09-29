@@ -165,9 +165,15 @@ the raw entity carries fields of either channel:
   keeps to `@AgenticField` fields too, so it would serve API-only fields to the agent. Before the fix
   for [#50](https://github.com/gosha70/ai-atlas/issues/50), Spring AI serialized it without the
   module, and every getter reached the agent, including those of fields without `@AgenticField`.
-  A tool the application registers through its own `ToolCallbackProvider` bean keeps that
-  provider's result converter, and opts in with
-  `@Tool(resultConverter = AgentSafeToolCallResultConverter.class)`.
+  So does a tool the application serves through its own `ToolCallbackProvider`, `ToolCallback` or
+  `List<ToolCallback>` bean: the runtime rebuilds each of their callbacks that would use Spring AI's
+  default converter around `AgentSafeToolCallResultConverter`, keeping its definition and
+  `returnDirect`. A tool naming its own `resultConverter` keeps it. A callback whose result
+  conversion the runtime cannot see fails startup when it serves a tool the runtime registers.
+  Two paths stay outside the whitelist: an entity used as a `Map` key is written with its
+  `toString()`, and `ChatClient.tools(bean)` calls a tool in process with Spring AI's default
+  converter; pass a `ToolCallbackProvider` bean with `.toolCallbacks(provider)` instead (see the
+  README's JSON serialization section).
 - An unannotated subtype of an entity, such as `VipCustomer extends Customer`, serializes as its
   nearest entity on both channels: `Customer`'s `@AgenticField` getters, never `VipCustomer`'s own.
   With the flag off, that also covers an `@AgenticField VipCustomer customer`, whose DTO still copies
