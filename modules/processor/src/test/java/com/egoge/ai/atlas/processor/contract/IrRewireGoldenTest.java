@@ -50,6 +50,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * <p>With {@code ai.atlas.projections=true} and no {@code @AgenticField(channels)} declared, every
  * case must generate the same snapshot: the channel projections agree, so no AI record appears.
  *
+ * <p>With {@code ai.atlas.collections=true} and no paging contract or bound declared, every case
+ * must generate the same snapshot too: the flag only adds WARNINGs.
+ *
  * <p>Recapture only on a deliberate output change: {@code ./gradlew :modules:processor:test
  * --tests '*IrRewireGoldenTest' -Pai.atlas.golden.capture=true}.
  */
@@ -135,6 +138,18 @@ class IrRewireGoldenTest {
         verify(goldenCase.name(), actual);
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("fixtureCases")
+    void fixtureOutputWithCollectionsOnAndNoDeclarationMatchesTheGoldenSnapshot(GoldenCase goldenCase)
+            throws IOException {
+        Map<String, String> options = new TreeMap<>(goldenCase.options());
+        options.put(AgenticProcessor.OPT_COLLECTIONS, "true");
+        Map<String, String> actual = compileFixture(new GoldenCase(goldenCase.name(), goldenCase.fixture(), options,
+                goldenCase.expectSuccess(), goldenCase.laterRound()));
+
+        verify(goldenCase.name(), actual);
+    }
+
     @Test
     void laterRoundServiceIsInTheOpenApiDocumentAndTheDeprecationManifest() throws IOException {
         Map<String, String> actual = compileFixture(LATER_ROUND);
@@ -163,6 +178,11 @@ class IrRewireGoldenTest {
     @Test
     void demoOutputWithProjectionsOnMatchesTheGoldenSnapshot(@TempDir Path outputDir) throws IOException {
         verify(DEMO_CASE, generateDemo(outputDir, Map.of(AgenticProcessor.OPT_PROJECTIONS, "true")));
+    }
+
+    @Test
+    void demoOutputWithCollectionsOnMatchesTheGoldenSnapshot(@TempDir Path outputDir) throws IOException {
+        verify(DEMO_CASE, generateDemo(outputDir, Map.of(AgenticProcessor.OPT_COLLECTIONS, "true")));
     }
 
     /** Every generated source and resource of the demo, with {@code extraOptions} over the build's own. */

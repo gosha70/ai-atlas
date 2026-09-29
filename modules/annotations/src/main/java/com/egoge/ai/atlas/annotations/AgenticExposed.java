@@ -143,4 +143,20 @@ public @interface AgenticExposed {
      * {@link #readOnly()}.
      */
     Hint openWorld() default Hint.UNSET;
+
+    /** Sentinel for {@link #maxResults()}: no bound is declared. */
+    int NO_MAX_RESULTS = -1;
+
+    /**
+     * The most elements the method's collection result holds, so exposing it without a paging
+     * contract is safe; on a method taking a Spring Data {@code Pageable}, the largest page size a
+     * client may request. Method-level only: a class-level value is a compile error. It must be at
+     * least 1, on a method returning a collection, iterable, array, {@code Stream} or {@code Map}.
+     *
+     * <p>The bound is declared, not enforced: generated wrappers never truncate a result, and the
+     * runtime logs a WARN when a result holds more. A page size above the ceiling is rejected.
+     * Read only with the processor option {@code ai.atlas.collections} on; declared with it off,
+     * it is a compile error. {@link #NO_MAX_RESULTS} (default) declares none.
+     */
+    int maxResults() default NO_MAX_RESULTS;
 }

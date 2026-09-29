@@ -9,6 +9,7 @@ import com.egoge.ai.atlas.processor.model.ServiceModel;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.tools.Diagnostic;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The {@code ai.atlas.constraints} option of a compilation (FR-012): {@code true} or {@code false}
@@ -70,12 +71,14 @@ public final class ConstraintsOption {
      * @param services   the generated services
      * @param apiMajor   the configured major
      * @param projection the final projection
+     * @param paging     the paging contracts by operation identity, or {@code null} when
+     *                   {@code ai.atlas.collections} is off
      * @param env        the processing environment
      */
     public void generateToolSpecifications(List<ServiceModel> services, int apiMajor, ContractProjection projection,
-                                           ProcessingEnvironment env) {
+                                           Map<String, PagingContract> paging, ProcessingEnvironment env) {
         if (enabled) {
-            McpToolsResourceGenerator.generate(services, apiMajor, surfaces(projection), env.getFiler(),
+            McpToolsResourceGenerator.generate(services, apiMajor, surfaces(projection), paging, env.getFiler(),
                     env.getMessager());
         }
     }

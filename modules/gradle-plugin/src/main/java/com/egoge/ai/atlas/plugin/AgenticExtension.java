@@ -111,4 +111,15 @@ public abstract class AgenticExtension {
      * compilation.
      */
     public abstract Property<Boolean> getProjections();
+
+    /**
+     * Collection exposure safety. Unset by default, and then not passed to the compilation, whose
+     * processor defaults to false; a value set here overrides one in {@code options.compilerArgs}.
+     * When true, a Spring Data {@code Pageable} is bound as {@code page} and {@code size}, a
+     * {@code Page} or {@code Slice} result keeps its metadata in an envelope, {@code maxResults} and
+     * {@code @AgenticParam(paging)} declare bounds, and an unbounded collection result is a warning,
+     * an error under {@code strict} for MCP tools. When false, those declarations fail the
+     * compilation.
+     */
+    public abstract Property<Boolean> getCollections();
 }
