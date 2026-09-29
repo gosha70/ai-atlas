@@ -3,7 +3,7 @@
  */
 package com.egoge.ai.atlas.processor.util;
 
-import com.egoge.ai.atlas.processor.generator.RestControllerGenerator;
+import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 
 import javax.annotation.processing.Messager;
@@ -31,18 +31,23 @@ public final class RestMappingRegistry {
     private final Map<String, List<Site>> mappings = new LinkedHashMap<>();
     private final Set<ExecutableElement> reported = Collections.newSetFromMap(new IdentityHashMap<>());
 
-    /** Records the mapping {@code RestControllerGenerator} generates for {@code model}, if any. */
+    /**
+     * Records the mapping {@code RestControllerGenerator} generates for {@code model}, if any: the
+     * Contract IR's {@code rest}, which the controller and the OpenAPI document read too. Paths
+     * that differ only by variable names, {@code /{id}} and {@code /{orderId}}, are one route.
+     *
+     * @param rest the operation's REST mapping, or {@code null} when it is not on the API channel
+     */
     public void record(TypeElement serviceType, ExecutableElement method, MethodModel model,
-                       String apiBasePath, int apiMajor) {
-        if (!model.channels().contains("API") || !VersionSelector.isActive(model, apiMajor)) {
+                       ContractIr.Rest rest, String apiBasePath, int apiMajor) {
+        if (rest == null || !model.channels().contains("API") || !VersionSelector.isActive(model, apiMajor)) {
             return;
         }
-        String httpMethod = model.parameters().isEmpty() ? "GET" : "POST";
-        String path = apiBasePath + "/v" + apiMajor
-                + "/" + RestControllerGenerator.toKebabCase(serviceType.getSimpleName().toString())
-                + "/" + RestControllerGenerator.toKebabCase(model.methodName());
+        String route = rest.routeKey();
+        int space = route.indexOf(' ');
+        String key = route.substring(0, space) + " " + apiBasePath + "/v" + apiMajor + route.substring(space + 1);
         String declaration = serviceType.getQualifiedName() + "#" + model.methodName();
-        mappings.computeIfAbsent(httpMethod + " " + path, k -> new ArrayList<>())
+        mappings.computeIfAbsent(key, k -> new ArrayList<>())
                 .add(new Site(declaration, method));
     }
 

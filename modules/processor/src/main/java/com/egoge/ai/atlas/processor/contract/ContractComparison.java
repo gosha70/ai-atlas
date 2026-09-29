@@ -66,6 +66,7 @@ final class ContractComparison {
     private static final String C_CHANNELS = "channels";
     private static final String C_HTTP_METHOD = "rest.httpMethod";
     private static final String C_REST_PATH = "rest.path";
+    private static final String C_REST_STATUS = "rest.status";
     private static final String C_OPERATION_ID = "operationId";
     private static final String C_PARAMETER = "parameter ";
     private static final String C_RETURN = "returns.";
@@ -353,8 +354,20 @@ final class ContractComparison {
         if (old.rest() != null && now.rest() != null) {
             diff(path, C_HTTP_METHOD, Direction.INPUT, old.rest().httpMethod(), now.rest().httpMethod(), true,
                     "REST clients call the operation with this HTTP method", operationRemedy());
-            diff(path, C_REST_PATH, Direction.INPUT, old.rest().path(), now.rest().path(), true,
+            // A path that differs only by variable names is the same route: clients see no change
+            boolean sameRoute = old.rest().routeKey().equals(now.rest().routeKey());
+            diff(path, C_REST_PATH, Direction.INPUT, old.rest().path(), now.rest().path(), !sameRoute,
                     "REST clients call the operation at this path", operationRemedy());
+            // Spike (ai.atlas.rest): a document without a status or locations records 200 and the query
+            diff(path, C_REST_STATUS, Direction.OUTPUT, str(old.rest().effectiveStatus()),
+                    str(now.rest().effectiveStatus()), true, "REST clients check the success status",
+                    operationRemedy());
+            int shared = Math.min(old.parameters().size(), now.parameters().size());
+            for (int i = 0; i < shared; i++) {
+                diff(path, C_PARAMETER + i + ".in", Direction.INPUT, old.rest().in(i), now.rest().in(i), true,
+                        "REST clients send the parameter in the " + old.rest().in(i).toLowerCase(java.util.Locale.ROOT),
+                        operationRemedy());
+            }
         }
         if (old.parameters().size() != now.parameters().size()) {
             // Unreachable while Operation.id() carries the parameter types; guards a future change to the identity

@@ -143,4 +143,55 @@ public @interface AgenticExposed {
      * {@link #readOnly()}.
      */
     Hint openWorld() default Hint.UNSET;
+
+    /**
+     * Explicit REST mapping of the operation (spike: {@code ai.atlas.rest}, off by default). The
+     * default, an empty {@code @Rest}, keeps today's RPC mapping. On a class it may set only
+     * {@link Rest#style()} and {@link Rest#resource()}; on a method only {@link Rest#method()},
+     * {@link Rest#path()} and {@link Rest#status()}. Explicit values always win over the CRUD
+     * convention.
+     */
+    Rest rest() default @Rest;
+
+    /** HTTP method of an explicit REST mapping. */
+    enum HttpMethod {
+        /** Not declared: the CRUD convention, else the RPC rule (GET without parameters, POST with). */
+        UNSET, GET, POST, PUT, PATCH, DELETE
+    }
+
+    /** How a service's operations are mapped when a method declares no explicit mapping. */
+    enum RestStyle {
+        /** Not declared: {@link #RPC}. */
+        INHERIT,
+        /** {@code /<resource>/<method-kebab>}, GET without parameters and POST with them. */
+        RPC,
+        /** The documented CRUD rules for the methods they match, RPC for the rest. */
+        CRUD
+    }
+
+    /** REST metadata of an operation or, for style and resource, of a service. */
+    @Documented
+    @Target({})
+    @Retention(RetentionPolicy.RUNTIME)
+    @interface Rest {
+
+        /** The HTTP method; {@link HttpMethod#UNSET} (default) derives it. */
+        HttpMethod method() default HttpMethod.UNSET;
+
+        /**
+         * Path below the service's resource, such as {@code ""} or {@code "/{id}/items"}. A
+         * {@code {name}} segment binds the method parameter of that name. The default, a single
+         * NUL, derives it; {@code ""} is the resource itself.
+         */
+        String path() default "\0";
+
+        /** Success status, a 2xx code; {@code 0} (default) derives it. */
+        int status() default 0;
+
+        /** Class level only: how undeclared methods are mapped. */
+        RestStyle style() default RestStyle.INHERIT;
+
+        /** Class level only: the resource path segment; empty (default) keeps the service's kebab name. */
+        String resource() default "";
+    }
 }

@@ -32,6 +32,7 @@ import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.media.MediaType;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.parameters.Parameter;
+import io.swagger.v3.oas.models.parameters.RequestBody;
 import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 
@@ -45,6 +46,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Generates an OpenAPI 3.0.3 specification (JSON) from entity and service models.
@@ -93,9 +95,10 @@ public final class OpenApiGenerator {
       Map<String, String> operationIds,
       String apiBasePath, int apiMajor, String infoVersion,
       ConstraintSurfaces constraints,
+      Function<String, ContractIr.Rest> routes,
       Filer filer, Messager messager) {
     OpenAPI openAPI = buildSpec(entities, services, operationIds, apiBasePath, apiMajor, infoVersion,
-        constraints);
+        constraints, routes);
 
     try {
       String json = serializeToJson(openAPI);
@@ -132,7 +135,8 @@ public final class OpenApiGenerator {
       List<ServiceModel> services,
       Map<String, String> operationIds,
       String apiBasePath, int apiMajor, String infoVersion,
-      ConstraintSurfaces constraints) {
+      ConstraintSurfaces constraints,
+      Function<String, ContractIr.Rest> routes) {
     OpenAPI openAPI = new OpenAPI();
     openAPI.openapi(OPENAPI_VERSION);
     openAPI.info(new Info()
@@ -143,8 +147,10 @@ public final class OpenApiGenerator {
     // Schemas from entity DTOs
     Components components = new Components();
     Map<String, Schema<?>> schemas = new LinkedHashMap<>();
+    Map<String, String> dtoByEntity = new LinkedHashMap<>();
     for (EntityModel entity : entities) {
       schemas.put(entity.dtoName(), buildEntitySchema(entity, apiMajor, constraints));
+      dtoByEntity.put(entity.sourceClassName().canonicalName(), entity.dtoName());
     }
     components.schemas((Map) schemas);
     openAPI.components(components);
@@ -152,7 +158,7 @@ public final class OpenApiGenerator {
     // Paths from service methods
     List<OperationEntry> entries = new ArrayList<>();
     for (ServiceModel service : services) {
-      collectServiceOperations(entries, service, apiBasePath, apiMajor);
+      collectServiceOperations(entries, service, apiBasePath, apiMajor, routes);
     }
     Paths paths = new Paths();
     for (OperationEntry entry : entries) {
@@ -166,7 +172,8 @@ public final class OpenApiGenerator {
         paths.addPathItem(entry.path(), pathItem);
       }
       pathItem.operation(entry.httpMethod(), buildOperation(entry.method(), operationId, apiMajor,
-          constraints != null ? constraints.operation(entry.operationKey()) : null, constraints));
+          constraints != null ? constraints.operation(entry.operationKey()) : null, constraints,
+          entry.rest(), dtoByEntity));
     }
     openAPI.paths(paths);
 
@@ -235,23 +242,21 @@ public final class OpenApiGenerator {
 
   /** One operation of the document, in the order the controllers declare their mappings. */
   private record OperationEntry(String path, PathItem.HttpMethod httpMethod,
-                                String operationKey, MethodModel method) {
+                                String operationKey, MethodModel method, ContractIr.Rest rest) {
   }
 
   private static void collectServiceOperations(List<OperationEntry> entries, ServiceModel service,
-                                               String apiBasePath, int apiMajor) {
-    String serviceName = service.serviceClassName().simpleName();
-    String basePath = apiBasePath + "/v" + apiMajor + "/" + toKebabCase(serviceName);
-
+                                               String apiBasePath, int apiMajor,
+                                               Function<String, ContractIr.Rest> routes) {
     for (MethodModel method : service.methods()) {
       if (!method.channels().contains("API") || !VersionSelector.isActive(method, apiMajor)) {
         continue;
       }
-      String path = basePath + "/" + toKebabCase(method.methodName());
-      PathItem.HttpMethod httpMethod = method.parameters().isEmpty()
-          ? PathItem.HttpMethod.GET : PathItem.HttpMethod.POST;
-      entries.add(new OperationEntry(path, httpMethod,
-          ContractProjection.operationKey(service.serviceClassName(), method), method));
+      // The mapping the controller reads too, from the Contract IR
+      String operationKey = ContractProjection.operationKey(service.serviceClassName(), method);
+      ContractIr.Rest rest = routes.apply(operationKey);
+      entries.add(new OperationEntry(apiBasePath + "/v" + apiMajor + rest.path(),
+          PathItem.HttpMethod.valueOf(rest.httpMethod()), operationKey, method, rest));
     }
   }
 
@@ -261,7 +266,8 @@ public final class OpenApiGenerator {
    * @param constraints the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
    */
   private static Operation buildOperation(MethodModel method, String operationId, int apiMajor,
-                                          ContractIr.Operation irOperation, ConstraintSurfaces constraints) {
+                                          ContractIr.Operation irOperation, ConstraintSurfaces constraints,
+                                          ContractIr.Rest rest, Map<String, String> dtoByEntity) {
     Operation operation = new Operation();
     operation.operationId(operationId);
     operation.summary(method.description());
@@ -269,11 +275,20 @@ public final class OpenApiGenerator {
       operation.deprecated(true);
     }
 
-    // Arguments are query parameters, matching the controller's @RequestParam binding
+    // Arguments are where the mapping locates them, query parameters unless declared otherwise
     for (int i = 0; i < method.parameters().size(); i++) {
       ParameterModel param = method.parameters().get(i);
+      String in = rest.in(i);
+      if (ContractIr.Rest.BODY.equals(in)) {
+        String dto = dtoByEntity.get(param.typeName().toString());
+        Schema<?> bodySchema = dto != null ? new Schema<>().$ref("#/components/schemas/" + dto)
+            : mapJavaTypeToSchema(param.typeName().toString());
+        boolean required = irOperation == null || ConstraintSurfaces.parameter(irOperation, i, param).required();
+        operation.requestBody(new RequestBody().required(required).content(jsonContent(bodySchema)));
+        continue;
+      }
       Parameter parameter = new Parameter()
-          .in("query")
+          .in(ContractIr.Rest.PATH.equals(in) ? "path" : "query")
           .name(param.name())
           .required(true)
           .schema(mapJavaTypeToSchema(param.typeName().toString()));
@@ -282,7 +297,8 @@ public final class OpenApiGenerator {
       }
       if (irOperation != null) {
         ContractIr.Parameter irParam = ConstraintSurfaces.parameter(irOperation, i, param);
-        parameter.required(irParam.required());
+        // A path parameter is always required
+        parameter.required(irParam.required() || ContractIr.Rest.PATH.equals(in));
         if (!irParam.constraints().isEmpty()) {
           // The keywords apply only to the matching JSON type, which the flag-off mapping may not give
           parameter.schema(constrainedSchema(param.typeName(), constraints));
@@ -292,14 +308,16 @@ public final class OpenApiGenerator {
       operation.addParametersItem(parameter);
     }
 
-    // Response
-    ApiResponse response200 = new ApiResponse().description("Success");
-    Content content = buildResponseContent(method);
+    // Response, under the status the controller declares; 204 carries no content
+    int status = rest.effectiveStatus();
+    ApiResponse success = new ApiResponse().description(status == 201 ? "Created" : status == 204 ? "No Content"
+        : "Success");
+    Content content = status == 204 ? null : buildResponseContent(method);
     if (content != null) {
-      response200.content(content);
+      success.content(content);
     }
     ApiResponses responses = new ApiResponses();
-    responses.addApiResponse("200", response200);
+    responses.addApiResponse(String.valueOf(status), success);
     operation.responses(responses);
 
     return operation;
@@ -386,11 +404,5 @@ public final class OpenApiGenerator {
 
   @JsonIgnoreProperties({"exampleSetFlag", "types"})
   abstract static class SwaggerInternalMixin {
-  }
-
-  private static String toKebabCase(String camelCase) {
-    return camelCase
-        .replaceAll("([a-z])([A-Z])", "$1-$2")
-        .toLowerCase();
   }
 }

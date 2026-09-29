@@ -171,13 +171,66 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
     }
 
     /**
-     * The REST mapping of an operation, independent of the base path and major.
+     * The REST mapping of an operation, independent of the base path and major: the one normalised
+     * operation model the controller, the OpenAPI document and the mapping collision check all read.
      *
-     * @param httpMethod {@code GET} or {@code POST}
-     * @param path       {@code /<service-kebab>/<method-kebab>}; the generated mapping prefixes
-     *                   {@code <apiBasePath>/v<major>}
+     * <p>Spike ({@code ai.atlas.rest}): {@code status} and {@code parameterIn} are {@code null} with
+     * the option off, and then mean 200 and every parameter in the query, as before the option.
+     *
+     * @param httpMethod  {@code GET} or {@code POST}; with {@code ai.atlas.rest} also {@code PUT},
+     *                    {@code PATCH} or {@code DELETE}
+     * @param path        {@code /<resource>} plus the operation's path below it, by default
+     *                    {@code /<service-kebab>/<method-kebab>}; may hold {@code {name}} segments.
+     *                    The generated mapping prefixes {@code <apiBasePath>/v<major>}
+     * @param status      the success status, or {@code null} for 200 with the option off
+     * @param parameterIn each parameter's location, {@code PATH}, {@code QUERY} or {@code BODY}, in
+     *                    declaration order, or {@code null} for every one in the query with the option off
      */
-    public record Rest(String httpMethod, String path) {
+    public record Rest(String httpMethod, String path, Integer status, List<String> parameterIn) {
+
+        /** The success status when none is recorded. */
+        public static final int DEFAULT_STATUS = 200;
+        /** A path parameter. */
+        public static final String PATH = "PATH";
+        /** A query parameter. */
+        public static final String QUERY = "QUERY";
+        /** The request body. */
+        public static final String BODY = "BODY";
+
+        public Rest {
+            parameterIn = parameterIn == null ? null : List.copyOf(parameterIn);
+        }
+
+        /** An RPC mapping as recorded with {@code ai.atlas.rest} off. */
+        public Rest(String httpMethod, String path) {
+            this(httpMethod, path, null, null);
+        }
+
+        /** The success status, {@link #DEFAULT_STATUS} when none is recorded. */
+        public int effectiveStatus() {
+            return status != null ? status : DEFAULT_STATUS;
+        }
+
+        /** The location of the parameter at {@code index}, {@link #QUERY} when none is recorded. */
+        public String in(int index) {
+            return parameterIn != null ? parameterIn.get(index) : QUERY;
+        }
+
+        /** The resource segment, {@code /<resource>}: the first path segment. */
+        public String resourcePath() {
+            int slash = path.indexOf('/', 1);
+            return slash < 0 ? path : path.substring(0, slash);
+        }
+
+        /** The path below the resource, {@code ""} for the resource itself. */
+        public String operationPath() {
+            return path.substring(resourcePath().length());
+        }
+
+        /** The path with every {@code {name}} segment as {@code {}}: routes that differ only by variable names collide. */
+        public String routeKey() {
+            return httpMethod + " " + path.replaceAll("\\{[^}/]*}", "{}");
+        }
     }
 
     /**

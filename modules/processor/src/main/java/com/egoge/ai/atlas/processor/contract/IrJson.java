@@ -73,8 +73,6 @@ public final class IrJson {
     private static final String K_TOOL_NAME = "toolName";
     private static final String K_CHANNELS = "channels";
     private static final String K_REST = "rest";
-    private static final String K_HTTP_METHOD = "httpMethod";
-    private static final String K_PATH = "path";
     private static final String K_PARAMETERS = "parameters";
     private static final String K_ENUM_CONSTANTS = "enumConstants";
     private static final String K_RETURNS = "returns";
@@ -195,13 +193,7 @@ public final class IrJson {
         map.put(K_TOOL_NAME, op.toolName());
         map.put(K_CHANNELS, op.channels());
         map.put(K_DESCRIPTION, op.description());
-        Map<String, Object> rest = null;
-        if (op.rest() != null) {
-            rest = new LinkedHashMap<>();
-            rest.put(K_HTTP_METHOD, op.rest().httpMethod());
-            rest.put(K_PATH, op.rest().path());
-        }
-        map.put(K_REST, rest);
+        map.put(K_REST, IrRestJson.write(op.rest()));
         List<Map<String, Object>> params = new ArrayList<>();
         for (Parameter param : op.parameters()) {
             Map<String, Object> p = new LinkedHashMap<>();
@@ -403,9 +395,7 @@ public final class IrJson {
     }
 
     private static Operation readOperation(JsonNode node, boolean v2) {
-        JsonNode restNode = nullableObject(node, K_REST);
-        Rest rest = restNode == null ? null
-                : new Rest(string(restNode, K_HTTP_METHOD), string(restNode, K_PATH));
+        Rest rest = IrRestJson.read(nullableObject(node, K_REST));
         JsonNode returns = object(node, K_RETURNS);
         JsonNode life = object(node, K_LIFECYCLE);
         return new Operation(string(node, K_SERVICE), string(node, K_METHOD), string(node, K_TOOL_NAME),

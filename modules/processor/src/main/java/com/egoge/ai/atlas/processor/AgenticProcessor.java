@@ -65,7 +65,7 @@ import java.util.Set;
         "ai.atlas.pii.patterns", "ai.atlas.pii.patterns.file",
         "ai.atlas.api.basePath", "ai.atlas.api.major", "ai.atlas.openapi.infoVersion",
         "ai.atlas.strict", "ai.atlas.contract.baseline", "ai.atlas.contract.locked", "ai.atlas.constraints",
-        "ai.atlas.projections"
+        "ai.atlas.projections", "ai.atlas.rest"
 })
 public class AgenticProcessor extends AbstractProcessor {
 
@@ -110,6 +110,7 @@ public class AgenticProcessor extends AbstractProcessor {
         versionConfigValid &= projections != null;
         if (projections != null) {
             contractIr = new IrBuilder(processingEnv, projections::channels, projections.enabled());
+            versionConfigValid &= contractIr.resolveRest(); // spike, epic #23 Phase 5: ai.atlas.rest
         }
     }
 
@@ -170,7 +171,7 @@ public class AgenticProcessor extends AbstractProcessor {
             if (!openApiGenerated && (!entityRegistry.isEmpty() || !serviceRegistry.isEmpty())) {
                 OpenApiGenerator.generate(projections.openApiEntities(entityRegistry),
                         serviceRegistry, projection.operationIds(),
-                        apiBasePath, apiMajor, openApiInfoVersion, constraints.surfaces(projection),
+                        apiBasePath, apiMajor, openApiInfoVersion, constraints.surfaces(projection), key -> projection.operation(key).rest(),
                         processingEnv.getFiler(), processingEnv.getMessager());
                 openApiGenerated = true;
             }
@@ -384,7 +385,7 @@ public class AgenticProcessor extends AbstractProcessor {
             String operationId = methodModel != null ? contractIr.addOperation(serviceType, method, typeAnnotation) : null;
             if (operationId != null) {
                 operationIds.add(operationId);
-                restMappings.record(serviceType, method, methodModel, apiBasePath, apiMajor);
+                restMappings.record(serviceType, method, methodModel, contractIr.operation(operationId).rest(), apiBasePath, apiMajor);
                 toolNames.record(serviceType, method, methodModel, apiMajor);
                 QualityDiagnostics.reportMissingDescription(qualityKind, processingEnv.getMessager(),
                         serviceType, method, methodModel, typeAnnotation, apiMajor);
@@ -403,8 +404,8 @@ public class AgenticProcessor extends AbstractProcessor {
         serviceRegistry.add(model);
         McpToolGenerator.generate(projections.toolModel(model, entityRegistry), generatedPackage, apiMajor, constraints.surfaces(projection),
                 processingEnv.getFiler(), processingEnv.getMessager());
-        RestControllerGenerator.generate(model, generatedPackage, apiBasePath, apiMajor,
-                constraints.surfaces(projection), processingEnv.getFiler(), processingEnv.getMessager());
+        RestControllerGenerator.generate(model, generatedPackage, apiBasePath, apiMajor, constraints.surfaces(projection),
+                key -> projection.operation(key).rest(), processingEnv.getFiler(), processingEnv.getMessager());
     }
 
     private MethodModel buildMethodModel(ExecutableElement method, AgenticExposed typeAnnotation) {

@@ -20,6 +20,7 @@ import com.egoge.ai.atlas.processor.contract.ContractIr.Rest;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Return;
 import com.egoge.ai.atlas.processor.contract.ContractIr.TypeRef;
 import com.egoge.ai.atlas.processor.generator.RestControllerGenerator;
+import com.egoge.ai.atlas.processor.generator.RestOption;
 import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.egoge.ai.atlas.processor.util.AttributeResolver;
@@ -105,6 +106,8 @@ public final class IrBuilder {
     /** The effective constraints of each recorded field, by {@code entity#field} (FR-002). */
     private final Map<String, EffectiveConstraints> fieldConstraints = new HashMap<>();
     private boolean written = false;
+    /** Spike: resolves each API operation's REST mapping; the RPC rule until {@link #resolveRest} sets it. */
+    private RestOption rest;
 
     /**
      * @param env      the processing environment of the compilation
@@ -126,6 +129,16 @@ public final class IrBuilder {
         this.constraintReader = new ConstraintReader(env);
         this.channels = channels;
         this.directHints = directHints;
+    }
+
+    /**
+     * Spike: reads {@link RestOption#OPTION}, which resolves each API operation's REST mapping.
+     *
+     * @return {@code false} after reporting an invalid value
+     */
+    public boolean resolveRest() {
+        rest = RestOption.resolve(RestOption.OPTION, env);
+        return rest != null;
     }
 
     /**
@@ -268,9 +281,17 @@ public final class IrBuilder {
         }
         Rest rest = null;
         if (channels.contains(API_CHANNEL)) {
-            rest = new Rest(parameters.isEmpty() ? GET : POST,
-                    "/" + RestControllerGenerator.toKebabCase(service.getSimpleName().toString())
-                            + "/" + RestControllerGenerator.toKebabCase(methodName));
+            if (this.rest != null) {
+                // The one resolution the controller, the OpenAPI document and the collision check read
+                rest = this.rest.map(service, method, typeAnnotation, env.getTypeUtils(), env.getMessager());
+                if (rest == null) {
+                    return null;
+                }
+            } else {
+                rest = new Rest(parameters.isEmpty() ? GET : POST,
+                        "/" + RestControllerGenerator.toKebabCase(service.getSimpleName().toString())
+                                + "/" + RestControllerGenerator.toKebabCase(methodName));
+            }
         }
         ClassName returnType = AttributeResolver.resolveReturnEntityType(
                 methodAnnotation, typeAnnotation, method, env.getTypeUtils());

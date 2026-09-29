@@ -1,0 +1,705 @@
+{
+  "irVersion": 3,
+  "apiBasePath": "/api",
+  "apiMajor": 1,
+  "entities": [
+    {
+      "className": "shop.Customer",
+      "dtoName": "CustomerDto",
+      "dtoPackage": "shop.generated",
+      "displayName": "Customer",
+      "description": "A customer",
+      "includeTypeInfo": true,
+      "fields": [
+        {
+          "name": "id",
+          "displayName": "id",
+          "javaType": "java.lang.Long",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Customer id",
+          "constraints": {},
+          "channels": [
+            "AI",
+            "API"
+          ],
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "name",
+          "displayName": "name",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Name",
+          "constraints": {},
+          "channels": [
+            "AI",
+            "API"
+          ],
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        }
+      ]
+    },
+    {
+      "className": "shop.Order",
+      "dtoName": "OrderDto",
+      "dtoPackage": "shop.generated",
+      "displayName": "Order",
+      "description": "An order",
+      "includeTypeInfo": true,
+      "fields": [
+        {
+          "name": "id",
+          "displayName": "id",
+          "javaType": "java.lang.Long",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Order id",
+          "constraints": {},
+          "channels": [
+            "AI",
+            "API"
+          ],
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "status",
+          "displayName": "status",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Status",
+          "constraints": {},
+          "channels": [
+            "AI",
+            "API"
+          ],
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        }
+      ]
+    }
+  ],
+  "operations": [
+    {
+      "id": "shop.CustomerService#activate(java.lang.Long)",
+      "service": "shop.CustomerService",
+      "method": "activate",
+      "toolName": "activate",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Customers",
+      "rest": {
+        "httpMethod": "POST",
+        "path": "/customers/activate",
+        "status": 200,
+        "parameterIn": [
+          "QUERY"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "javaType": "java.lang.Long",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "shop.Customer",
+        "returnKind": "NONE",
+        "returnType": "shop.Customer",
+        "reference": {
+          "entity": "shop.Customer",
+          "dto": "shop.generated.CustomerDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.CustomerService#create(shop.Customer)",
+      "service": "shop.CustomerService",
+      "method": "create",
+      "toolName": "create",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Customers",
+      "rest": {
+        "httpMethod": "POST",
+        "path": "/customers",
+        "status": 201,
+        "parameterIn": [
+          "BODY"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "customer",
+          "javaType": "shop.Customer",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "shop.Customer",
+        "returnKind": "NONE",
+        "returnType": "shop.Customer",
+        "reference": {
+          "entity": "shop.Customer",
+          "dto": "shop.generated.CustomerDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.CustomerService#deleteById(java.lang.Long)",
+      "service": "shop.CustomerService",
+      "method": "deleteById",
+      "toolName": "deleteById",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Customers",
+      "rest": {
+        "httpMethod": "DELETE",
+        "path": "/customers/{id}",
+        "status": 204,
+        "parameterIn": [
+          "PATH"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "javaType": "java.lang.Long",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "void",
+        "returnKind": "NONE",
+        "returnType": null,
+        "reference": null
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.CustomerService#findAll()",
+      "service": "shop.CustomerService",
+      "method": "findAll",
+      "toolName": "findAll",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Customers",
+      "rest": {
+        "httpMethod": "GET",
+        "path": "/customers",
+        "status": 200,
+        "parameterIn": []
+      },
+      "parameters": [],
+      "returns": {
+        "javaType": "java.util.List<shop.Customer>",
+        "returnKind": "COLLECTION",
+        "returnType": "shop.Customer",
+        "reference": {
+          "entity": "shop.Customer",
+          "dto": "shop.generated.CustomerDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.CustomerService#findById(java.lang.Long)",
+      "service": "shop.CustomerService",
+      "method": "findById",
+      "toolName": "findById",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Customers",
+      "rest": {
+        "httpMethod": "GET",
+        "path": "/customers/{id}",
+        "status": 200,
+        "parameterIn": [
+          "PATH"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "javaType": "java.lang.Long",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "shop.Customer",
+        "returnKind": "NONE",
+        "returnType": "shop.Customer",
+        "reference": {
+          "entity": "shop.Customer",
+          "dto": "shop.generated.CustomerDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.CustomerService#findByName(java.lang.String)",
+      "service": "shop.CustomerService",
+      "method": "findByName",
+      "toolName": "findByName",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Customer by name",
+      "rest": {
+        "httpMethod": "GET",
+        "path": "/customers/by-name/{name}",
+        "status": 200,
+        "parameterIn": [
+          "PATH"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "name",
+          "javaType": "java.lang.String",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "shop.Customer",
+        "returnKind": "NONE",
+        "returnType": "shop.Customer",
+        "reference": {
+          "entity": "shop.Customer",
+          "dto": "shop.generated.CustomerDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.CustomerService#update(java.lang.Long,shop.Customer)",
+      "service": "shop.CustomerService",
+      "method": "update",
+      "toolName": "update",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Customers",
+      "rest": {
+        "httpMethod": "PUT",
+        "path": "/customers/{id}",
+        "status": 200,
+        "parameterIn": [
+          "PATH",
+          "BODY"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "javaType": "java.lang.Long",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        },
+        {
+          "name": "customer",
+          "javaType": "shop.Customer",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "shop.Customer",
+        "returnKind": "NONE",
+        "returnType": "shop.Customer",
+        "reference": {
+          "entity": "shop.Customer",
+          "dto": "shop.generated.CustomerDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.OrderService#byStatus(java.lang.String)",
+      "service": "shop.OrderService",
+      "method": "byStatus",
+      "toolName": "byStatus",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Orders by status",
+      "rest": {
+        "httpMethod": "GET",
+        "path": "/orders",
+        "status": 200,
+        "parameterIn": [
+          "QUERY"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "status",
+          "javaType": "java.lang.String",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "java.util.List<shop.Order>",
+        "returnKind": "COLLECTION",
+        "returnType": "shop.Order",
+        "reference": {
+          "entity": "shop.Order",
+          "dto": "shop.generated.OrderDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.OrderService#cancel(java.lang.Long)",
+      "service": "shop.OrderService",
+      "method": "cancel",
+      "toolName": "cancel",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Cancel an order",
+      "rest": {
+        "httpMethod": "DELETE",
+        "path": "/orders/{id}",
+        "status": 204,
+        "parameterIn": [
+          "PATH"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "javaType": "java.lang.Long",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "void",
+        "returnKind": "NONE",
+        "returnType": null,
+        "reference": null
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.OrderService#changeStatus(java.lang.Long,java.lang.String)",
+      "service": "shop.OrderService",
+      "method": "changeStatus",
+      "toolName": "changeStatus",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Change an order's status",
+      "rest": {
+        "httpMethod": "PATCH",
+        "path": "/orders/{id}/status",
+        "status": 200,
+        "parameterIn": [
+          "PATH",
+          "QUERY"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "javaType": "java.lang.Long",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        },
+        {
+          "name": "status",
+          "javaType": "java.lang.String",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "shop.Order",
+        "returnKind": "NONE",
+        "returnType": "shop.Order",
+        "reference": {
+          "entity": "shop.Order",
+          "dto": "shop.generated.OrderDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.OrderService#count()",
+      "service": "shop.OrderService",
+      "method": "count",
+      "toolName": "count",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Number of orders",
+      "rest": {
+        "httpMethod": "GET",
+        "path": "/orders/count",
+        "status": 200,
+        "parameterIn": []
+      },
+      "parameters": [],
+      "returns": {
+        "javaType": "long",
+        "returnKind": "NONE",
+        "returnType": null,
+        "reference": null
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.OrderService#get(java.lang.Long)",
+      "service": "shop.OrderService",
+      "method": "get",
+      "toolName": "get",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Order by id",
+      "rest": {
+        "httpMethod": "GET",
+        "path": "/orders/{id}",
+        "status": 200,
+        "parameterIn": [
+          "PATH"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "javaType": "java.lang.Long",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "shop.Order",
+        "returnKind": "NONE",
+        "returnType": "shop.Order",
+        "reference": {
+          "entity": "shop.Order",
+          "dto": "shop.generated.OrderDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    },
+    {
+      "id": "shop.OrderService#place(shop.Order)",
+      "service": "shop.OrderService",
+      "method": "place",
+      "toolName": "place",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Place an order",
+      "rest": {
+        "httpMethod": "POST",
+        "path": "/orders",
+        "status": 201,
+        "parameterIn": [
+          "BODY"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "order",
+          "javaType": "shop.Order",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "shop.Order",
+        "returnKind": "NONE",
+        "returnType": "shop.Order",
+        "reference": {
+          "entity": "shop.Order",
+          "dto": "shop.generated.OrderDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    }
+  ]
+}

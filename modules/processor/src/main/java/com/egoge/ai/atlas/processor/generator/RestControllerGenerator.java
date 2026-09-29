@@ -25,6 +25,7 @@ import javax.annotation.processing.Messager;
 import javax.lang.model.element.Modifier;
 import javax.tools.Diagnostic;
 import java.io.IOException;
+import java.util.function.Function;
 
 /**
  * Generates Spring {@code @RestController} classes with request mappings
@@ -42,6 +43,10 @@ public final class RestControllerGenerator {
     private static final ClassName POST_MAPPING = ClassName.get("org.springframework.web.bind.annotation", "PostMapping");
     private static final ClassName REQUEST_BODY = ClassName.get("org.springframework.web.bind.annotation", "RequestBody");
     private static final ClassName REQUEST_PARAM = ClassName.get("org.springframework.web.bind.annotation", "RequestParam");
+    private static final ClassName PATH_VARIABLE = ClassName.get("org.springframework.web.bind.annotation", "PathVariable");
+    private static final ClassName RESPONSE_STATUS = ClassName.get("org.springframework.web.bind.annotation", "ResponseStatus");
+    private static final ClassName HTTP_STATUS = ClassName.get("org.springframework.http", "HttpStatus");
+    private static final String MAPPING_PACKAGE = "org.springframework.web.bind.annotation";
 
     private RestControllerGenerator() {
     }
@@ -53,9 +58,11 @@ public final class RestControllerGenerator {
      */
     public static void generate(ServiceModel model, String packageName,
                                 String apiBasePath, int apiMajor, ConstraintSurfaces constraints,
+                                Function<String, ContractIr.Rest> routes,
                                 Filer filer, Messager messager) {
         String controllerName = model.serviceClassName().simpleName() + "RestController";
-        TypeSpec controllerSpec = buildControllerSpec(model, controllerName, apiBasePath, apiMajor, constraints);
+        TypeSpec controllerSpec = buildControllerSpec(model, controllerName, apiBasePath, apiMajor, constraints,
+                routes);
         if (controllerSpec == null) {
             messager.printMessage(Diagnostic.Kind.NOTE,
                     "[ai-atlas] Skipped REST controller for " + model.serviceClassName().simpleName()
@@ -77,8 +84,13 @@ public final class RestControllerGenerator {
         }
     }
 
+    /**
+     * @param routes each operation's REST mapping by {@link ContractProjection#operationKey}, as the
+     *               Contract IR records it: the model the OpenAPI document reads too
+     */
     static TypeSpec buildControllerSpec(ServiceModel model, String controllerName,
-                                        String apiBasePath, int apiMajor, ConstraintSurfaces constraints) {
+                                        String apiBasePath, int apiMajor, ConstraintSurfaces constraints,
+                                        Function<String, ContractIr.Rest> routes) {
         // Filter to API-channel methods only
         var apiMethods = model.methods().stream()
                 .filter(m -> m.channels().contains("API") && VersionSelector.isActive(m, apiMajor))
@@ -89,7 +101,9 @@ public final class RestControllerGenerator {
 
         ClassName serviceType = model.serviceClassName();
 
-        String basePath = apiBasePath + "/v" + apiMajor + "/" + toKebabCase(model.serviceClassName().simpleName());
+        // Every operation of a service shares its resource, the first path segment
+        String basePath = apiBasePath + "/v" + apiMajor
+                + routes.apply(ContractProjection.operationKey(serviceType, apiMethods.get(0))).resourcePath();
 
         TypeSpec.Builder classBuilder = TypeSpec.classBuilder(controllerName)
                 .addModifiers(Modifier.PUBLIC)
@@ -116,7 +130,8 @@ public final class RestControllerGenerator {
         for (MethodModel method : apiMethods) {
             ContractIr.Operation irOperation = constraints != null
                     ? constraints.operation(ContractProjection.operationKey(serviceType, method)) : null;
-            classBuilder.addMethod(buildEndpointMethod(method, apiMajor, irOperation));
+            classBuilder.addMethod(buildEndpointMethod(method, apiMajor, irOperation,
+                    routes.apply(ContractProjection.operationKey(serviceType, method))));
         }
 
         return classBuilder.build();
@@ -127,25 +142,21 @@ public final class RestControllerGenerator {
      *                    {@code null} when {@code ai.atlas.constraints} is off
      */
     private static MethodSpec buildEndpointMethod(MethodModel method, int apiMajor,
-                                                  ContractIr.Operation irOperation) {
-        String path = "/" + toKebabCase(method.methodName());
-        boolean hasParams = !method.parameters().isEmpty();
-
-        // GET for no params, POST for params
-        AnnotationSpec mappingAnnotation;
-        if (hasParams) {
-            mappingAnnotation = AnnotationSpec.builder(POST_MAPPING)
-                    .addMember("value", "$S", path)
-                    .build();
-        } else {
-            mappingAnnotation = AnnotationSpec.builder(GET_MAPPING)
-                    .addMember("value", "$S", path)
-                    .build();
+                                                  ContractIr.Operation irOperation, ContractIr.Rest rest) {
+        String path = rest.operationPath();
+        AnnotationSpec.Builder mapping = AnnotationSpec.builder(mappingAnnotation(rest.httpMethod()));
+        if (!path.isEmpty()) {
+            mapping.addMember("value", "$S", path);
         }
 
         MethodSpec.Builder methodBuilder = MethodSpec.methodBuilder(method.methodName())
                 .addModifiers(Modifier.PUBLIC)
-                .addAnnotation(mappingAnnotation);
+                .addAnnotation(mapping.build());
+        if (rest.effectiveStatus() != ContractIr.Rest.DEFAULT_STATUS) {
+            methodBuilder.addAnnotation(AnnotationSpec.builder(RESPONSE_STATUS)
+                    .addMember("value", "$T.$L", HTTP_STATUS, RestOption.httpStatusName(rest.effectiveStatus()))
+                    .build());
+        }
 
         if (VersionSelector.isDeprecated(method, apiMajor)) {
             methodBuilder.addAnnotation(Deprecated.class);
@@ -164,11 +175,22 @@ public final class RestControllerGenerator {
             methodBuilder.returns(method.returnType());
         }
 
-        // Parameters with @RequestParam
+        // Parameters bound where the mapping locates them; @RequestParam unless declared otherwise
         for (int i = 0; i < method.parameters().size(); i++) {
             ParameterModel param = method.parameters().get(i);
             ParameterSpec.Builder paramBuilder = ParameterSpec.builder(param.typeName(), param.name());
-            if (irOperation != null && !ConstraintSurfaces.parameter(irOperation, i, param).required()) {
+            String in = rest.in(i);
+            boolean optional = irOperation != null && !ConstraintSurfaces.parameter(irOperation, i, param).required();
+            if (ContractIr.Rest.PATH.equals(in)) {
+                paramBuilder.addAnnotation(AnnotationSpec.builder(PATH_VARIABLE)
+                        .addMember("value", "$S", param.name()).build());
+            } else if (ContractIr.Rest.BODY.equals(in)) {
+                AnnotationSpec.Builder body = AnnotationSpec.builder(REQUEST_BODY);
+                if (optional) {
+                    body.addMember("required", "$L", false);
+                }
+                paramBuilder.addAnnotation(body.build());
+            } else if (irOperation != null && !ConstraintSurfaces.parameter(irOperation, i, param).required()) {
                 // An OPTIONAL parameter (FR-015); required ones keep the plain binding
                 paramBuilder.addAnnotation(AnnotationSpec.builder(REQUEST_PARAM)
                         .addMember("required", "$L", false)
@@ -191,6 +213,15 @@ public final class RestControllerGenerator {
         }
 
         return methodBuilder.build();
+    }
+
+    private static ClassName mappingAnnotation(String httpMethod) {
+        return switch (httpMethod) {
+            case "GET" -> GET_MAPPING;
+            case "POST" -> POST_MAPPING;
+            default -> ClassName.get(MAPPING_PACKAGE,
+                    httpMethod.charAt(0) + httpMethod.substring(1).toLowerCase(java.util.Locale.ROOT) + "Mapping");
+        };
     }
 
     private static void addMappingStatement(MethodSpec.Builder methodBuilder,
