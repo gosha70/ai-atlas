@@ -16,6 +16,11 @@ Documented in `docs/rest-mapping.md`.
 - **Runtime.** The deprecation manifest records route templates such as `DELETE /api/v1/orders/{id}`, and `DeprecationHeaderFilter` matches them with Spring's `PathPattern`, preferring an exact path and then the most specific template.
 - **MCP is unchanged.** Tool classes and `mcp-tools.json` are byte-identical with and without REST metadata.
 
+### Contract IR version 4 (Phase 5 foundation)
+Documented in `docs/contract-governance.md`.
+- **Contract IR `irVersion 4`.** Every operation's `returns` records its `bound` (`style`, `envelope`, `limitParameter`, `cursorParameter`, `maxResults`), and every API operation's `rest` its success `status` and each parameter's location in `parameterIn` (`PATH`, `QUERY` or `BODY`). They record the effective contract, which today is the bound `NONE`/`NONE`, status 200 and every parameter in the query. Version 1 to 3 baselines migrate exactly to those values, with no lock-mode difference; `atlasAccept` writes version 4. A version 4 document missing one of the slots is malformed. The demo baseline is regenerated as version 4. Every other generated file is unchanged.
+- **Gate rules.** A changed `rest.status` or envelope is a breaking output change, and a changed parameter location a breaking input change. A path that changes only in its `{name}` variables is compatible, and so is renaming a path or body parameter of an operation served only on the API channel. A result bound appearing or falling is compatible, and disappearing or rising breaking. A page-size ceiling appearing or falling is breaking, and rising or disappearing compatible. A paging role declared or removed on an existing parameter is `informational`. The remedy is a new major or `atlasAccept`.
+
 ### Per-channel field projections
 Documented in `docs/channel-projections.md` and `docs/contract-governance.md`.
 - **`@AgenticField(channels)`.** A field can be eligible for the `API` channel only, the `AI` channel only, or both. The default, `INHERIT`, means every channel, so an undeclared field behaves as before. An empty array, or `INHERIT` mixed with explicit values, is a compile error. Eligibility only narrows the `@AgenticField` whitelist: an unannotated field is still on no channel.

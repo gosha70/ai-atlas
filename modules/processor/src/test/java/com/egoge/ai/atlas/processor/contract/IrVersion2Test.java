@@ -174,13 +174,13 @@ class IrVersion2Test {
     }
 
     @Test
-    void irVersionAboveThreeIsAnError() {
-        String v4 = v1Document().replace("\"irVersion\": 1", "\"irVersion\": 4");
+    void irVersionAboveFourIsAnError() {
+        String v5 = v1Document().replace("\"irVersion\": 1", "\"irVersion\": 5");
 
-        assertThatThrownBy(() -> IrJson.parse(v4, ".atlas/api.ir.json"))
+        assertThatThrownBy(() -> IrJson.parse(v5, ".atlas/api.ir.json"))
                 .isInstanceOf(IrJson.IrReadException.class)
-                .hasMessageContaining("irVersion 4")
-                .hasMessageContaining("supports irVersion 3");
+                .hasMessageContaining("irVersion 5")
+                .hasMessageContaining("supports irVersion 4");
     }
 
     @Test
@@ -269,7 +269,7 @@ class IrVersion2Test {
                 new FieldLifecycle(1, Integer.MAX_VALUE, 0, ""));
         Operation op = new Operation("shop.Catalog", "find", "find", List.of("AI"), "Find",
                 null, List.of(new Parameter("q", "java.lang.String", "", List.of(), required, constraints)),
-                new Return("java.lang.String", "NONE", null, null), hints,
+                new Return("java.lang.String", "NONE", null, null, ContractIr.Bound.NONE), hints,
                 new OperationLifecycle(1, Integer.MAX_VALUE, 0, ""));
         return new ContractIr(ContractIr.IR_VERSION, "/api", 1,
                 List.of(new ContractIr.Entity("shop.Product", "ProductDto", "shop.generated", "Product", "",
@@ -277,9 +277,14 @@ class IrVersion2Test {
                 List.of(op));
     }
 
-    /** The {@link #document} shape as version 2 wrote it: no channels slot. */
+    /** The {@link #document} shape as version 3 wrote it: no result bound or REST status and locations. */
+    static String v3Document() {
+        return IrVersion4Test.asVersion3(IrJson.write(document(EffectiveConstraints.NONE, true, Hints.NONE)));
+    }
+
+    /** The {@link #document} shape as version 2 wrote it: no channels slot either. */
     static String v2Document() {
-        return IrJson.write(document(EffectiveConstraints.NONE, true, Hints.NONE))
+        return v3Document()
                 .replace("\"irVersion\": 3", "\"irVersion\": 2")
                 .replaceAll("\n\\s*\"channels\": \\[\n\\s*\"AI\",\n\\s*\"API\"\n\\s*],", "");
     }
