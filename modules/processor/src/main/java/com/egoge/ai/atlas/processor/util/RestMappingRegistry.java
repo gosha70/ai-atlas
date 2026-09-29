@@ -18,6 +18,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Collects the route each API-channel method maps to across the whole compilation, from the
@@ -37,8 +39,13 @@ import java.util.Set;
 public final class RestMappingRegistry {
 
     private static final String VARIABLE = "{}";
+    /** A package qualifier, left out of a declaration's parameter types. */
+    private static final Pattern QUALIFIER = Pattern.compile("\\b(?:[a-z_$][\\w$]*\\.)+(?=[A-Za-z_$])");
 
-    /** A method's generated route; {@code route} is written as declared, the map key with {@code {}} variables. */
+    /**
+     * A method's generated route; {@code route} is written as declared, the map key with {@code {}}
+     * variables. The declaration names the parameter types, so overloads are told apart.
+     */
     private record Site(String declaration, ExecutableElement element, String route) { }
 
     private final Map<String, List<Site>> mappings = new LinkedHashMap<>();
@@ -56,7 +63,9 @@ public final class RestMappingRegistry {
             return;
         }
         String path = apiBasePath + "/v" + apiMajor + rest.fullPath();
-        String declaration = serviceType.getQualifiedName() + "#" + model.methodName();
+        String declaration = serviceType.getQualifiedName() + "#" + model.methodName() + method.getParameters()
+                .stream().map(p -> QUALIFIER.matcher(p.asType().toString()).replaceAll(""))
+                .collect(Collectors.joining(", ", "(", ")"));
         mappings.computeIfAbsent(RestOperation.routeKey(rest.httpMethod(), path), k -> new ArrayList<>())
                 .add(new Site(declaration, method, rest.httpMethod() + " " + path));
     }

@@ -10,6 +10,7 @@ import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.JavaFile;
 import com.palantir.javapoet.MethodSpec;
 import com.palantir.javapoet.ParameterSpec;
+import com.palantir.javapoet.TypeName;
 import com.palantir.javapoet.TypeSpec;
 
 import javax.annotation.processing.Filer;
@@ -29,9 +30,14 @@ final class InputRecordGenerator {
     private InputRecordGenerator() {
     }
 
-    /** Writes the record to the filer. */
-    static void generate(InputRecord input, Filer filer, Messager messager) {
-        JavaFile javaFile = JavaFile.builder(input.name().packageName(), buildRecordSpec(input))
+    /**
+     * Writes the record to the filer.
+     *
+     * @param enforceRequired whether the record rejects a missing required component, as with
+     *                        {@code ai.atlas.constraints=true}
+     */
+    static void generate(InputRecord input, boolean enforceRequired, Filer filer, Messager messager) {
+        JavaFile javaFile = JavaFile.builder(input.name().packageName(), buildRecordSpec(input, enforceRequired))
                 .indent("    ")
                 .build();
         try {
@@ -43,11 +49,27 @@ final class InputRecordGenerator {
         }
     }
 
-    static TypeSpec buildRecordSpec(InputRecord input) {
+    /**
+     * The record. When {@code enforceRequired}, a required component is boxed, so a missing one
+     * reads as {@code null} rather than a primitive's default, and the compact constructor rejects
+     * it with an {@link IllegalArgumentException}, which Jackson reports and Spring answers 400 Bad
+     * Request. Otherwise the record is exactly the entity's whitelisted fields.
+     */
+    static TypeSpec buildRecordSpec(InputRecord input, boolean enforceRequired) {
         MethodSpec.Builder constructor = MethodSpec.constructorBuilder();
+        MethodSpec.Builder checks = MethodSpec.compactConstructorBuilder().addModifiers(Modifier.PUBLIC);
+        boolean checked = false;
         for (InputField component : input.fields()) {
-            constructor.addParameter(ParameterSpec.builder(component.field().typeName(), component.field().name())
-                    .build());
+            TypeName type = component.field().typeName();
+            if (enforceRequired && component.required()) {
+                type = type.box();
+                checks.beginControlFlow("if ($N == null)", component.field().name())
+                        .addStatement("throw new $T($S)", IllegalArgumentException.class,
+                                "'" + component.field().name() + "' is required")
+                        .endControlFlow();
+                checked = true;
+            }
+            constructor.addParameter(ParameterSpec.builder(type, component.field().name()).build());
         }
         ClassName entity = input.entity().sourceClassName();
         MethodSpec.Builder toEntity = MethodSpec.methodBuilder("toEntity")
@@ -72,15 +94,17 @@ final class InputRecordGenerator {
             }
             toEntity.addStatement("return $N", local);
         }
-        return TypeSpec.recordBuilder(input.name().simpleName())
+        TypeSpec.Builder record = TypeSpec.recordBuilder(input.name().simpleName())
                 .addJavadoc("The fields of {@link $T} a REST request body may set.\n", entity)
                 .addModifiers(Modifier.PUBLIC)
                 .addAnnotation(AnnotationSpec.builder(GENERATED)
                         .addMember("value", "$S", "com.egoge.ai.atlas.processor")
                         .build())
-                .recordConstructor(constructor.build())
-                .addMethod(toEntity.build())
-                .build();
+                .recordConstructor(constructor.build());
+        if (checked) {
+            record.addMethod(checks.addJavadoc("Rejects a missing required field.\n").build());
+        }
+        return record.addMethod(toEntity.build()).build();
     }
 
     private static boolean hasComponent(InputRecord input, String name) {

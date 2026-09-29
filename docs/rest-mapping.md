@@ -82,10 +82,11 @@ A route is `<basePath>/v<major>/<resource><path>`: the base path and version pre
 escaped, and each controller class has one `@RequestMapping`, its resource. A path is `""` or
 `/`-separated segments, each either:
 
-- a literal of letters, digits, `.`, `_`, `~` or `-`; or
+- a literal of letters, digits, `.`, `_`, `~` or `-`, other than `.` and `..`; or
 - a `{name}` variable, where `name` is a Java identifier that names a parameter of the method.
 
-Regex variables (`{id:\d+}`), wildcards, `**`, query strings and matrix parameters are not allowed:
+A `.` or `..` segment, in a path or as the resource, is a compile error, so no route leaves its
+resource or the version prefix. Regex variables (`{id:\d+}`), wildcards, `**`, query strings and matrix parameters are not allowed:
 the controller, the OpenAPI document and the collision check would read them differently. Mappings
 are unversioned: each operation has one mapping per build, whatever the major. Moving a route in v2
 while keeping v1's takes two Java methods.
@@ -101,7 +102,14 @@ while keeping v1's takes two Java methods.
 4. otherwise `QUERY`, the canonical form of Phase 0.
 
 An operation on the RPC mapping never has a body: every parameter stays in the query, entities
-included, and an explicit `in = BODY` on it is a compile error.
+included, and an explicit `in = BODY` on it is a compile error. A query parameter binds through
+Spring's type conversion of one request parameter, never through Jackson, so it cannot set an
+entity's properties.
+
+`@Rest(status)` alone is an explicit mapping too: it keeps the RPC method and path, but moves an
+`@AgenticEntity` parameter from the query to the body. That move is a **WARNING** on the parameter;
+declare `@AgenticParam(in = BODY)` to keep it there without the warning, or `in = QUERY` to keep it
+in the query.
 
 | Location | Controller | OpenAPI |
 |---|---|---|
@@ -205,7 +213,13 @@ public record OrderInput(Long id, String status) {
   missing setters and the constructor it would take.
 - **Requiredness.** The OpenAPI schema of `<Entity>Input` lists its required components: primitives
   and fields with `@NotNull`, `@NotBlank` or `@NotEmpty`. With `ai.atlas.constraints=true`, its
-  properties carry the fields' constraints. The body parameter itself is required unless it is
+  properties carry the fields' constraints, and the record **enforces** that list: a required
+  primitive component is boxed, and the record's compact constructor throws
+  `IllegalArgumentException` for a required component that is missing or `null`, which Spring
+  answers with `400 Bad Request` before the service is called. This needs no Bean Validation, like
+  the `@RequestParam(required)` of query parameters; the other constraints (`@Size`, `@Pattern`,
+  `@NotBlank`'s blankness, …) are published, not enforced, as for query parameters. With
+  `ai.atlas.constraints` off, the record is unchanged and does not check. The body parameter itself is required unless it is
   declared `@AgenticParam(required = OPTIONAL)`, which binds `@RequestBody(required = false)` and
   passes `null` to the service when the body is absent.
 - **OpenAPI** references `#/components/schemas/<Entity>Input`, exactly what is accepted. The
@@ -218,7 +232,16 @@ These are compile errors:
 - a `String` or other `CharSequence` body, which Spring reads as raw text, not JSON, while OpenAPI
   says `application/json`. Wrap it in a record;
 - a body whose type is an unannotated subtype of an entity, or a collection or array of entities.
-  No whitelist could bind them.
+  No whitelist could bind them;
+- an `Optional<Entity>` body. Jackson would bind the entity itself; declare the parameter as the
+  entity, with `@AgenticParam(required = OPTIONAL)` for an optional body (see *Requiredness*);
+- any other body type that **reaches** an entity, or an unannotated subtype of one, that Jackson
+  would bind in full: through a type argument (`Map<String, Order>`), a map key or value, an array
+  component, a record component, a field, a setter's parameter or a constructor parameter,
+  transitively and through generic types (`Wrapper<Order>`). A command record `PlaceRequest(Order
+  order, String note)` would let a non-`@AgenticField` property such as `ssn` reach the service.
+  The error names the path, such as `shop.PlaceRequest.order`; hold the entity's fields in the
+  command record instead. Members of JDK types are not followed, only their type arguments.
 
 MCP tools keep taking the method's parameters: input records are REST-only.
 
@@ -236,18 +259,19 @@ Every error names the declaration: the method, the parameter, the class or the f
 | More than one body parameter | ERROR |
 | A body on `GET` or `DELETE` | ERROR |
 | `in = BODY` on an operation on the RPC mapping | ERROR |
-| A `String` body, an entity subtype body, or a collection of entities as a body | ERROR |
+| A `String` body, an entity subtype body, a collection of entities, an `Optional` of an entity, or a body type that reaches an entity through its type arguments or properties | ERROR |
 | A status outside the 2xx codes Spring's `HttpStatus` names | ERROR |
 | `204` on a method that returns a value | ERROR |
 | `method`, `path` or `status` on a class; `style` or `resource` on a method | ERROR |
-| A resource that is not one path segment | ERROR |
+| A resource that is not one path segment, or a `.` or `..` path or resource segment | ERROR |
 | An entity body whose input record cannot create the entity, or whose name another type takes | ERROR |
 | A required field not eligible for the API channel, or an entity-reference field, in an input record | ERROR |
 | Any REST declaration while `ai.atlas.rest` is off | ERROR |
-| Two routes that match after `{var}` names are normalised: `/{id}` and `/{orderId}` collide, as in Spring. Reported on each method, naming the others | ERROR |
+| Two routes that match after `{var}` names are normalised: `/{id}` and `/{orderId}` collide, as in Spring. Reported on each method, naming the others with their parameter types, such as `S#findById(Long)`, so overloads are told apart | ERROR |
 | Two routes that match the same requests while neither is more specific, such as `/{id}/items` and `/open/{kind}` | ERROR |
 | `@Rest` or `@AgenticParam(in)` on a method that is not on the API channel, which has no REST mapping | WARNING |
 | `@AgenticField(input = false)` while `ai.atlas.rest` is off | WARNING |
+| `@Rest(status)` alone moving an `@AgenticEntity` parameter from the query to the body | WARNING |
 | A literal route beside a variable one, such as `GET /orders/active` next to `GET /orders/{id}`. Spring routes the literal first, which clients may not expect | NOTE |
 
 Routes in different modules are not checked against each other, as for MCP tool names.

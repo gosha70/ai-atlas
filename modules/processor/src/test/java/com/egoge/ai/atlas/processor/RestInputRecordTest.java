@@ -7,12 +7,18 @@ import com.egoge.ai.atlas.processor.RestTestSupport.GeneratedClasses;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.testing.compile.Compilation;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import javax.tools.Diagnostic;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
+import static com.egoge.ai.atlas.processor.RestTestSupport.CONSTRAINTS_ON;
 import static com.egoge.ai.atlas.processor.RestTestSupport.CUSTOMER;
 import static com.egoge.ai.atlas.processor.RestTestSupport.CUSTOMER_SERVICE;
 import static com.egoge.ai.atlas.processor.RestTestSupport.ORDER;
@@ -255,6 +261,174 @@ class RestInputRecordTest {
         assertThat(withSubtype.status()).isEqualTo(Compilation.Status.FAILURE);
         assertThat(errors(withSubtype)).anyMatch(e -> e.contains("The request body 'order' of 'a' is shop.SpecialOrder,"
                 + " a subtype of the @AgenticEntity Order, which a request body cannot bind through a whitelist"));
+    }
+
+    static Stream<Arguments> wrappedEntityBodies() {
+        String order = "{\"id\":8,\"status\":\"PAID\",\"ssn\":\"SECRET\"}";
+        return Stream.of(
+                Arguments.of("java.util.Optional<shop.Order>", "body.orElse(null)", order, null,
+                        "is java.util.Optional<shop.Order>, which Jackson binds as the @AgenticEntity Order itself"),
+                Arguments.of("java.util.Map<String, Order>", "body.get(\"a\")", "{\"a\":" + order + "}", null,
+                        "reaches the @AgenticEntity Order through java.util.Map<shop.Order>"),
+                Arguments.of("java.util.Map<String, List<Order>>", "body.get(\"a\").get(0)", "{\"a\":[" + order + "]}",
+                        null, "reaches the @AgenticEntity Order through"),
+                Arguments.of("PlaceRequest", "body.order()", "{\"note\":\"n\",\"order\":" + order + "}", """
+                        package shop;
+                        public record PlaceRequest(Order order, String note) { }
+                        """, "is shop.PlaceRequest, which reaches the @AgenticEntity Order through shop.PlaceRequest.order"),
+                Arguments.of("Envelope", "body.getOrder()", "{\"order\":" + order + "}", """
+                        package shop;
+                        public class Envelope {
+                            private Order order;
+                            public Order getOrder() { return order; }
+                            public void setOrder(Order order) { this.order = order; }
+                        }
+                        """, "is shop.Envelope, which reaches the @AgenticEntity Order through shop.Envelope.order"),
+                Arguments.of("Wrapper<Wrapper<Order>>", "body.value().value()", "{\"value\":{\"value\":" + order + "}}", """
+                        package shop;
+                        public record Wrapper<T>(T value) { }
+                        """, "reaches the @AgenticEntity Order through"),
+                Arguments.of("SubEnvelope", "body.getOrder()", "{\"order\":" + order + "}", """
+                        package shop;
+                        public class SubEnvelope extends Base { }
+                        class Base {
+                            @com.fasterxml.jackson.annotation.JsonProperty private Order order;
+                            public Order getOrder() { return order; }
+                        }
+                        """, "is shop.SubEnvelope, which reaches the @AgenticEntity Order through shop.SubEnvelope.order"),
+                Arguments.of("Holder", "body.orders()[0]", "{\"orders\":[" + order + "]}", """
+                        package shop;
+                        public record Holder(SpecialOrder[] orders) { }
+                        """, "is shop.Holder, which reaches the @AgenticEntity Order through shop.Holder.orders[]"));
+    }
+
+    /**
+     * An entity wrapped in an {@code Optional}, a map, a record, a bean or a generic type is bound by
+     * Jackson in full, so its non-{@code @AgenticField} {@code ssn} would reach the service: each is a
+     * compile error. Were one to compile, the request below shows the {@code ssn} it would let through.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("wrappedEntityBodies")
+    void aBodyThatReachesAnEntityThroughAWrapperIsAnError(String type, String extract, String json, String wrapper,
+                                                           String message) throws Exception {
+        String special = """
+                package shop;
+                public class SpecialOrder extends Order { }
+                """;
+        String service = """
+                package shop;
+                import com.egoge.ai.atlas.annotations.*;
+                import com.egoge.ai.atlas.annotations.AgenticExposed.*;
+                import com.egoge.ai.atlas.annotations.AgenticParam.In;
+                import java.util.*;
+                @AgenticExposed(rest = @Rest(resource = "orders"))
+                public class WrapService {
+                    public static Order last;
+                    @AgenticExposed(description = "Place", rest = @Rest(method = HttpMethod.POST, path = ""))
+                    public void place(@AgenticParam(in = In.BODY) %s body) { last = %s; }
+                }
+                """.formatted(type, extract);
+        List<String> sources = new ArrayList<>(List.of(ORDER, special, service));
+        if (wrapper != null) {
+            sources.add(wrapper);
+        }
+        Compilation compilation = compileUnchecked(List.of(REST_ON), sources.toArray(String[]::new));
+
+        if (compilation.status() == Compilation.Status.SUCCESS) {
+            GeneratedClasses classes = new GeneratedClasses(compilation);
+            call(classes.mvc("WrapService"), post("/api/v1/orders").contentType(MediaType.APPLICATION_JSON).content(json));
+            Object placed = classes.load("shop.WrapService").getField("last").get(null);
+            assertThat(placed.getClass().getMethod("getSsn").invoke(placed))
+                    .as("the non-whitelisted ssn bound through " + type).isNull();
+        }
+        assertThat(compilation.status()).isEqualTo(Compilation.Status.FAILURE);
+        assertThat(errors(compilation)).anyMatch(e -> e.contains("The request body 'body' of 'place' ")
+                && e.contains(message));
+    }
+
+    @Test
+    void aBodyTypeThatReachesNoEntityIsBoundAsDeclaredEvenWhenItIsCyclic() throws Exception {
+        String node = """
+                package shop;
+                import java.util.*;
+                public record Node(String name, List<Node> children, Map<String, Integer> counts) { }
+                """;
+        String service = """
+                package shop;
+                import com.egoge.ai.atlas.annotations.*;
+                import com.egoge.ai.atlas.annotations.AgenticExposed.*;
+                import com.egoge.ai.atlas.annotations.AgenticParam.In;
+                @AgenticExposed(rest = @Rest(resource = "nodes"))
+                public class NodeService {
+                    @AgenticExposed(description = "Count", rest = @Rest(method = HttpMethod.POST, path = ""))
+                    public int count(@AgenticParam(in = In.BODY) Node node) { return node.children().size(); }
+                }
+                """;
+        Compilation compilation = compile(List.of(REST_ON), node, service);
+
+        assertThat(call(new GeneratedClasses(compilation).mvc("NodeService"), post("/api/v1/nodes")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"a\",\"children\":[{\"name\":\"b\"}]}")))
+                .isEqualTo("200 1");
+    }
+
+    private static final String REQUIRED_ITEM = """
+            package shop;
+            import com.egoge.ai.atlas.annotations.*;
+            import jakarta.validation.constraints.NotNull;
+            @AgenticEntity(description = "An item")
+            public class Item {
+                @AgenticField(description = "Name") @NotNull private String name;
+                @AgenticField(description = "Quantity") private int qty;
+                @AgenticField(description = "Note") private String note;
+                private String ssn;
+                public String getName() { return name; }
+                public void setName(String name) { this.name = name; }
+                public int getQty() { return qty; }
+                public void setQty(int qty) { this.qty = qty; }
+                public String getNote() { return note; }
+                public void setNote(String note) { this.note = note; }
+                public String getSsn() { return ssn; }
+                public void setSsn(String ssn) { this.ssn = ssn; }
+            }
+            """;
+
+    @Test
+    void aMissingRequiredInputFieldIsRejectedWithConstraintsOn() throws Exception {
+        Compilation compilation = compile(List.of(REST_ON, CONSTRAINTS_ON), REQUIRED_ITEM, PLACE);
+        GeneratedClasses classes = new GeneratedClasses(compilation);
+        MockMvc mvc = classes.mvc("ItemService");
+
+        JsonNode schema = openApi(compilation).path("components").path("schemas").path("ItemInput");
+        assertThat(schema.path("required").toString()).isEqualTo("[\"name\",\"qty\"]");
+        for (String missing : List.of("{\"ssn\":\"SECRET\"}", "{\"qty\":1,\"ssn\":\"SECRET\"}",
+                "{\"name\":null,\"qty\":1}", "{\"name\":\"pen\",\"ssn\":\"SECRET\"}", "{\"name\":\"pen\",\"qty\":null}")) {
+            assertThat(call(mvc, post("/api/v1/items").contentType(MediaType.APPLICATION_JSON).content(missing)))
+                    .as(missing).startsWith("400");
+        }
+        assertThat(classes.load("shop.ItemService").getField("last").get(null)).isNull();
+
+        assertThat(call(mvc, post("/api/v1/items").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"pen\",\"qty\":0,\"ssn\":\"SECRET\"}"))).isEqualTo("201 ");
+        Object placed = classes.load("shop.ItemService").getField("last").get(null);
+        assertThat(placed.getClass().getMethod("getName").invoke(placed)).isEqualTo("pen");
+        assertThat(placed.getClass().getMethod("getNote").invoke(placed)).isNull();
+        assertThat(placed.getClass().getMethod("getSsn").invoke(placed)).isNull();
+        assertThat(source(compilation, "shop.generated.ItemInput"))
+                .contains("public record ItemInput(String name, Integer qty, String note)")
+                .contains("throw new IllegalArgumentException(\"'name' is required\");")
+                .contains("throw new IllegalArgumentException(\"'qty' is required\");")
+                .doesNotContain("'note' is required");
+    }
+
+    @Test
+    void withConstraintsOffTheInputRecordIsUnchecked() throws Exception {
+        Compilation compilation = compile(List.of(REST_ON), REQUIRED_ITEM, PLACE);
+
+        assertThat(source(compilation, "shop.generated.ItemInput"))
+                .contains("public record ItemInput(String name, int qty, String note)")
+                .doesNotContain("IllegalArgumentException");
+        assertThat(call(new GeneratedClasses(compilation).mvc("ItemService"), post("/api/v1/items")
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))).isEqualTo("201 ");
     }
 
     @Test

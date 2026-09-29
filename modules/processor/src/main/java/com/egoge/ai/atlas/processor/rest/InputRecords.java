@@ -16,19 +16,28 @@ import com.palantir.javapoet.ClassName;
 import javax.annotation.processing.Messager;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
+import javax.lang.model.type.ArrayType;
+import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.ExecutableType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.TypeVariable;
+import javax.lang.model.type.WildcardType;
 import javax.lang.model.util.ElementFilter;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,6 +61,7 @@ final class InputRecords {
     private static final String API = "API";
     private static final String PREFIX = "[ai-atlas] ";
     private static final String CHAR_SEQUENCE = "java.lang.CharSequence";
+    private static final String OPTIONAL = "java.util.Optional";
 
     private final boolean enabled;
     private final String option;
@@ -112,8 +122,9 @@ final class InputRecords {
 
     /**
      * Checks the type of a body parameter: an entity binds its input record; a {@code String} is
-     * read as raw text, and an entity subtype or a collection of entities would bind unwhitelisted
-     * properties, so each is an ERROR.
+     * read as raw text, and an entity subtype, a collection of entities, an {@code Optional} of an
+     * entity, or any other type that reaches an entity would bind unwhitelisted properties, so each
+     * is an ERROR.
      */
     Body checkBody(VariableElement body, String methodName, Map<String, EntityModel> registry) {
         Types types = env.getTypeUtils();
@@ -153,7 +164,114 @@ final class InputRecords {
                     + " through a whitelist. Take one " + elementEntity.getSimpleName() + " per request", body);
             return new Body(false, null);
         }
+        if (type instanceof DeclaredType declared && declared.getTypeArguments().size() == 1
+                && ((TypeElement) declared.asElement()).getQualifiedName().contentEquals(OPTIONAL)) {
+            TypeElement optionalEntity = ReturnedTypes.entityOf(declared.getTypeArguments().get(0), types);
+            if (optionalEntity != null) {
+                messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + subject + " is " + type + ", which Jackson"
+                        + " binds as the @AgenticEntity " + optionalEntity.getSimpleName() + " itself, not through a"
+                        + " whitelist. Declare the parameter as " + optionalEntity.getSimpleName() + ", with"
+                        + " @AgenticParam(required = Requiredness.OPTIONAL) for an optional body", body);
+                return new Body(false, null);
+            }
+        }
+        String reached = reachedEntity(type, types);
+        if (reached != null) {
+            messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + subject + " is " + type + ", which reaches "
+                    + reached + ". Jackson would bind every property of it, not only its whitelisted"
+                    + " @AgenticFields. Take the entity itself as the body, or hold its fields in the body type"
+                    + " rather than the entity", body);
+            return new Body(false, null);
+        }
         return new Body(true, null);
+    }
+
+    /**
+     * How a body type reaches an {@code @AgenticEntity}, or a subtype of one, that Jackson would
+     * bind in full: through a type argument, a map key or value, an array component, a record
+     * component, a field, a setter's or constructor's parameter, or a supertype, transitively.
+     * Members of JDK types are not followed, only their type arguments; each type is visited once, so cycles end.
+     *
+     * @return {@code "the @AgenticEntity X through T.a.b"}, or {@code null} when none is reached
+     */
+    private String reachedEntity(TypeMirror type, Types types) {
+        Deque<Map.Entry<TypeMirror, String>> pending = new ArrayDeque<>();
+        pending.add(Map.entry(type, display(type, types)));
+        Set<String> seen = new HashSet<>();
+        while (!pending.isEmpty()) {
+            Map.Entry<TypeMirror, String> next = pending.removeFirst();
+            TypeMirror current = next.getKey();
+            String via = next.getValue();
+            if (!seen.add(current.toString())) {
+                continue;
+            }
+            if (current instanceof ArrayType array) {
+                pending.add(Map.entry(array.getComponentType(), via + "[]"));
+                continue;
+            }
+            if (current instanceof WildcardType wildcard) {
+                if (wildcard.getExtendsBound() != null) {
+                    pending.add(Map.entry(wildcard.getExtendsBound(), via));
+                }
+                continue;
+            }
+            if (current instanceof TypeVariable variable) {
+                pending.add(Map.entry(variable.getUpperBound(), via));
+                continue;
+            }
+            if (!(current instanceof DeclaredType declared)) {
+                continue;
+            }
+            if (current != type) {
+                TypeElement entity = ReturnedTypes.entityOf(current, types);
+                if (entity != null) {
+                    return "the @AgenticEntity " + entity.getSimpleName() + " through " + via;
+                }
+            }
+            for (TypeMirror argument : declared.getTypeArguments()) {
+                pending.add(Map.entry(argument, via + "<" + display(argument, types) + ">"));
+            }
+            TypeElement element = (TypeElement) declared.asElement();
+            if (jdk(element)) {
+                continue;
+            }
+            // A superclass's private fields are not among the members, but Jackson may bind them
+            for (TypeMirror supertype : types.directSupertypes(current)) {
+                pending.add(Map.entry(supertype, via));
+            }
+            for (Element member : env.getElementUtils().getAllMembers(element)) {
+                if (member.getModifiers().contains(Modifier.STATIC)) {
+                    continue;
+                }
+                String memberName = member.getSimpleName().toString();
+                if (member.getKind() == ElementKind.FIELD || member.getKind() == ElementKind.RECORD_COMPONENT) {
+                    pending.add(Map.entry(types.asMemberOf(declared, member), via + "." + memberName));
+                } else if (member.getKind() == ElementKind.METHOD && memberName.startsWith("set")
+                        && ((ExecutableElement) member).getParameters().size() == 1) {
+                    ExecutableType setter = (ExecutableType) types.asMemberOf(declared, member);
+                    pending.add(Map.entry(setter.getParameterTypes().get(0), via + "." + memberName + "()"));
+                }
+            }
+            for (ExecutableElement constructor : ElementFilter.constructorsIn(element.getEnclosedElements())) {
+                ExecutableType creator = (ExecutableType) types.asMemberOf(declared, constructor);
+                for (int i = 0; i < creator.getParameterTypes().size(); i++) {
+                    pending.add(Map.entry(creator.getParameterTypes().get(i),
+                            via + "(" + constructor.getParameters().get(i).getSimpleName() + ")"));
+                }
+            }
+        }
+        return null;
+    }
+
+    /** A type as a path through types names it: a declared type without its type arguments. */
+    private static String display(TypeMirror type, Types types) {
+        return type instanceof DeclaredType ? types.erasure(type).toString() : type.toString();
+    }
+
+    /** A type of the JDK, whose members a request body does not bind as properties. */
+    private boolean jdk(TypeElement element) {
+        String name = env.getElementUtils().getPackageOf(element).getQualifiedName().toString();
+        return name.startsWith("java.") || name.startsWith("javax.") || name.startsWith("jdk.");
     }
 
     /**
@@ -334,16 +452,17 @@ final class InputRecords {
     /**
      * Generates the input record {@code name}, once per compilation.
      *
-     * @param name an input record {@link #inputRecord} returned
+     * @param name            an input record {@link #inputRecord} returned
+     * @param enforceRequired whether the record rejects a missing required component
      */
-    void generate(ClassName name) {
+    void generate(ClassName name, boolean enforceRequired) {
         if (generated.containsKey(name.canonicalName())) {
             return;
         }
         InputRecord input = inputRecords.values().stream()
                 .filter(r -> r != null && r.name().equals(name)).findFirst().orElseThrow();
         generated.put(name.canonicalName(), input);
-        InputRecordGenerator.generate(input, env.getFiler(), env.getMessager());
+        InputRecordGenerator.generate(input, enforceRequired, env.getFiler(), env.getMessager());
     }
 
     /** The input records generated so far, by qualified name. */

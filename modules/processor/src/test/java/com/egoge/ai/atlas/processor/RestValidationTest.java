@@ -94,7 +94,21 @@ class RestValidationTest {
                         "@Rest(style, resource) on method 'a' — declare them on the service class"),
                 Arguments.of("multi-segment resource", "@AgenticExposed(rest = @Rest(resource = \"a/b\"))",
                         "public void a() { }",
-                        "@Rest(resource = \"a/b\") on BadService must be one path segment"));
+                        "@Rest(resource = \"a/b\") on BadService must be one path segment"),
+                Arguments.of("'..' resource", "@AgenticExposed(rest = @Rest(resource = \"..\"))",
+                        "public void a() { }",
+                        "@Rest(resource = \"..\") on BadService must be one path segment of letters, digits, '.', '_',"
+                                + " '~' or '-', and neither '.' nor '..'"),
+                Arguments.of("'.' resource", "@AgenticExposed(rest = @Rest(resource = \".\"))",
+                        "public void a() { }",
+                        "@Rest(resource = \".\") on BadService must be one path segment"),
+                Arguments.of("'..' path segment", null,
+                        "@AgenticExposed(rest = @Rest(method = HttpMethod.GET, path = \"/../admin\")) public void a() { }",
+                        "@Rest(path = \"/../admin\") on 'a' has a '.' or '..' segment, which would leave the service's"
+                                + " resource or the version prefix"),
+                Arguments.of("'.' path segment", null,
+                        "@AgenticExposed(rest = @Rest(method = HttpMethod.GET, path = \"/.\")) public void a() { }",
+                        "@Rest(path = \"/.\") on 'a' has a '.' or '..' segment"));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -116,14 +130,48 @@ class RestValidationTest {
 
         assertThat(compilation.status()).isEqualTo(Compilation.Status.FAILURE);
         assertThat(errors(compilation))
-                .anyMatch(e -> e.contains("REST mapping GET /api/v1/orders/{id} of shop.BadService#a is also mapped by"
-                        + " shop.BadService#b (GET /api/v1/orders/{number})"))
-                .anyMatch(e -> e.contains("REST mapping GET /api/v1/orders/{number} of shop.BadService#b is also mapped"
-                        + " by shop.BadService#a (GET /api/v1/orders/{id})"))
-                .anyMatch(e -> e.contains("REST mapping POST /api/v1/orders/activate of shop.BadService#c is also"
-                        + " mapped by shop.BadService#activate"))
-                .anyMatch(e -> e.contains("REST mapping POST /api/v1/orders/activate of shop.BadService#activate is"
-                        + " also mapped by shop.BadService#c"));
+                .anyMatch(e -> e.contains("REST mapping GET /api/v1/orders/{id} of shop.BadService#a(Long) is also mapped by"
+                        + " shop.BadService#b(Long) (GET /api/v1/orders/{number})"))
+                .anyMatch(e -> e.contains("REST mapping GET /api/v1/orders/{number} of shop.BadService#b(Long) is also mapped"
+                        + " by shop.BadService#a(Long) (GET /api/v1/orders/{id})"))
+                .anyMatch(e -> e.contains("REST mapping POST /api/v1/orders/activate of shop.BadService#c(Long) is also"
+                        + " mapped by shop.BadService#activate(Long)"))
+                .anyMatch(e -> e.contains("REST mapping POST /api/v1/orders/activate of shop.BadService#activate(Long) is"
+                        + " also mapped by shop.BadService#c(Long)"));
+    }
+
+    @Test
+    void overloadsSharingARouteAreToldApartByTheirParameterTypes() {
+        Compilation compilation = compileService(List.of(REST_ON),
+                "@AgenticExposed(rest = @Rest(style = RestStyle.CRUD, resource = \"orders\"))", """
+                public void findById(Long id) { }
+                    @AgenticExposed(description = "y", toolName = "findByKey") public void findById(String id) { }""");
+
+        assertThat(compilation.status()).isEqualTo(Compilation.Status.FAILURE);
+        assertThat(errors(compilation))
+                .anyMatch(e -> e.contains("REST mapping GET /api/v1/orders/{id} of shop.BadService#findById(Long) is"
+                        + " also mapped by shop.BadService#findById(String)"))
+                .anyMatch(e -> e.contains("REST mapping GET /api/v1/orders/{id} of shop.BadService#findById(String) is"
+                        + " also mapped by shop.BadService#findById(Long)"));
+    }
+
+    @Test
+    void aStatusAloneMovingAnEntityToTheBodyIsAWarning() {
+        Compilation moved = compileService(List.of(REST_ON), null,
+                "@AgenticExposed(rest = @Rest(status = 202)) public void a(Order order) { }");
+
+        assertThat(moved.status()).isEqualTo(Compilation.Status.SUCCESS);
+        assertThat(messages(moved, Diagnostic.Kind.WARNING)).anyMatch(w -> w.contains(
+                "Parameter 'order' of 'a' moves from the query to the request body: @Rest(status) alone makes"
+                        + " POST /api/v1/bad-service/a an explicit mapping, where an @AgenticEntity is the body"));
+
+        for (String member : List.of(
+                "@AgenticExposed(rest = @Rest(status = 202)) public void a(@AgenticParam(in = In.BODY) Order order) { }",
+                "@AgenticExposed(rest = @Rest(method = HttpMethod.POST, path = \"\", status = 202)) public void a(Order order) { }",
+                "@AgenticExposed(rest = @Rest(status = 202)) public void a(Long id) { }")) {
+            assertThat(messages(compileService(List.of(REST_ON), null, member), Diagnostic.Kind.WARNING))
+                    .as(member).noneMatch(w -> w.contains("moves from the query to the request body"));
+        }
     }
 
     @Test
@@ -133,10 +181,10 @@ class RestValidationTest {
                     @AgenticExposed(rest = @Rest(method = HttpMethod.GET, path = "/open/{kind}")) public void b(String kind) { }""");
 
         assertThat(errors(compilation))
-                .anyMatch(e -> e.contains("REST mapping GET /api/v1/orders/{id}/items of shop.BadService#a matches the"
-                        + " same requests as GET /api/v1/orders/open/{kind} of shop.BadService#b, and neither is more"
+                .anyMatch(e -> e.contains("REST mapping GET /api/v1/orders/{id}/items of shop.BadService#a(Long) matches the"
+                        + " same requests as GET /api/v1/orders/open/{kind} of shop.BadService#b(String), and neither is more"
                         + " specific"))
-                .anyMatch(e -> e.contains("REST mapping GET /api/v1/orders/open/{kind} of shop.BadService#b matches"));
+                .anyMatch(e -> e.contains("REST mapping GET /api/v1/orders/open/{kind} of shop.BadService#b(String) matches"));
     }
 
     @Test
@@ -148,8 +196,8 @@ class RestValidationTest {
 
         assertThat(compilation.status()).isEqualTo(Compilation.Status.SUCCESS);
         assertThat(messages(compilation, Diagnostic.Kind.NOTE)).anyMatch(n -> n.contains(
-                "REST mapping GET /api/v1/orders/active of shop.BadService#active has a literal segment where"
-                        + " GET /api/v1/orders/{id} of shop.BadService#findById has a variable. Spring routes a"
+                "REST mapping GET /api/v1/orders/active of shop.BadService#active() has a literal segment where"
+                        + " GET /api/v1/orders/{id} of shop.BadService#findById(Long) has a variable. Spring routes a"
                         + " matching request to the literal one"));
     }
 

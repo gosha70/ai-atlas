@@ -400,7 +400,7 @@ public class AgenticProcessor extends AbstractProcessor {
         serviceRegistry.add(model);
         McpToolGenerator.generate(projections.toolModel(model, entityRegistry), generatedPackage, apiMajor, constraints.surfaces(projection),
                 processingEnv.getFiler(), processingEnv.getMessager());
-        rest.generateInputRecords(model);
+        rest.generateInputRecords(model, constraints.enabled());
         RestControllerGenerator.generate(model, generatedPackage, apiBasePath, apiMajor, constraints.surfaces(projection),
                 rest::operation, processingEnv.getFiler(), processingEnv.getMessager());
     }

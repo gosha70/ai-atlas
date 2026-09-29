@@ -219,7 +219,13 @@ public final class RestOption {
         if (!PATH.matcher(path).matches()) {
             messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + "@Rest(path = \"" + path + "\") on '" + methodName
                     + "' must be empty or '/'-separated segments, each a literal of letters, digits, '.', '_', '~'"
-                    + " or '-', or a {name} variable", method);
+                    + " or '-' other than '.' and '..', or a {name} variable", method);
+            return null;
+        }
+        if (dotSegment(path)) {
+            messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + "@Rest(path = \"" + path + "\") on '" + methodName
+                    + "' has a '.' or '..' segment, which would leave the service's resource or the version"
+                    + " prefix. Rename the segment", method);
             return null;
         }
         String route = route(httpMethod, "/" + resource + path);
@@ -250,6 +256,14 @@ public final class RestOption {
                 location = RestOperation.QUERY;
             }
             valid &= validateLocation(param, methodName, location, variables, mapped, route);
+            if (RestOperation.BODY.equals(location) && declared == AgenticParam.In.DEFAULT && rule == null
+                    && methodRest.method() == null && methodRest.path() == null) {
+                messager.printMessage(Diagnostic.Kind.WARNING, PREFIX + "Parameter '" + name + "' of '"
+                        + methodName + "' moves from the query to the request body: @Rest(status) alone makes "
+                        + route + " an explicit mapping, where an @AgenticEntity is the body. Declare"
+                        + " @AgenticParam(in = BODY) to keep it there without this warning, or declare"
+                        + " @AgenticParam(in = QUERY)", param);
+            }
             in.add(location);
         }
         for (String variable : variables) {
@@ -373,10 +387,11 @@ public final class RestOption {
                         + service.getSimpleName() + " — declare them on each method", service);
                 valid = false;
             }
-            if (rest.resource() != null && !RESOURCE.matcher(rest.resource()).matches()) {
+            if (rest.resource() != null && (!RESOURCE.matcher(rest.resource()).matches()
+                    || dotSegment("/" + rest.resource()))) {
                 env.getMessager().printMessage(Diagnostic.Kind.ERROR, PREFIX + "@Rest(resource = \"" + rest.resource()
                         + "\") on " + service.getSimpleName() + " must be one path segment of letters, digits,"
-                        + " '.', '_', '~' or '-'", service);
+                        + " '.', '_', '~' or '-', and neither '.' nor '..'", service);
                 valid = false;
             }
             return valid;
@@ -414,16 +429,18 @@ public final class RestOption {
      * Generates the input record of each entity a request body of the service's active API
      * operations binds, once per compilation.
      *
-     * @param model the service, projected at the configured major
+     * @param model           the service, projected at the configured major
+     * @param enforceRequired whether each record rejects a missing required component with 400 Bad
+     *                        Request, as with {@code ai.atlas.constraints=true}
      */
-    public void generateInputRecords(ServiceModel model) {
+    public void generateInputRecords(ServiceModel model, boolean enforceRequired) {
         for (MethodModel method : model.methods()) {
             if (!method.channels().contains(API) || !VersionSelector.isActive(method, apiMajor)) {
                 continue;
             }
             ClassName name = operation(ContractProjection.operationKey(model.serviceClassName(), method)).inputRecord();
             if (name != null) {
-                inputs.generate(name);
+                inputs.generate(name, enforceRequired);
             }
         }
     }
@@ -431,6 +448,16 @@ public final class RestOption {
     /** The input records generated so far, by qualified name. */
     public Collection<InputRecord> generatedInputRecords() {
         return inputs.generated();
+    }
+
+    /** Whether a {@code /}-separated path has a {@code .} or {@code ..} segment. */
+    private static boolean dotSegment(String path) {
+        for (String segment : path.split("/", -1)) {
+            if (segment.equals(".") || segment.equals("..")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String route(String httpMethod, String fullPath) {
