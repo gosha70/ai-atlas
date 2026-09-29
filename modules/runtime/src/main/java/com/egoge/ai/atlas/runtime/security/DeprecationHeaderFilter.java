@@ -11,12 +11,18 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.server.PathContainer;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.pattern.PathPattern;
+import org.springframework.web.util.pattern.PathPatternParser;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -28,6 +34,11 @@ import java.util.Map;
  * {@code "METHOD /path"} (e.g., {@code "POST /api/v2/order-service/find-by-id"})
  * which distinguishes a deprecated POST and an active GET on the same path.
  *
+ * <p>A manifest path may be a route template with {@code {name}} variables, such as
+ * {@code DELETE /api/v1/orders/{id}}, which {@code ai.atlas.rest} mappings produce. A request is
+ * matched as Spring MVC routes it: an endpoint whose path equals the request path first, else the
+ * most specific template that matches it, by Spring's {@link PathPattern}.
+ *
  * <p>The servlet context path is stripped before lookup so that the filter
  * works correctly under a non-root {@code server.servlet.context-path}.
  */
@@ -38,11 +49,14 @@ public class DeprecationHeaderFilter extends OncePerRequestFilter {
 
     /** Keyed by "METHOD /path" (e.g., "GET /api/v2/order-service/find-all"). */
     private final Map<String, EndpointDeprecation> deprecationMap;
+    /** The endpoints whose path is a template, such as "/api/v1/orders/{id}". */
+    private final List<TemplateEndpoint> templates;
     private final String deprecationDocUrl;
 
     public DeprecationHeaderFilter(String deprecationDocUrl) {
         this.deprecationDocUrl = deprecationDocUrl;
         this.deprecationMap = loadManifest();
+        this.templates = templates(deprecationMap);
     }
 
     @Override
@@ -62,6 +76,9 @@ public class DeprecationHeaderFilter extends OncePerRequestFilter {
         }
         String key = request.getMethod() + " " + path;
         EndpointDeprecation dep = deprecationMap.get(key);
+        if (dep == null && !templates.isEmpty()) {
+            dep = matchTemplate(request.getMethod(), path);
+        }
         if (dep != null && dep.deprecated()) {
             response.setHeader("Deprecation", "true");
             if (deprecationDocUrl != null && !deprecationDocUrl.isEmpty()) {
@@ -71,6 +88,38 @@ public class DeprecationHeaderFilter extends OncePerRequestFilter {
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    /** The endpoint of the most specific template matching the request, or {@code null}. */
+    private EndpointDeprecation matchTemplate(String method, String path) {
+        PathContainer container = PathContainer.parsePath(path);
+        TemplateEndpoint best = null;
+        for (TemplateEndpoint template : templates) {
+            if (template.method().equals(method) && template.pattern().matches(container)
+                    && (best == null || PathPattern.SPECIFICITY_COMPARATOR.compare(template.pattern(), best.pattern()) < 0)) {
+                best = template;
+            }
+        }
+        return best != null ? best.deprecation() : null;
+    }
+
+    private static List<TemplateEndpoint> templates(Map<String, EndpointDeprecation> endpoints) {
+        List<TemplateEndpoint> result = new ArrayList<>();
+        endpoints.forEach((key, deprecation) -> {
+            int space = key.indexOf(' ');
+            String path = key.substring(space + 1);
+            if (path.indexOf('{') >= 0) {
+                try {
+                    result.add(new TemplateEndpoint(key.substring(0, space),
+                            PathPatternParser.defaultInstance.parse(path), deprecation));
+                } catch (RuntimeException e) {
+                    log.warn("[ai-atlas] Ignoring deprecation manifest path {}: {}", path, e.getMessage());
+                }
+            }
+        });
+        // A deterministic order whatever the map's: the comparator picks among equals by position
+        result.sort(Comparator.comparing(t -> t.pattern().getPatternString()));
+        return List.copyOf(result);
     }
 
     private Map<String, EndpointDeprecation> loadManifest() {
@@ -103,6 +152,10 @@ public class DeprecationHeaderFilter extends OncePerRequestFilter {
             log.warn("[ai-atlas] Failed to load {}: {}", MANIFEST_PATH, e.getMessage());
             return Collections.emptyMap();
         }
+    }
+
+    /** A manifest endpoint whose path is a route template. */
+    private record TemplateEndpoint(String method, PathPattern pattern, EndpointDeprecation deprecation) {
     }
 
     record EndpointDeprecation(
