@@ -3,12 +3,14 @@
  */
 package com.egoge.ai.atlas.processor.contract;
 
+import com.egoge.ai.atlas.processor.contract.ContractGate.Difference;
+
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * What a release published: an IR reduced to its surface at its own {@code apiMajor}, so
- * {@link ContractGate#compareReleases} can compare two releases with the gate's own comparison.
+ * Compares what two releases published, each reduced to its surface at its own {@code apiMajor},
+ * so the gate's own {@link ContractComparison} can compare two releases (D9.1).
  *
  * <p>{@link ContractGate#compare} projects both documents at the baseline's major, where a declared
  * removal ({@code removedInVersion = M+1}, {@code apiUntil = M}) is invisible by design. Between
@@ -18,9 +20,34 @@ import java.util.List;
  * deprecation change, and a declared removal is a removal. The reasons of the comparison name the
  * previous release's major, whose clients the differences affect.
  */
-public final class ReleaseSurface {
+public final class ReleaseComparison {
 
-    private ReleaseSurface() {
+    private ReleaseComparison() {
+    }
+
+    /**
+     * Compares the surfaces of {@code previous} and {@code current}, each reduced to its own
+     * {@code apiMajor}.
+     *
+     * @param previous the previous release's IR
+     * @param current  the current release's IR
+     * @return every difference, ordered by element path, then attribute
+     * @throws IllegalArgumentException if a document carries a type string that is not canonical
+     */
+    public static List<Difference> compare(ContractIr previous, ContractIr current) {
+        int major = previous.apiMajor();
+        return ContractGate.compare(of(previous, major), of(current, major));
+    }
+
+    /**
+     * Whether a declared deprecation major is in effect at {@code major}.
+     *
+     * @param deprecatedSince the declared deprecation major, {@code 0} if never
+     * @param major           the major
+     * @return whether the element is deprecated at {@code major}
+     */
+    public static boolean deprecatedAt(int deprecatedSince, int major) {
+        return deprecatedSince > 0 && deprecatedSince <= major;
     }
 
     /**
@@ -31,7 +58,7 @@ public final class ReleaseSurface {
      * @param major the major the reduced document is compared at
      * @return the reduced document
      */
-    static ContractIr of(ContractIr ir, int major) {
+    private static ContractIr of(ContractIr ir, int major) {
         int own = ir.apiMajor();
         List<ContractIr.Entity> entities = new ArrayList<>();
         for (ContractIr.Entity e : ir.entities()) {
@@ -59,16 +86,5 @@ public final class ReleaseSurface {
             }
         }
         return new ContractIr(ir.irVersion(), ir.apiBasePath(), major, entities, operations);
-    }
-
-    /**
-     * Whether a declared deprecation major is in effect at {@code major}.
-     *
-     * @param deprecatedSince the declared deprecation major, {@code 0} if never
-     * @param major           the major
-     * @return whether the element is deprecated at {@code major}
-     */
-    public static boolean deprecatedAt(int deprecatedSince, int major) {
-        return deprecatedSince > 0 && deprecatedSince <= major;
     }
 }

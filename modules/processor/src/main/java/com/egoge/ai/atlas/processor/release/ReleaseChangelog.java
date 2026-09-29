@@ -5,6 +5,7 @@ package com.egoge.ai.atlas.processor.release;
 
 import com.egoge.ai.atlas.processor.contract.ContractGate;
 import com.egoge.ai.atlas.processor.contract.ContractIr;
+import com.egoge.ai.atlas.processor.contract.ReleaseComparison;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -14,7 +15,7 @@ import java.util.Map;
 
 /**
  * A release's Markdown changelog section, rendered from the differences
- * {@link ContractGate#compareReleases} reported. Every entry is one difference, named by the gate's
+ * {@link ReleaseComparison#compare} reported. Every entry is one difference, named by the gate's
  * element path; the sections only group them, so the changelog says nothing the comparison did not.
  * There is no date, so the same release gives the same bytes; the date lives in version control.
  *
@@ -49,7 +50,7 @@ public final class ReleaseChangelog {
      * @param version     the release's version
      * @param current     the release's IR
      * @param previous    the previous release, or {@code null} for the first one
-     * @param differences the differences {@link ContractGate#compareReleases} reported
+     * @param differences the differences {@link ReleaseComparison#compare} reported
      * @param evidence    the deprecation evidence of each removal, from {@link ReleasePolicy#check}
      * @return the section, starting {@code ## <version> (API major N)} and ending with a newline
      */

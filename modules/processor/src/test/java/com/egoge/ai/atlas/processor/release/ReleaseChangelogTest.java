@@ -6,6 +6,7 @@ package com.egoge.ai.atlas.processor.release;
 import com.egoge.ai.atlas.processor.contract.ContractGate;
 import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.contract.EmptyContract;
+import com.egoge.ai.atlas.processor.contract.ReleaseComparison;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -150,7 +151,7 @@ class ReleaseChangelogTest {
         List<ReleasePolicy.Release> history = new ArrayList<>(List.of(releases));
         ReleasePolicy.Release current = history.get(history.size() - 1);
         ReleasePolicy.Release previous = history.size() > 1 ? history.get(history.size() - 2) : null;
-        List<ContractGate.Difference> differences = ContractGate.compareReleases(previous != null ? previous.ir()
+        List<ContractGate.Difference> differences = ReleaseComparison.compare(previous != null ? previous.ir()
                 : EmptyContract.document("/api", current.ir().apiMajor()), current.ir());
         ReleasePolicy.Result result = ReleasePolicy.check(history, differences, new ReleasePolicy.Policy(0, 0, false));
         return ReleaseChangelog.render(current.version(), current.ir(), previous, differences, result.evidence());

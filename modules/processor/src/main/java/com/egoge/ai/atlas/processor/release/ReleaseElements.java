@@ -6,7 +6,7 @@ package com.egoge.ai.atlas.processor.release;
 import com.egoge.ai.atlas.processor.contract.ContractGate;
 import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.contract.ContractProjection;
-import com.egoge.ai.atlas.processor.contract.ReleaseSurface;
+import com.egoge.ai.atlas.processor.contract.ReleaseComparison;
 
 /**
  * The field or operation a gate element path names in an IR document, and its deprecation as
@@ -58,13 +58,13 @@ final class ReleaseElements {
         if (isField(path)) {
             ContractIr.Field f = field(ir, path);
             return f != null && ContractProjection.isActive(f.lifecycle(), major)
-                    && ReleaseSurface.deprecatedAt(f.lifecycle().deprecatedSinceVersion(), major)
+                    && ReleaseComparison.deprecatedAt(f.lifecycle().deprecatedSinceVersion(), major)
                     ? f.lifecycle().deprecatedSinceVersion() : 0;
         }
         if (isOperation(path)) {
             ContractIr.Operation op = operation(ir, path);
             return op != null && ContractProjection.isActive(op.lifecycle(), major)
-                    && ReleaseSurface.deprecatedAt(op.lifecycle().apiDeprecatedSince(), major)
+                    && ReleaseComparison.deprecatedAt(op.lifecycle().apiDeprecatedSince(), major)
                     ? op.lifecycle().apiDeprecatedSince() : 0;
         }
         return 0;

@@ -7,6 +7,7 @@ import com.egoge.ai.atlas.processor.contract.ContractGate;
 import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.contract.EmptyContract;
 import com.egoge.ai.atlas.processor.contract.IrJson;
+import com.egoge.ai.atlas.processor.contract.ReleaseComparison;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -311,7 +312,7 @@ public final class ContractRelease {
     private static List<ContractGate.Difference> compare(ContractIr before, ContractIr current)
             throws ReleaseException {
         try {
-            return ContractGate.compareReleases(before, current);
+            return ReleaseComparison.compare(before, current);
         } catch (IllegalArgumentException e) {
             throw new ReleaseException("The release cannot be compared with the previous one: " + e.getMessage());
         }

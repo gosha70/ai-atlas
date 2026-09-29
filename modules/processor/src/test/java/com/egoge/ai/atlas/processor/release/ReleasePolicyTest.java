@@ -3,9 +3,9 @@
  */
 package com.egoge.ai.atlas.processor.release;
 
-import com.egoge.ai.atlas.processor.contract.ContractGate;
 import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.contract.EmptyContract;
+import com.egoge.ai.atlas.processor.contract.ReleaseComparison;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -198,6 +198,6 @@ class ReleasePolicyTest {
         ContractIr current = history.get(history.size() - 1).ir();
         ContractIr previous = history.size() > 1 ? history.get(history.size() - 2).ir()
                 : EmptyContract.document(current.apiBasePath(), current.apiMajor());
-        return ReleasePolicy.check(history, ContractGate.compareReleases(previous, current), policy);
+        return ReleasePolicy.check(history, ReleaseComparison.compare(previous, current), policy);
     }
 }

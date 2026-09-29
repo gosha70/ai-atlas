@@ -8,6 +8,7 @@ import com.egoge.ai.atlas.processor.contract.ContractGate.Classification;
 import com.egoge.ai.atlas.processor.contract.ContractGate.Difference;
 import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.contract.EmptyContract;
+import com.egoge.ai.atlas.processor.contract.ReleaseComparison;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -19,10 +20,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 /**
- * {@link ContractGate#compareReleases}: the gate's own comparison, over what each release published
+ * {@link ReleaseComparison#compare}: the gate's own comparison, over what each release published
  * at its own major.
  */
-class CompareReleasesTest {
+class ReleaseComparisonTest {
 
     private static final String DECLARED_REMOVAL = LEGACY.formatted(", deprecatedSinceVersion = 1,"
             + " removedInVersion = 2, deprecatedMessage = \"Use id\"");
@@ -34,7 +35,7 @@ class CompareReleasesTest {
 
         // At the previous major the declared removal is invisible, by design of the gate
         assertThat(ContractGate.compare(previous, current)).isEmpty();
-        List<Difference> differences = ContractGate.compareReleases(previous, current);
+        List<Difference> differences = ReleaseComparison.compare(previous, current);
 
         assertThat(differences).extracting(Difference::path, Difference::change, Difference::classification)
                 .containsExactly(tuple("field test.Order#legacy", "removed", Classification.BREAKING));
@@ -43,14 +44,14 @@ class CompareReleasesTest {
 
     @Test
     void identicalReleasesDoNotDiffer() {
-        assertThat(ContractGate.compareReleases(ir(1, NOTE), ir(1, NOTE))).isEmpty();
+        assertThat(ReleaseComparison.compare(ir(1, NOTE), ir(1, NOTE))).isEmpty();
     }
 
     @Test
     void aFirstReleaseAddsEveryPublishedElement() {
         ContractIr current = ir(1, NOTE);
 
-        List<Difference> differences = ContractGate.compareReleases(EmptyContract.document("/api", 1), current);
+        List<Difference> differences = ReleaseComparison.compare(EmptyContract.document("/api", 1), current);
 
         assertThat(differences).extracting(Difference::path, Difference::change, Difference::classification)
                 .containsExactly(
@@ -64,7 +65,7 @@ class CompareReleasesTest {
         ContractIr previous = ir(1, LEGACY.formatted(""));
         ContractIr current = ir(1, DECLARED_REMOVAL);
 
-        List<Difference> differences = ContractGate.compareReleases(previous, current);
+        List<Difference> differences = ReleaseComparison.compare(previous, current);
 
         assertThat(differences).extracting(Difference::path, Difference::change, Difference::classification)
                 .containsExactly(tuple("field test.Order#legacy", "lifecycle", Classification.COMPATIBLE));
@@ -75,7 +76,7 @@ class CompareReleasesTest {
         ContractIr previous = ir(1, LEGACY.formatted(""));
         ContractIr current = ir(1, LEGACY.formatted(", deprecatedSinceVersion = 2"));
 
-        assertThat(ContractGate.compareReleases(previous, current)).isEmpty();
+        assertThat(ReleaseComparison.compare(previous, current)).isEmpty();
     }
 
     @Test
@@ -83,8 +84,8 @@ class CompareReleasesTest {
         ContractIr previous = ir(1, "");
         ContractIr later = ir(1, LEGACY.formatted(", sinceVersion = 2"));
 
-        assertThat(ContractGate.compareReleases(previous, later)).isEmpty();
-        assertThat(ContractGate.compareReleases(later, ir(2, LEGACY.formatted(", sinceVersion = 2"))))
+        assertThat(ReleaseComparison.compare(previous, later)).isEmpty();
+        assertThat(ReleaseComparison.compare(later, ir(2, LEGACY.formatted(", sinceVersion = 2"))))
                 .extracting(Difference::path, Difference::change)
                 .containsExactly(tuple("field test.Order#legacy", "added"));
     }
@@ -94,7 +95,7 @@ class CompareReleasesTest {
         ContractIr previous = ir(1, LEGACY.formatted(""));
         ContractIr current = ir(2, "");
 
-        List<Difference> differences = ContractGate.compareReleases(previous, current);
+        List<Difference> differences = ReleaseComparison.compare(previous, current);
 
         assertThat(differences).singleElement().satisfies(d -> assertThat(d.remedy()).contains("removedInVersion = 2"));
     }
@@ -106,7 +107,7 @@ class CompareReleasesTest {
                 NOTE.replace("description = \"A note\"", "description = \"A note\", channels = AgenticExposed.Channel.API"),
                 "", ReleaseFixtures.PROJECTIONS));
 
-        List<Difference> differences = ContractGate.compareReleases(previous, current);
+        List<Difference> differences = ReleaseComparison.compare(previous, current);
 
         assertThat(differences).filteredOn(Difference::breaking)
                 .extracting(Difference::path, Difference::change, Difference::before, Difference::after)

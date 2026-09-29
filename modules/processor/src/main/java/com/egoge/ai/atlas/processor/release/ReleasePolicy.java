@@ -5,6 +5,7 @@ package com.egoge.ai.atlas.processor.release;
 
 import com.egoge.ai.atlas.processor.contract.ContractGate;
 import com.egoge.ai.atlas.processor.contract.ContractIr;
+import com.egoge.ai.atlas.processor.contract.ReleaseComparison;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -15,7 +16,7 @@ import java.util.Map;
 
 /**
  * The release policy: what may leave a published contract between two releases. It reads the
- * differences {@link ContractGate#compareReleases} reports and the release history, and never
+ * differences {@link ReleaseComparison#compare} reports and the release history, and never
  * classifies a change itself.
  *
  * <ul>
@@ -133,7 +134,7 @@ public final class ReleasePolicy {
     /**
      * Whether a difference removes a published element, or a channel one is reachable on.
      *
-     * @param d a difference {@link ContractGate#compareReleases} reported
+     * @param d a difference {@link ReleaseComparison#compare} reported
      * @return whether it is a removal the policy governs
      */
     public static boolean isRemoval(ContractGate.Difference d) {
@@ -152,7 +153,7 @@ public final class ReleasePolicy {
      * Checks a release against the policy.
      *
      * @param history     every release, oldest first, ending with the one being checked
-     * @param differences what {@link ContractGate#compareReleases} reported between the last two
+     * @param differences what {@link ReleaseComparison#compare} reported between the last two
      *                    releases of {@code history}, or between the empty document and the only one
      * @param policy      the policy
      * @return the violations, and the deprecation evidence of every removal
