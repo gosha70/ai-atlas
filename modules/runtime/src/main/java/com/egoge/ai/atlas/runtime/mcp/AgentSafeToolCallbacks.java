@@ -201,7 +201,8 @@ public class AgentSafeToolCallbacks implements ApplicationContextAware, Disposab
             if (target == null && !Modifier.isStatic(method.getModifiers())) {
                 throw unreadable(callback, "toolObject", source, null);
             }
-            if (!replaceable(own)) {
+            // A converter already checking the method's declared bound is judged by the one it wraps
+            if (!replaceable(BoundCheckingResultConverter.unwrap(own))) {
                 return callback;
             }
             return MethodToolCallback.builder()
@@ -209,7 +210,7 @@ public class AgentSafeToolCallbacks implements ApplicationContextAware, Disposab
                     .toolMetadata(callback.getToolMetadata())
                     .toolMethod(method)
                     .toolObject(target)
-                    .toolCallResultConverter(converter())
+                    .toolCallResultConverter(BoundCheckingResultConverter.of(converter(), method))
                     .build();
         }
         if (type == FunctionToolCallback.class) {

@@ -23,6 +23,9 @@ import java.util.Collection;
  * <p>If a raw entity (non-DTO) is returned from a {@code /api/v1/} endpoint,
  * a warning is logged. This acts as a runtime safety net ensuring PII-safe
  * DTOs are always used in generated API responses.
+ *
+ * <p>It also logs a warning when a response holds more elements than its generated controller
+ * method's declared bound ({@link ResultBounds}), and writes it unchanged.
  */
 @ControllerAdvice
 public class DtoResponseBodyAdvice implements ResponseBodyAdvice<Object> {
@@ -45,6 +48,7 @@ public class DtoResponseBodyAdvice implements ResponseBodyAdvice<Object> {
         if (body == null) {
             return null;
         }
+        ResultBounds.check(body, returnType.getMethod(), request.getURI().getPath());
 
         Object toCheck = body;
         if (body instanceof Collection<?> collection && !collection.isEmpty()) {
