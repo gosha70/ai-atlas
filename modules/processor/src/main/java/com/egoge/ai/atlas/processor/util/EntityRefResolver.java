@@ -8,6 +8,8 @@ import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.TypeName;
 
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -63,5 +65,47 @@ public final class EntityRefResolver {
         }
 
         return null;
+    }
+
+    /**
+     * The entities with each direct field's {@code @AgenticField(type = ...)} hint in effect, which
+     * {@link #resolve} otherwise honours only for collection, iterable and array elements. A field
+     * whose declared type is not a registered entity but whose hint is one, such as an unannotated
+     * {@code Vip extends Person} field hinted {@code type = Person.class}, gets the hint as its type, so
+     * it maps through the entity's records. Only {@code ai.atlas.projections=true} applies this; with
+     * the option off a direct hint keeps having no effect.
+     *
+     * @param registry every registered entity by qualified class name
+     * @return the entities, in the same order; an entity with no such field is the same instance
+     */
+    public static Map<String, EntityModel> withDirectHints(Map<String, EntityModel> registry) {
+        Map<String, EntityModel> result = new LinkedHashMap<>();
+        registry.forEach((className, entity) -> {
+            List<FieldModel> fields = entity.fields().stream().map(f -> directHinted(f, registry)).toList();
+            result.put(className, fields.equals(entity.fields()) ? entity
+                    : new EntityModel(entity.sourceClassName(), entity.dtoName(), entity.dtoPackageName(),
+                            entity.displayName(), entity.classDescription(), entity.includeTypeInfo(), fields));
+        });
+        return result;
+    }
+
+    /**
+     * A direct field with its hint as its type when the hint names a registered entity and its
+     * declared type does not; any other field unchanged.
+     *
+     * @param field    the field
+     * @param registry every registered entity by qualified class name
+     * @return the field as {@link #withDirectHints} sees it
+     */
+    public static FieldModel directHinted(FieldModel field, Map<String, EntityModel> registry) {
+        if (field.collectionKind() != FieldModel.CollectionKind.NONE
+                || !(field.hintTypeName() instanceof ClassName hint) || !registry.containsKey(hint.canonicalName())
+                || field.typeName() instanceof ClassName type && registry.containsKey(type.canonicalName())) {
+            return field;
+        }
+        return new FieldModel(field.name(), field.displayName(), hint, field.description(), field.sensitive(),
+                field.checkCircularReference(), field.enumType(), field.enumValues(), field.collectionKind(),
+                field.elementTypeName(), field.hintTypeName(), field.sinceVersion(), field.removedInVersion(),
+                field.deprecatedSinceVersion(), field.deprecatedMessage());
     }
 }

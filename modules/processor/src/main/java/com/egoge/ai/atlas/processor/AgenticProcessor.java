@@ -109,7 +109,7 @@ public class AgenticProcessor extends AbstractProcessor {
         projections = ProjectionsOption.resolve(OPT_PROJECTIONS, processingEnv);
         versionConfigValid &= projections != null;
         if (projections != null) {
-            contractIr = new IrBuilder(processingEnv, projections::channels);
+            contractIr = new IrBuilder(processingEnv, projections::channels, projections.enabled());
         }
     }
 
@@ -227,7 +227,7 @@ public class AgenticProcessor extends AbstractProcessor {
                         typeElement);
             }
 
-            var scanned = contractIr.addEntity(typeElement, FieldScanner.scanAll(typeElement, processingEnv));
+            var scanned = contractIr.addEntity(typeElement, FieldScanner.scanAll(typeElement, processingEnv, projections.enabled()));
             projections.recordEntity(typeElement, scanned, processingEnv.getMessager());
             roundEntities.put(typeElement, scanned);
         }
@@ -249,7 +249,8 @@ public class AgenticProcessor extends AbstractProcessor {
             EntityModel model = entityRegistry.get(key);
             boolean hasEmptyRef = false;
             for (FieldModel field : model.fields()) {
-                EntityRefResolver.EntityRef ref = EntityRefResolver.resolve(field, entityRegistry);
+                EntityRefResolver.EntityRef ref = EntityRefResolver.resolve(projections.enabled()
+                        ? EntityRefResolver.directHinted(field, entityRegistry) : field, entityRegistry);
                 if (ref != null) {
                     EntityModel refEntity = entityRegistry.get(ref.entityClass().canonicalName());
                     if (refEntity != null && refEntity.fields().isEmpty()) {

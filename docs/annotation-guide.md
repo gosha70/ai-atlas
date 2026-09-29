@@ -61,7 +61,7 @@ Marks a field for inclusion in the generated DTO. Fields without this annotation
 | `checkCircularReference` | boolean | `true` | Enable identity-based cycle detection during serialization |
 | `allowedValues` | String[] | `{}` | Explicit list of valid values (overrides automatic enum detection) |
 | `openEnum` | boolean | `false` | Whether clients tolerate values they do not know; governs whether the contract gate treats an added enum constant or allowed value as breaking (see [Open and Closed Enums](#open-and-closed-enums)) |
-| `type` | Class<?> | `void.class` | Element type hint for raw/wildcard collection fields (e.g., `Collection` without a type parameter) |
+| `type` | Class<?> | `void.class` | Element type hint for raw/wildcard collection fields (e.g., `Collection` without a type parameter). With `ai.atlas.projections=true`, also the entity a direct field of an unannotated entity subtype maps through (see [Channel projections](channel-projections.md#the-raw-entity-path)) |
 | `sinceVersion` | int | `1` | Minimum major API version where this field is included in the generated DTO |
 | `removedInVersion` | int | `Integer.MAX_VALUE` | Major version at which this field is removed from the DTO (exclusive — half-open interval) |
 | `deprecatedSinceVersion` | int | `0` | Major version at which this field became deprecated (`0` = not deprecated) |

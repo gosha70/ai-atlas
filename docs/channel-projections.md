@@ -161,7 +161,9 @@ Projection reaches only responses mapped to a DTO. A method without a resolvable
 - On MCP, Spring AI serializes the result with its own `ObjectMapper`, without the runtime's
   `AgentSafeModule`, so every getter reaches the agent, including those of fields without
   `@AgenticField`. That leak exists with or without projections, and is tracked in
-  [#50](https://github.com/gosha70/ai-atlas/issues/50).
+  [#50](https://github.com/gosha70/ai-atlas/issues/50). With the flag off, the same happens to an `@AgenticField` whose
+  type is an unannotated subtype of an entity, such as `VipCustomer customer`: its DTO copies the raw
+  `VipCustomer`, which [#50](https://github.com/gosha70/ai-atlas/issues/50) also covers.
 
 So with the flag on, an exposed method that returns an `@AgenticEntity`, or a collection, iterable
 or array of one, without a resolvable `returnType` is a compile ERROR on the method: declare
@@ -173,6 +175,16 @@ as incompatible, as before. Other return shapes, such as `List<List<Order>>`,
 `Iterable<? super Order>`, `Map<String, Order>` and `Stream<Order>`, are not checked, so their
 raw entities still leak as described above, which [#50](https://github.com/gosha70/ai-atlas/issues/50)
 covers.
+
+The same holds for fields. With the flag on, an `@AgenticField` whose type, or collection, iterable
+or array element type, is an unannotated subtype of an entity, such as `VipCustomer customer` or
+`List<VipCustomer> customers` where `VipCustomer extends Customer`, is a compile ERROR on the field:
+its DTO would copy the raw `VipCustomer`, every getter of it. Declare the field as `Customer`, or add
+`@AgenticField(type = Customer.class)`. With the flag on, the hint also takes effect on a direct
+field, so `@AgenticField(type = Customer.class) VipCustomer customer` maps through `CustomerDto` on
+REST and `CustomerAiDto` on MCP, and the Contract IR records its reference to `Customer`. The hint
+must be assignable from the field's type. With the flag off, a hint on a direct field still has no
+effect and draws a WARNING.
 
 There is no other runtime change: the controller calls `OrderDto.fromEntity`, the tool calls
 `OrderAiDto.fromEntity`, both are `@Generated` ai-atlas types that `DtoResponseBodyAdvice` accepts,

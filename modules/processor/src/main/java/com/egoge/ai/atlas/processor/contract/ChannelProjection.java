@@ -28,6 +28,10 @@ import java.util.function.Function;
  * through a collection, iterable or array, to an entity that splits. That is the least fixpoint of
  * the rule, so reference cycles terminate. The AI view names a split entity by its AI record name
  * and every other entity by its DTO name, so the two channels share one record wherever they agree.
+ *
+ * <p>A direct field's {@code @AgenticField(type)} hint naming an entity is in effect here, as it is
+ * for collection elements ({@link EntityRefResolver#withDirectHints}): the field refers to that
+ * entity, and the views give it the entity's type, so it maps through the entity's records.
  */
 public final class ChannelProjection {
 
@@ -44,7 +48,7 @@ public final class ChannelProjection {
 
     private ChannelProjection(Map<String, EntityModel> entities, BiFunction<String, String, List<String>> eligibility,
                               Function<String, String> aiDtoNames) {
-        this.entities = entities;
+        this.entities = EntityRefResolver.withDirectHints(entities);
         this.eligibility = eligibility;
         this.split = splitEntities();
         this.apiView = view(API, className -> entities.get(className).dtoName());

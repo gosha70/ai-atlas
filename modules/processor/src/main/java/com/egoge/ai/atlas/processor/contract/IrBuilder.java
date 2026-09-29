@@ -96,6 +96,8 @@ public final class IrBuilder {
     private final ConstraintReader constraintReader;
     /** A field's effective channels, sorted, by entity class name and field name. */
     private final BiFunction<String, String, List<String>> channels;
+    /** Whether a direct field's entity type hint is in effect, as {@code ai.atlas.projections=true} has it. */
+    private final boolean directHints;
     private final Map<String, EntityModel> entities = new TreeMap<>();
     private final Map<String, Operation> operations = new TreeMap<>();
     /** {@code entity#field} of every field declared {@code openEnum = true}. */
@@ -109,9 +111,21 @@ public final class IrBuilder {
      * @param channels a field's effective channels, sorted, by entity class name and field name
      */
     public IrBuilder(ProcessingEnvironment env, BiFunction<String, String, List<String>> channels) {
+        this(env, channels, false);
+    }
+
+    /**
+     * @param env         the processing environment of the compilation
+     * @param channels    a field's effective channels, sorted, by entity class name and field name
+     * @param directHints whether a direct field's {@code @AgenticField(type)} naming an entity makes
+     *                    the field refer to it, as with {@code ai.atlas.projections=true}
+     */
+    public IrBuilder(ProcessingEnvironment env, BiFunction<String, String, List<String>> channels,
+                     boolean directHints) {
         this.env = env;
         this.constraintReader = new ConstraintReader(env);
         this.channels = channels;
+        this.directHints = directHints;
     }
 
     /**
@@ -383,7 +397,8 @@ public final class IrBuilder {
 
     private Field field(FieldModel field, boolean openEnum, EffectiveConstraints constraints,
                         List<String> fieldChannels) {
-        EntityRefResolver.EntityRef ref = EntityRefResolver.resolve(field, entities);
+        EntityRefResolver.EntityRef ref = EntityRefResolver.resolve(
+                directHints ? EntityRefResolver.directHinted(field, entities) : field, entities);
         return new Field(field.name(), field.displayName(), field.typeName().toString(),
                 field.collectionKind().name(), typeString(field.elementTypeName()),
                 typeString(field.hintTypeName()),
