@@ -431,7 +431,7 @@ public final class RestOption {
      *
      * @param model           the service, projected at the configured major
      * @param enforceRequired whether each record rejects a missing required component with 400 Bad
-     *                        Request, as with {@code ai.atlas.constraints=true}
+     *                        Request
      */
     public void generateInputRecords(ServiceModel model, boolean enforceRequired) {
         for (MethodModel method : model.methods()) {

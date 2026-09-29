@@ -393,7 +393,7 @@ class RestInputRecordTest {
             """;
 
     @Test
-    void aMissingRequiredInputFieldIsRejectedWithConstraintsOn() throws Exception {
+    void aMissingRequiredInputFieldIsRejected() throws Exception {
         Compilation compilation = compile(List.of(REST_ON, CONSTRAINTS_ON), REQUIRED_ITEM, PLACE);
         GeneratedClasses classes = new GeneratedClasses(compilation);
         MockMvc mvc = classes.mvc("ItemService");
@@ -421,14 +421,21 @@ class RestInputRecordTest {
     }
 
     @Test
-    void withConstraintsOffTheInputRecordIsUnchecked() throws Exception {
+    void withConstraintsOffTheInputRecordStillEnforcesItsRequiredComponents() throws Exception {
         Compilation compilation = compile(List.of(REST_ON), REQUIRED_ITEM, PLACE);
+        GeneratedClasses classes = new GeneratedClasses(compilation);
 
+        JsonNode schema = openApi(compilation).path("components").path("schemas").path("ItemInput");
+        assertThat(schema.path("required").toString()).isEqualTo("[\"name\",\"qty\"]");
         assertThat(source(compilation, "shop.generated.ItemInput"))
-                .contains("public record ItemInput(String name, int qty, String note)")
-                .doesNotContain("IllegalArgumentException");
-        assertThat(call(new GeneratedClasses(compilation).mvc("ItemService"), post("/api/v1/items")
-                .contentType(MediaType.APPLICATION_JSON).content("{}"))).isEqualTo("201 ");
+                .contains("public record ItemInput(String name, Integer qty, String note)")
+                .contains("throw new IllegalArgumentException(\"'name' is required\");");
+        MockMvc mvc = classes.mvc("ItemService");
+        assertThat(call(mvc, post("/api/v1/items").contentType(MediaType.APPLICATION_JSON).content("{}")))
+                .startsWith("400");
+        assertThat(classes.load("shop.ItemService").getField("last").get(null)).isNull();
+        assertThat(call(mvc, post("/api/v1/items").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"pen\",\"qty\":0}"))).isEqualTo("201 ");
     }
 
     @Test

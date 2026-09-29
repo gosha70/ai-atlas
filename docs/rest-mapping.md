@@ -212,14 +212,14 @@ public record OrderInput(Long id, String status) {
   declaration order. An entity with neither, or an abstract one, is a compile error naming the
   missing setters and the constructor it would take.
 - **Requiredness.** The OpenAPI schema of `<Entity>Input` lists its required components: primitives
-  and fields with `@NotNull`, `@NotBlank` or `@NotEmpty`. With `ai.atlas.constraints=true`, its
-  properties carry the fields' constraints, and the record **enforces** that list: a required
+  and fields with `@NotNull`, `@NotBlank` or `@NotEmpty`. The record **enforces** that list,
+  with `ai.atlas.constraints` on or off, as a required `@RequestParam` is enforced: a required
   primitive component is boxed, and the record's compact constructor throws
   `IllegalArgumentException` for a required component that is missing or `null`, which Spring
-  answers with `400 Bad Request` before the service is called. This needs no Bean Validation, like
-  the `@RequestParam(required)` of query parameters; the other constraints (`@Size`, `@Pattern`,
-  `@NotBlank`'s blankness, …) are published, not enforced, as for query parameters. With
-  `ai.atlas.constraints` off, the record is unchanged and does not check. The body parameter itself is required unless it is
+  answers with `400 Bad Request` before the service is called. This needs no Bean Validation. With
+  `ai.atlas.constraints=true`, its properties also carry the fields' constraints (`@Size`,
+  `@Pattern`, `@NotBlank`'s blankness, …), which are published, not enforced, as for query
+  parameters. The body parameter itself is required unless it is
   declared `@AgenticParam(required = OPTIONAL)`, which binds `@RequestBody(required = false)` and
   passes `null` to the service when the body is absent.
 - **OpenAPI** references `#/components/schemas/<Entity>Input`, exactly what is accepted. The
