@@ -4,6 +4,7 @@
 package com.egoge.ai.atlas.plugin;
 
 import com.egoge.ai.atlas.processor.contract.ContractIr;
+import org.gradle.api.GradleException;
 import org.gradle.api.logging.Logging;
 
 import java.io.BufferedInputStream;
@@ -15,8 +16,10 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -49,6 +52,10 @@ final class ContractDeclarations {
 
     /** Class-output-relative path of the IR the processor emits; a constant, inlined by javac. */
     static final String IR_PATH = ContractIr.RESOURCE_PATH;
+    /** Class-output-relative path of a major's OpenAPI document, for {@code String.formatted(major)}. */
+    static final String OPENAPI_PATH = "META-INF/openapi/openapi-v%d.json";
+    /** Class-output-relative path of the MCP tool specifications, generated with {@code constraints} on. */
+    static final String MCP_TOOLS_PATH = "META-INF/ai-atlas/mcp-tools.json";
 
     private static final String CLASS_SUFFIX = ".class";
     private static final int CLASS_MAGIC = 0xCAFEBABE;
@@ -84,6 +91,31 @@ final class ContractDeclarations {
      */
     static boolean declared(File classesDir) {
         return declared(classesDir, Logging.getLogger(ContractDeclarations.class)::warn);
+    }
+
+    /**
+     * The class output holding the contract the compilation emitted: the one output that declares a
+     * contract, whose IR the processor wrote on this compilation.
+     *
+     * @param classesDirs a compile task's class outputs
+     * @return the output, or {@code null} when none declares a contract, whose contract is then empty
+     * @throws GradleException if a declaring output holds no IR, or more than one does
+     */
+    static File declaringOutput(Collection<File> classesDirs) {
+        List<File> declaring = classesDirs.stream().filter(ContractDeclarations::declared).toList();
+        if (declaring.isEmpty()) {
+            return null;
+        }
+        List<File> withIr = declaring.stream().filter(dir -> new File(dir, IR_PATH).isFile()).toList();
+        if (withIr.isEmpty()) {
+            throw new GradleException("The compilation declares an ai-atlas contract but emitted no " + IR_PATH
+                    + " in " + declaring);
+        }
+        if (withIr.size() > 1) {
+            throw new GradleException("The compilation emitted more than one " + IR_PATH + ", so its contract is"
+                    + " ambiguous: " + withIr);
+        }
+        return withIr.get(0);
     }
 
     /**
