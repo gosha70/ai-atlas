@@ -146,6 +146,22 @@ class MappingGateTest {
     }
 
     @Test
+    void aCeilingMovedToAnotherParameterIsComparedAgainstWhatThatParameterAccepted() {
+        // find(Pageable pageable, Long size): the Pageable's ceiling of 50 moves to a previously unlimited size
+        Rest query = Rest.rpc("POST", "/order-service/find", 2);
+        ContractIr pageable = twoParameters(query, "pageable", "size", paged(50));
+
+        for (int ceiling : List.of(80, 50)) {
+            assertThat(ContractGate.compare(pageable, twoParameters(query, "pageable", "size",
+                    new Bound("LIMIT", "NONE", "size", null, ceiling))))
+                    .extracting(Difference::change, Difference::direction, Difference::before, Difference::after,
+                            Difference::classification)
+                    .contains(tuple("returns.bound.maxResults", Direction.INPUT, "50 on 'pageable'",
+                            ceiling + " on 'size'", Classification.BREAKING));
+        }
+    }
+
+    @Test
     void aDeclaredBoundBecomingALimitOfTheSameValueIsComparedPerDirection() {
         // Over @Max(50): the result bound disappears as an output; the ceiling adds nothing as an input
         assertThat(ContractGate.compare(op(API, "id", declared(50), "50"), op(API, "id", limit(50), "50")))
@@ -214,6 +230,18 @@ class MappingGateTest {
         assertThat(single(compare(op(BOTH, byId, "id", Bound.NONE), op(BOTH, items, "id", Bound.NONE))))
                 .extracting(Difference::change, Difference::classification)
                 .containsExactlyInAnyOrder("rest.path", Classification.BREAKING);
+    }
+
+    @Test
+    void swappingTwoPathVariablesIsBreaking() {
+        // The route is unchanged, but existing clients' first segment now binds orderId
+        Rest customerFirst = new Rest("GET", "/orders/{customerId}/{orderId}", 200, List.of("PATH", "PATH"));
+        Rest orderFirst = new Rest("GET", "/orders/{orderId}/{customerId}", 200, List.of("PATH", "PATH"));
+
+        assertThat(ContractGate.compare(twoParameters(customerFirst, "customerId", "orderId", Bound.NONE),
+                twoParameters(orderFirst, "customerId", "orderId", Bound.NONE)))
+                .extracting(Difference::change, Difference::classification)
+                .containsExactly(tuple("rest.path", Classification.BREAKING));
     }
 
     @Test
@@ -317,6 +345,16 @@ class MappingGateTest {
         Operation op = new Operation("shop.OrderService", "find", "find", channels, "Find",
                 channels.contains("API") ? rest : null,
                 List.of(new Parameter(parameter, "java.lang.Long", "", List.of(), true, constraints)),
+                new Return("java.util.List<java.lang.String>", "COLLECTION", null, null, bound), Hints.NONE,
+                new OperationLifecycle(1, Integer.MAX_VALUE, 0, ""));
+        return new ContractIr(ContractIr.IR_VERSION, "/api", 1, List.of(), List.of(op));
+    }
+
+    /** A document of one API-only operation, {@code OrderService.find(Long, Long)}, active from major 1. */
+    private static ContractIr twoParameters(Rest rest, String first, String second, Bound bound) {
+        Operation op = new Operation("shop.OrderService", "find", "find", API, "Find", rest,
+                List.of(new Parameter(first, "java.lang.Long", "", List.of(), true, EffectiveConstraints.NONE),
+                        new Parameter(second, "java.lang.Long", "", List.of(), true, EffectiveConstraints.NONE)),
                 new Return("java.util.List<java.lang.String>", "COLLECTION", null, null, bound), Hints.NONE,
                 new OperationLifecycle(1, Integer.MAX_VALUE, 0, ""));
         return new ContractIr(ContractIr.IR_VERSION, "/api", 1, List.of(), List.of(op));
