@@ -480,6 +480,8 @@ The only coupling is indirect:
 
 `./gradlew build -x javadoc -Porg.gradle.java.installations.paths=/usr/lib/jvm/java-17-openjdk-amd64,/usr/lib/jvm/java-21-openjdk-amd64 --continue`
 
+- **Passes** (`BUILD SUCCESSFUL`): every module's tests, checkstyle, the Gradle plugin's functional
+  tests and the demo.
 - Processor module: every test passes, including the 27 spike tests and `IrRewireGoldenTest` (24).
 - Maven Central rate-limited this environment (HTTP 429) during full builds. Retry download failures
   before reading a red task as a code failure.
