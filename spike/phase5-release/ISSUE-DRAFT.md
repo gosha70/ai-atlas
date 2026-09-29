@@ -50,9 +50,10 @@ The feasibility spike is on branch `claude/phase5-release-spike`, in
   - byte-for-byte determinism.
 
   The build passed with javadoc excluded (`./gradlew build -x javadoc --continue`).
-- **The prototype does not fix these decisions.** Its comparison lives in the plugin. It polices
-  only field and operation removals, and treats every committed snapshot as published. The items
-  below supersede it.
+- **The prototype is evidence of feasibility, not an implementation of these decisions.** Its
+  comparison lives in the plugin. It polices only field and operation removals, treats every
+  committed snapshot as published, and copies resources from the class output without a manifest.
+  The items below supersede it, and the implementation starts from them, not from the prototype.
 
 The owner accepted items 1–3 and 5–9 with the refinements stated. Item 4 strengthens the spike's
 default. The follow-up decisions of the same day settle channel removals (item 4), offline tags and
@@ -113,20 +114,40 @@ remains open.
   - `openapi-v<major>.json`, always for a non-empty contract (`agentic { openApiEnabled }` is not
     wired to the processor today);
   - `mcp-tools.json`, exactly when the effective `ai.atlas.constraints` is true.
-- **The release copies exactly the listed artifacts and verifies their digests.**
-  - A listed artifact that is missing fails the release.
-  - So does one whose digest differs.
-  - So does any other ai-atlas contract resource in the class output: a leftover `openapi-v<N>.json`
-    from another major, or `mcp-tools.json` with constraints now off.
-  - It never takes "whatever is in the class output".
+- **Decided: a reserved set of ai-atlas-owned resource paths.** Only this set is inspected, and
+  only in `compileJava`'s class output, where the processor writes:
+
+  | Path | Written | Snapshotted |
+  |---|---|---|
+  | `META-INF/ai-atlas/api.ir.json` | always | yes |
+  | `META-INF/ai-atlas/contract-resources.json`, the new manifest | always, including for an empty contract (written by the plugin then, see below) | its content goes into `release.json` |
+  | `META-INF/ai-atlas/contract-diff.json` | when the gate compared against a baseline | no; the release writes its own comparison |
+  | `META-INF/ai-atlas/mcp-tools.json` | when the effective `ai.atlas.constraints` is true | yes |
+  | `META-INF/ai-atlas/api-version.properties` | always for a non-empty contract | no |
+  | `META-INF/ai-atlas/deprecation-manifest.json` | always for a non-empty contract | no |
+  | `META-INF/openapi/openapi-v<N>.json`, for any positive integer N | for N = the effective major, for a non-empty contract | yes |
+  | `META-INF/openapi/openapi.json`, the unversioned alias | with the versioned document | no |
+
+  The processor defines these paths in one place. The manifest lists every one it wrote in this
+  compilation, snapshotted or not, with its digest.
+- **The release checks the reserved set against the manifest.**
+  - A listed file that is missing, or whose digest differs, fails the release.
+  - A file in the reserved set that the manifest does not list is **stale** and fails the release.
+    Examples are a leftover `openapi-v1.json` after moving to major 2, or `mcp-tools.json` after
+    constraints were turned off.
+  - Files outside the reserved set are never inspected. That covers other annotation processors'
+    output, other `META-INF` resources, and `build/resources/main` from `processResources`.
+  - The release copies exactly the snapshotted artifacts the manifest lists.
 - **Decided: an empty contract is recorded explicitly.** javac does not run the processor for a
   compilation with no ai-atlas annotation, so the processor cannot write the manifest.
   - The plugin derives the effective configuration from `compileJava`'s final compiler arguments,
     including manual `-A` arguments, with javac's last-wins rule.
   - It builds the empty IR with the processor's `EmptyContract`.
-  - It records `"contract": "empty"`, with `api.ir.json` as the only expected artifact.
-  - The release fails when the class output still holds any ai-atlas contract resource, which must
-    be stale output from an earlier compilation.
+  - It writes `contract-resources.json` recording `"contract": "empty"`, with the effective
+    configuration and `api.ir.json` (the `EmptyContract` document) as the only expected artifact.
+    That manifest is valid output, not stale.
+  - The release fails when any other file in the reserved set is present, since it must come from
+    an earlier compilation.
   - So a complete module removal stays releasable without ever accepting stale output.
 - The unversioned alias `openapi.json`, `deprecation-manifest.json` and `api-version.properties` are
   not snapshotted.
@@ -170,9 +191,20 @@ The obligations are to **published** clients, so they hold whatever `atlasAccept
   - **A field losing channel C** in a release at API major N passes only when both hold:
     - At least `minDeprecatedReleases` **tagged** releases each had the field, at that release's own
       API major, **active**, **deprecated** (`deprecatedSinceVersion` in effect), and **visible on
-      C**. Visible means the field lists C and its entity is reachable on C from an operation active
-      on C, as the gate's reachability rule computes it.
+      C**.
     - `N − deprecatedSinceVersion ≥ minApiMajorAdvance`.
+  - **Visible on C follows channel-eligible paths only, using the gate's full channel-aware
+    reachability rule** (`ContractComparison.reachable`). It is evaluated on that tagged release's
+    IR, at that release's own API major. The field is visible on C only when all of these hold:
+    - the field lists C;
+    - an operation active on C at that major returns its entity directly, or reaches it through a
+      chain of reference fields;
+    - every field in that chain is active at that major and lists C.
+
+    An operation that reaches the entity only through a field excluding C does **not** make the
+    field visible on C. Neither does an operation that is not active on C.
+  - The processor's `ReleasePolicy` and the gate share one implementation of this rule, extracted
+    from `ContractComparison` and parameterized by document and major. It is never re-implemented.
   - **An operation losing channel C** follows the equivalent rule. It needs tagged releases where
     the operation was active, deprecated (`apiDeprecatedSince` in effect) and listed C, and the same
     API-major advance.
@@ -199,7 +231,8 @@ The obligations are to **published** clients, so they hold whatever `atlasAccept
 ### 6. CI
 - **Decided — split ordinary validation from release validation.**
   - **`agenticReleaseHistoryCheck`, under `check`.** It runs offline on every build, on any branch
-    and in source archives, with no tag needed. It checks:
+    and in source archives, with no git needed. It checks internal consistency only (item 10,
+    "Validation boundary"):
     - every release directory against its manifest;
     - the ordering and `previous` chain;
     - `.atlas/CHANGELOG.md` against the history.
@@ -226,9 +259,10 @@ The obligations are to **published** clients, so they hold whatever `atlasAccept
 - **Decided:** no IR format change. Each release keeps its own `irVersion`, and `IrJson.read`
   migrates older ones in memory (`IrJson.java:343-370`). `release.json` is versioned independently.
 - **Digests detect accidental modification; they do not make files immutable.**
-  - `agenticReleaseVerify` rejects any modification or deletion of a snapshot that was **published**
-    before, relative to trusted history: the tree of the latest published release tag.
-  - The ordinary history check keeps the digest check.
+  - `agenticReleaseVerify` and `agenticRelease` reject any modification or deletion of a snapshot
+    that was **published** before, relative to trusted history: each proved tag's tree (item 10).
+  - The git-free history check keeps the digest check, which catches accidents but not a
+    consistent rewrite.
 
 ### 9. Where the comparison lives
 - **Decided:** a dedicated release comparison in the processor, transport-independent:
@@ -275,9 +309,14 @@ The obligations are to **published** clients, so they hold whatever `atlasAccept
   | No snapshot directories and no tag matching the convention | **A genuine first release: valid.** No git history is needed beyond the repository itself. |
   | Snapshots exist, and every one except at most the newest is backed by a proved tag | Valid |
   | Any older snapshot without its tag, a matching tag without its snapshot, a shallow clone (`git rev-parse --is-shallow-repository`), or no git repository while snapshots exist | **Fail: the published history needed for validation is unavailable.** The message names what is missing and says to fetch tags and full history. |
-- **Where this applies.** `agenticRelease` and `agenticReleaseVerify` apply these rules.
-  `agenticReleaseHistoryCheck` (item 6) stays git-free, so ordinary branches and source archives
-  still build.
+- **Validation boundary.**
+  - `agenticReleaseHistoryCheck` (item 6) is git-free. It verifies only the **internal
+    consistency** of the committed snapshots: digests, manifests, ordering, the `previous` chain,
+    and the aggregate changelog. It cannot tell whether a release was published, or whether a
+    published snapshot changed. A consistent rewrite of a snapshot, with new digests, passes it.
+  - Only the git-aware tasks, `agenticRelease` and `agenticReleaseVerify`, establish publication and
+    detect changes against tagged history. So only they award deprecation credit, and only they
+    enforce immutability.
 
 ## Out of scope
 - Pre-release versions, and releases on an older line (item 1).
@@ -298,8 +337,13 @@ The obligations are to **published** clients, so they hold whatever `atlasAccept
       policy and a digest of every other file.
 - [ ] The processor writes `contract-resources.json` with its effective configuration and the
       digests of the artifacts that configuration requires. The release copies exactly those
-      artifacts. A missing, mismatched or unlisted contract resource fails. Tests set the options
-      through manual `-A` arguments as well as through the extension.
+      artifacts. Tests set the options through manual `-A` arguments as well as through the
+      extension.
+- [ ] Only the reserved set of ai-atlas resource paths is inspected: the `META-INF/ai-atlas/` files,
+      `openapi-v<N>.json`, and the `openapi.json` alias. A listed file that is missing or
+      mismatched fails, and so does an unlisted file within the set. Tests show that another
+      processor's resources do not fail a release, and that a leftover `openapi-v1.json` after a
+      major bump does.
 - [ ] An empty contract is recorded explicitly (`"contract": "empty"`), from `compileJava`'s
       effective arguments, and releases when the class output holds no stale contract resource.
 - [ ] A fresh contract not canonically equal to the accepted baseline fails and names
@@ -315,12 +359,17 @@ The obligations are to **published** clients, so they hold whatever `atlasAccept
 - [ ] A field or operation losing channel C passes only with enough tagged releases in which it was
       active, deprecated and visible on C, plus the API-major advance. A release in which it was
       deprecated but not visible on C earns no credit.
+- [ ] Visibility is the gate's channel-aware reachability, shared code evaluated at each tagged
+      release's own major. Tests cover an entity reachable only through an intermediate field
+      excluding C (no credit), an operation not active on C (no credit), and nested chains.
 - [ ] Every other breaking change within the same API major fails by default, including one
       accepted with `atlasAccept`. Overrides are explicit and recorded.
 - [ ] Changelog entries come only from the release comparison. Tests pin the exact text for added,
       deprecated, removed and breaking entries. `.atlas/CHANGELOG.md` is regenerated and validated
       against history, and the root `CHANGELOG.md` is never touched.
-- [ ] `agenticReleaseHistoryCheck` runs under `check` offline, without git.
+- [ ] `agenticReleaseHistoryCheck` runs under `check` offline, without git, and checks internal
+      consistency only. A test shows that a consistent rewrite of a published snapshot passes it,
+      but fails `agenticReleaseVerify`.
       `agenticReleaseVerify` checks the tag's snapshot and rejects changes to published snapshots
       relative to trusted history.
 - [ ] Tags follow the configured `tagName`. A tag qualifies only when its commit is an ancestor of
