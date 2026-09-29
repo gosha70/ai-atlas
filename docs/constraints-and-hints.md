@@ -64,6 +64,8 @@ means "not set":
 
 - `description` (default `""`): when non-empty, becomes the parameter's description.
 - `required`, of `Requiredness { DEFAULT, REQUIRED, OPTIONAL }` (default `DEFAULT`).
+- `paging`, of `Paging { NONE, LIMIT, CURSOR }`, and `sortable`: a parameter's role in a paging
+  contract, read with `ai.atlas.collections` on (see [Collection exposure safety](collection-safety.md)).
 
 ```java
 public List<Order> search(
@@ -96,9 +98,12 @@ A parameter is required, in this order of precedence:
 
 1. as `@AgenticParam(required)` says, when it is `REQUIRED` or `OPTIONAL`;
 2. otherwise, when it is a primitive or carries `@NotNull`, `@NotBlank` or `@NotEmpty`;
-3. otherwise, it is still required, as REST query parameters always have been.
+3. otherwise, it is optional when it is a `@AgenticParam(paging = CURSOR)`, as the first call of a
+   cursor contract has no cursor;
+4. otherwise, it is still required, as REST query parameters always have been.
 
-So a parameter is optional only when it is declared `Requiredness.OPTIONAL`. `Requiredness.REQUIRED`
+So a parameter is optional only when it is declared `Requiredness.OPTIONAL`, or is a non-primitive
+cursor without `@NotNull`, `@NotBlank` or `@NotEmpty`. `Requiredness.REQUIRED`
 is always allowed, including together with `@NotNull`, `@NotBlank` or `@NotEmpty` or on a
 primitive; since a parameter is required by default, it changes nothing.
 
