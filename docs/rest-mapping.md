@@ -260,6 +260,46 @@ resolved HTTP method and route template, such as `DELETE /api/v1/orders/{id}`. T
 the request path first, else the most specific matching template, by Spring's `PathPattern`. A
 request to `DELETE /api/v1/orders/42` on a deprecated operation gets `Deprecation: true`.
 
+## The Contract IR and the gate
+
+Each API operation's `rest` in the Contract IR (`META-INF/ai-atlas/api.ir.json`, `irVersion 4`)
+records its **effective** mapping: `httpMethod`, `path` below the major (with its `{name}`
+variables), `status`, and `parameterIn`, each parameter's location in declaration order. It
+records the mapping with the flag off too, where every operation is on the RPC mapping: `200`, with
+every parameter in the query. So turning `ai.atlas.rest` on without declaring anything writes a
+byte-identical IR, and lock mode sees no difference.
+
+```json
+"rest": {
+  "httpMethod": "DELETE",
+  "path": "/orders/{id}",
+  "status": 204,
+  "parameterIn": [ "PATH" ]
+}
+```
+
+Baselines of `irVersion` 1 to 3 migrate exactly, with a status of 200 and every parameter in the
+query, because that was every operation's mapping before this feature. `atlasAccept` writes
+version 4. See [Contract Governance](contract-governance.md#migration-from-irversion-3-to-irversion-4)
+for the format and migration.
+
+The gate classifies a declaration's effect on published clients:
+
+| Change | Classification |
+|---|---|
+| The HTTP method changes | Breaking input |
+| The path changes | Breaking input |
+| The path changes only in its `{name}` variables | Compatible |
+| The status changes | Breaking output |
+| A parameter's location changes | Breaking input |
+| A `PATH` or `BODY` parameter is renamed, on an operation served only on the API channel | Compatible. On an operation also on the AI channel it stays breaking, as MCP clients pass arguments by name |
+
+So opting a published service into the CRUD convention is a breaking change for each operation
+whose mapping moves. A mapping has no lifecycle of its own, so the remedy is a new major, or
+`atlasAccept` when the change is deliberate. A constraint change to an entity field that feeds an
+input record is still classified as a response field's is (informational); the input direction
+for request-body fields is not yet gated.
+
 ## operationId
 
 The OpenAPI `operationId` rule is unchanged: the method name when it is unique, else

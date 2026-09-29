@@ -15,6 +15,7 @@ Documented in `docs/rest-mapping.md`.
 - **One resolution, every surface.** Each operation's mapping is resolved once; the controller, the OpenAPI document, the route collision check, the deprecation manifest and the Contract IR's `rest` all read it. Routes that collide once `{var}` names are normalised are a compile error on each method, naming the others. So are two routes that match the same requests while neither is more specific. REST metadata on a method off the API channel is a warning, and a literal route beside a variable one is a note.
 - **Runtime.** The deprecation manifest records route templates such as `DELETE /api/v1/orders/{id}`, and `DeprecationHeaderFilter` matches them with Spring's `PathPattern`, preferring an exact path and then the most specific template.
 - **MCP is unchanged.** Tool classes and `mcp-tools.json` are byte-identical with and without REST metadata.
+- **Contract IR.** Each API operation's `rest` records the effective `status` and `parameterIn` of its resolved mapping (Contract IR version 4, below), so the gate classifies a changed status or parameter location, and turning the flag on without declaring anything writes a byte-identical IR.
 
 ### Contract IR version 4 (Phase 5 foundation)
 Documented in `docs/contract-governance.md`.

@@ -27,7 +27,7 @@ require_file CHANGELOG.md || true
 
 for text in ai.atlas.rest "agentic { rest = true }" "@Rest(" "@AgenticParam(in" "style = CRUD" resource \
         findById deleteById "204" "Location" "input = false" "<Entity>Input" "toEntity()" PathPattern \
-        "{var}" WARNING NOTE; do
+        "{var}" WARNING NOTE "irVersion 4" parameterIn atlasAccept; do
     require_text docs/rest-mapping.md "$text"
 done
 for text in "input" "rest"; do
