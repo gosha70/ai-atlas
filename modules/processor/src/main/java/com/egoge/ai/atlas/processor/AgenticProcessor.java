@@ -28,13 +28,13 @@ import com.egoge.ai.atlas.processor.util.QualityDiagnostics;
 import com.egoge.ai.atlas.processor.util.RestMappingRegistry;
 import com.egoge.ai.atlas.processor.util.ReturnTypeValidator;
 import com.egoge.ai.atlas.processor.util.ToolNameRegistry;
+import com.egoge.ai.atlas.processor.util.VersionConfig;
 import com.egoge.ai.atlas.processor.util.VersionSelector;
 import com.google.auto.service.AutoService;
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.TypeName;
 
 import javax.annotation.processing.AbstractProcessor;
-import javax.annotation.processing.Messager;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.annotation.processing.Processor;
 import javax.annotation.processing.RoundEnvironment;
@@ -69,9 +69,9 @@ import java.util.Set;
 })
 public class AgenticProcessor extends AbstractProcessor {
 
-    public static final String OPT_API_BASE_PATH = "ai.atlas.api.basePath";
-    public static final String OPT_API_MAJOR = "ai.atlas.api.major";
-    public static final String OPT_OPENAPI_INFO_VERSION = "ai.atlas.openapi.infoVersion";
+    public static final String OPT_API_BASE_PATH = VersionConfig.OPT_API_BASE_PATH;
+    public static final String OPT_API_MAJOR = VersionConfig.OPT_API_MAJOR;
+    public static final String OPT_OPENAPI_INFO_VERSION = VersionConfig.OPT_OPENAPI_INFO_VERSION;
     public static final String OPT_STRICT = "ai.atlas.strict";
     public static final String OPT_CONTRACT_BASELINE = "ai.atlas.contract.baseline";
     public static final String OPT_CONTRACT_LOCKED = "ai.atlas.contract.locked";
@@ -114,46 +114,12 @@ public class AgenticProcessor extends AbstractProcessor {
     }
 
     private void resolveVersionConfig() {
-        Messager msg = processingEnv.getMessager();
-        Map<String, String> opts = processingEnv.getOptions();
-        versionConfigValid = true;
-        apiBasePath = opts.getOrDefault(OPT_API_BASE_PATH, "/api");
-        if (!apiBasePath.startsWith("/")) {
-            msg.printMessage(Diagnostic.Kind.ERROR,
-                    "[ai-atlas] ai.atlas.api.basePath must start with '/'. Got: " + apiBasePath);
-            versionConfigValid = false;
-            return;
-        }
-        while (apiBasePath.endsWith("/") && apiBasePath.length() > 1) {
-            apiBasePath = apiBasePath.substring(0, apiBasePath.length() - 1);
-        }
-        if ("/".equals(apiBasePath)) {
-            msg.printMessage(Diagnostic.Kind.ERROR,
-                    "[ai-atlas] ai.atlas.api.basePath must not be '/'. Use a path like '/api'.");
-            versionConfigValid = false;
-            return;
-        }
-        String majorStr = opts.getOrDefault(OPT_API_MAJOR, "1");
-        try {
-            apiMajor = Integer.parseInt(majorStr);
-            if (apiMajor < 1) {
-                msg.printMessage(Diagnostic.Kind.ERROR,
-                        "[ai-atlas] ai.atlas.api.major must be a positive integer. Got: " + majorStr);
-                versionConfigValid = false;
-                return;
-            }
-        } catch (NumberFormatException e) {
-            msg.printMessage(Diagnostic.Kind.ERROR,
-                    "[ai-atlas] ai.atlas.api.major must be an integer. Got: " + majorStr);
-            versionConfigValid = false;
-            return;
-        }
-        String infoVersionRaw = opts.get(OPT_OPENAPI_INFO_VERSION);
-        openApiInfoVersion = infoVersionRaw != null ? infoVersionRaw : (apiMajor + ".0.0");
-        if (openApiInfoVersion.isBlank()) {
-            msg.printMessage(Diagnostic.Kind.ERROR,
-                    "[ai-atlas] ai.atlas.openapi.infoVersion must not be empty");
-            versionConfigValid = false;
+        VersionConfig config = VersionConfig.resolve(processingEnv.getOptions(), processingEnv.getMessager());
+        versionConfigValid = config != null;
+        if (config != null) {
+            apiBasePath = config.apiBasePath();
+            apiMajor = config.apiMajor();
+            openApiInfoVersion = config.openApiInfoVersion();
         }
     }
 
