@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **The ai-atlas dependency version no longer follows the project version.** `agentic { version }`, the version of the `annotations`, `processor` and `runtime` dependencies the Gradle plugin adds, defaulted to the consuming project's `version`. So building an application with `-Pversion=2.0.0`, or `version = "2.0.0"`, silently selected ai-atlas `2.0.0`. It now defaults to the plugin's own version, which the plugin writes into its jar at build time. An explicit `agentic { version }` still wins. When the plugin cannot determine its own version (a development build of the plugin), the build fails and asks for an explicit `agentic { version }`; it never falls back to the project version. **Action:** a project that relied on the old default, with its own version equal to the ai-atlas version it wanted, now gets the plugin's version; set `agentic { version }` if the two differ on purpose.
+
 ### Contract IR version 4 (Phase 5 foundation)
 Documented in `docs/contract-governance.md`.
 - **Contract IR `irVersion 4`.** Every operation's `returns` records its `bound` (`style`, `envelope`, `limitParameter`, `cursorParameter`, `maxResults`), and every API operation's `rest` its success `status` and each parameter's location in `parameterIn` (`PATH`, `QUERY` or `BODY`). They record the effective contract, which today is the bound `NONE`/`NONE`, status 200 and every parameter in the query. Version 1 to 3 baselines migrate exactly to those values, with no lock-mode difference; `atlasAccept` writes version 4. A version 4 document missing one of the slots is malformed. The demo baseline is regenerated as version 4. Every other generated file is unchanged.
