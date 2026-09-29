@@ -82,6 +82,8 @@ public final class CollectionsOption {
     private final ProcessingEnvironment env;
     /** The paging contract of each operation that has one, by IR operation identity. */
     private final Map<String, PagingContract> contracts = new HashMap<>();
+    /** The effective result bound of each operation that has a paging contract, by IR operation identity. */
+    private final Map<String, ContractIr.Bound> bounds = new HashMap<>();
     /** The services whose class-level {@code maxResults} has been reported. */
     private final Set<String> reportedServices = new HashSet<>();
 
@@ -173,8 +175,8 @@ public final class CollectionsOption {
                         + " role, but returns " + returned + ", which is not a collection", method);
             } else if (pageable >= 0) {
                 // Still bound as page and size, so the wrappers can be called; nothing is bounded
-                contracts.put(irOperation.id(), contract(Style.NONE, Envelope.NONE, pageable, -1, -1, irOperation,
-                        -1, params, returned));
+                record(irOperation.id(), contract(Style.NONE, Envelope.NONE, pageable, -1, -1, irOperation,
+                        -1, params, returned), params);
             }
             return;
         }
@@ -189,8 +191,8 @@ public final class CollectionsOption {
             return;
         }
         if (style != Style.NONE || envelope != Envelope.NONE || cursor >= 0) {
-            contracts.put(irOperation.id(), contract(style, envelope, pageable, limit, cursor, irOperation, bound,
-                    params, returned));
+            record(irOperation.id(), contract(style, envelope, pageable, limit, cursor, irOperation, bound,
+                    params, returned), params);
         }
         if (!VersionSelector.isActive(model, apiMajor)) {
             return;
@@ -209,6 +211,33 @@ public final class CollectionsOption {
                     + params.get(limit).getSimpleName() + "', which has no maximum, so a client can ask for the"
                     + " whole result set. Declare its ceiling with @Max", params.get(limit));
         }
+    }
+
+    private void record(String operationId, PagingContract contract, List<? extends VariableElement> params) {
+        contracts.put(operationId, contract);
+        String style = contract.style().name();
+        String limitParameter = contract.style() == Style.PAGEABLE ? name(params, contract.pageable())
+                : contract.style() == Style.LIMIT ? name(params, contract.limit()) : null;
+        String cursorParameter = contract.style() == Style.LIMIT ? name(params, contract.cursor()) : null;
+        // A LIMIT's ceiling is its parameter's own maximum, which the IR records with its constraints
+        Integer maxResults = contract.style() == Style.PAGEABLE ? contract.pageSizeCeiling() : contract.resultBound();
+        bounds.put(operationId, new ContractIr.Bound(style, contract.envelope().name(), limitParameter,
+                cursorParameter, maxResults));
+    }
+
+    private static String name(List<? extends VariableElement> params, int index) {
+        return index >= 0 ? params.get(index).getSimpleName().toString() : null;
+    }
+
+    /**
+     * The effective bound on an operation's result, as the Contract IR records it:
+     * {@link ContractIr.Bound#NONE} with the option off, or when the operation has no paging
+     * contract, envelope or declared bound.
+     *
+     * @param operationId the operation's IR identity
+     */
+    public ContractIr.Bound bound(String operationId) {
+        return enabled ? bounds.getOrDefault(operationId, ContractIr.Bound.NONE) : ContractIr.Bound.NONE;
     }
 
     private PagingContract contract(Style style, Envelope envelope, int pageable, int limit, int cursor,

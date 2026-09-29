@@ -6,6 +6,7 @@ package com.egoge.ai.atlas.processor;
 import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.egoge.ai.atlas.annotations.AgenticExposed;
 import com.egoge.ai.atlas.processor.contract.ContractGate;
+import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.contract.IrBuilder;
 import com.egoge.ai.atlas.processor.generator.ApiVersionPropertiesGenerator;
@@ -115,7 +116,8 @@ public class AgenticProcessor extends AbstractProcessor {
                 processingEnv);
         versionConfigValid &= collections != null;
         if (projections != null) {
-            contractIr = new IrBuilder(processingEnv, projections::channels, projections.enabled());
+            contractIr = new IrBuilder(processingEnv, projections::channels, projections.enabled(),
+                    collections != null ? collections::bound : operationId -> ContractIr.Bound.NONE);
         }
     }
 
