@@ -79,7 +79,7 @@ class IrVersion3Test {
     void everyFieldRecordsItsEffectiveChannelsSorted() throws Exception {
         ContractIr ir = IrJson.parse(irOf(compile(List.of(ORDER, SERVICE), PROJECTIONS)), "api.ir.json");
 
-        assertThat(ir.irVersion()).isEqualTo(3);
+        assertThat(ir.irVersion()).isEqualTo(ContractIr.IR_VERSION);
         assertThat(channels(ir.entities().get(0))).containsExactly(
                 Map.entry("id", List.of("AI", "API")),
                 Map.entry("margin", List.of("API")),
@@ -112,7 +112,7 @@ class IrVersion3Test {
         String second = irOf(compile(List.of(ORDER, SERVICE), PROJECTIONS));
 
         assertThat(second.getBytes(StandardCharsets.UTF_8)).isEqualTo(first.getBytes(StandardCharsets.UTF_8));
-        assertThat(first).startsWith("{\n  \"irVersion\": 3,\n");
+        assertThat(first).startsWith("{\n  \"irVersion\": 4,\n");
         assertThat(IrJson.write(IrJson.parse(first, "api.ir.json"))).isEqualTo(first);
         // The slot sits between the constraints and the lifecycle
         assertThat(first).containsPattern("\"constraints\": \\{},\n\\s*\"channels\": \\[\n\\s*\"API\"\n\\s*],\n"
@@ -128,7 +128,7 @@ class IrVersion3Test {
 
             assertThat(migrated.irVersion()).isEqualTo(ContractIr.IR_VERSION);
             assertThat(migrated.entities().get(0).fields().get(0).channels()).containsExactly("AI", "API");
-            assertThat(IrJson.write(migrated)).startsWith("{\n  \"irVersion\": 3,\n").contains(CHANNELS_OF_ONE_FIELD);
+            assertThat(IrJson.write(migrated)).startsWith("{\n  \"irVersion\": 4,\n").contains(CHANNELS_OF_ONE_FIELD);
         }
     }
 
@@ -151,8 +151,8 @@ class IrVersion3Test {
 
     @Test
     void aVersion2BaselinePassesTheGateAndLockModeAgainstTheSameContract() throws IOException {
-        String v3 = irOf(compile(GateFixtures.fixture().sources(), MAJOR + M));
-        String v2 = v3.replace("\"irVersion\": 3", "\"irVersion\": 2")
+        String v4 = irOf(compile(GateFixtures.fixture().sources(), MAJOR + M));
+        String v2 = IrVersion4Test.asVersion3(v4).replace("\"irVersion\": 3", "\"irVersion\": 2")
                 .replaceAll("\n\\s*\"channels\": \\[\n\\s*\"AI\",\n\\s*\"API\"\n\\s*],\n(\\s*)\"lifecycle\"",
                         "\n$1\"lifecycle\"");
         assertThat(v2).contains("\"irVersion\": 2").doesNotContainPattern("\"channels\": \\[[^\\]]*],\n\\s*\"lifecycle\"");
@@ -162,13 +162,13 @@ class IrVersion3Test {
                 .withOptions(MAJOR + M, BASELINE + baseline, LOCKED).compile(GateFixtures.fixture().sources());
 
         assertPasses(locked);
-        assertThat(irOf(locked)).isEqualTo(v3);
+        assertThat(irOf(locked)).isEqualTo(v4);
     }
 
     @Test
     void aVersion1BaselinePassesTheGateAndLockModeAgainstTheSameContract() throws IOException {
-        String v3 = irOf(compile(GateFixtures.fixture().sources(), MAJOR + M));
-        ObjectNode document = (ObjectNode) JSON.readTree(v3);
+        String v4 = irOf(compile(GateFixtures.fixture().sources(), MAJOR + M));
+        ObjectNode document = (ObjectNode) JSON.readTree(IrVersion4Test.asVersion3(v4));
         document.put("irVersion", 1);
         stripSlotsVersion1Lacks(document);
         String v1 = JSON.writerWithDefaultPrettyPrinter().writeValueAsString(document);
@@ -185,7 +185,7 @@ class IrVersion3Test {
 
         assertPasses(gated);
         assertPasses(locked);
-        assertThat(irOf(locked)).isEqualTo(v3);
+        assertThat(irOf(locked)).isEqualTo(v4);
     }
 
     /** Removes the constraint, requiredness, hint and field channels slots, which version 1 did not write. */

@@ -171,6 +171,56 @@ class ContractProjectionTest {
         }
     }
 
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"shared-find", "rest-openapi-catalog", "rest-openapi-overloaded"})
+    void theMappingsStatusAndParameterLocationsAreThoseOfTheGeneratedOpenApiDocument(String fixture)
+            throws IOException {
+        Compilation compilation = compile(fixture);
+        ContractIr ir = ir(compilation);
+        JsonNode paths = new ObjectMapper().readTree(text(compilation, OPENAPI_PATH)).get("paths");
+
+        List<Operation> mapped = ir.operations().stream().filter(op -> op.rest() != null).toList();
+        assertThat(mapped).isNotEmpty().allSatisfy(op -> {
+            JsonNode documented = paths.get(ir.apiBasePath() + "/v" + ir.apiMajor() + op.rest().path())
+                    .get(op.rest().httpMethod().toLowerCase(Locale.ROOT));
+            assertThat(documented.get("responses").fieldNames()).toIterable()
+                    .containsExactly(String.valueOf(op.rest().status()));
+            for (int i = 0; i < op.parameters().size(); i++) {
+                JsonNode parameter = documented.get("parameters").get(i);
+                assertThat(parameter.get("name").asText()).isEqualTo(op.parameters().get(i).name());
+                assertThat(parameter.get("in").asText()).isEqualTo(op.rest().in(i).toLowerCase(Locale.ROOT));
+            }
+        });
+    }
+
+    @Test
+    void operationIdsFollowTheRouteSoAVariableRenameMovesNoSuffix() {
+        // Two GET overloads of find share the candidate ID; their order must not depend on {var} names
+        Map<String, String> before = operationIds("/orders/{b}", "/orders/{a}/items");
+        Map<String, String> after = operationIds("/orders/{a}", "/orders/{a}/items");
+
+        assertThat(before).isEqualTo(after).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "shop.OrderService#find(java.lang.Long)", "OrderService_find_get",
+                "shop.OrderService#find(java.lang.String)", "OrderService_find_get_2"));
+        // Colliding routes keep IR order, whatever their variables are called
+        assertThat(operationIds("/orders/{orderId}", "/orders/{id}"))
+                .isEqualTo(operationIds("/orders/{id}", "/orders/{orderId}"));
+    }
+
+    /** The operationIds of {@code OrderService.find(Long)} and {@code find(String)}, both GET, at the paths. */
+    private static Map<String, String> operationIds(String longPath, String stringPath) {
+        List<Operation> operations = new ArrayList<>();
+        for (String[] site : new String[][] {{"java.lang.Long", longPath}, {"java.lang.String", stringPath}}) {
+            operations.add(new Operation("shop.OrderService", "find", "find", List.of("API"), "Find",
+                    new ContractIr.Rest("GET", site[1], 200, List.of("PATH")),
+                    List.of(new Parameter("key", site[0], "", List.of(), true, null)),
+                    new ContractIr.Return("java.lang.String", "NONE", null, null, ContractIr.Bound.NONE), null,
+                    new ContractIr.OperationLifecycle(1, Integer.MAX_VALUE, 0, "")));
+        }
+        return ContractProjection.of(new ContractIr(ContractIr.IR_VERSION, "/api", 1, List.of(), operations), 1)
+                .operationIds();
+    }
+
     @Test
     void projectedOperationIdsAreThoseOfTheGeneratedOpenApiDocumentAcrossRounds() throws IOException {
         JavaFileObject first = JavaFileObjects.forSourceString("shop.FirstService", """

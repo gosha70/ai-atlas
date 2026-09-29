@@ -9,7 +9,6 @@ import com.egoge.ai.atlas.processor.contract.ContractIr.FieldLifecycle;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Operation;
 import com.egoge.ai.atlas.processor.contract.ContractIr.OperationLifecycle;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Parameter;
-import com.egoge.ai.atlas.processor.contract.ContractIr.Rest;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Return;
 import com.egoge.ai.atlas.processor.contract.ContractIr.TypeRef;
 import com.fasterxml.jackson.core.JsonParser;
@@ -73,8 +72,6 @@ public final class IrJson {
     private static final String K_TOOL_NAME = "toolName";
     private static final String K_CHANNELS = "channels";
     private static final String K_REST = "rest";
-    private static final String K_HTTP_METHOD = "httpMethod";
-    private static final String K_PATH = "path";
     private static final String K_PARAMETERS = "parameters";
     private static final String K_ENUM_CONSTANTS = "enumConstants";
     private static final String K_RETURNS = "returns";
@@ -195,13 +192,7 @@ public final class IrJson {
         map.put(K_TOOL_NAME, op.toolName());
         map.put(K_CHANNELS, op.channels());
         map.put(K_DESCRIPTION, op.description());
-        Map<String, Object> rest = null;
-        if (op.rest() != null) {
-            rest = new LinkedHashMap<>();
-            rest.put(K_HTTP_METHOD, op.rest().httpMethod());
-            rest.put(K_PATH, op.rest().path());
-        }
-        map.put(K_REST, rest);
+        map.put(K_REST, IrRestJson.write(op.rest()));
         List<Map<String, Object>> params = new ArrayList<>();
         for (Parameter param : op.parameters()) {
             Map<String, Object> p = new LinkedHashMap<>();
@@ -219,6 +210,7 @@ public final class IrJson {
         returns.put(K_RETURN_KIND, op.returns().returnKind());
         returns.put(K_RETURN_TYPE, op.returns().returnType());
         returns.put(K_REFERENCE, typeRef(op.returns().reference()));
+        returns.put(IrBoundJson.K_BOUND, IrBoundJson.write(op.returns().bound()));
         map.put(K_RETURNS, returns);
         map.put(IrConstraintsJson.K_HINTS, IrConstraintsJson.write(op.hints()));
         OperationLifecycle lifecycle = op.lifecycle();
@@ -363,10 +355,9 @@ public final class IrJson {
                         + irVersion);
             }
             // A version-1 document is migrated: its constraint, requiredness and hint slots are unknown (FR-006)
-            boolean v2 = irVersion >= CONSTRAINTS_VERSION;
             return new ContractIr(ContractIr.IR_VERSION, string(root, K_API_BASE_PATH), integer(root, K_API_MAJOR),
                     list(root, K_ENTITIES, e -> readEntity(e, irVersion)),
-                    list(root, K_OPERATIONS, o -> readOperation(o, v2)));
+                    list(root, K_OPERATIONS, o -> readOperation(o, irVersion)));
         } catch (IllegalArgumentException e) {
             throw malformed(source, e.getMessage());
         }
@@ -402,25 +393,26 @@ public final class IrJson {
         return ref == null ? null : new TypeRef(string(ref, K_ENTITY), string(ref, K_DTO));
     }
 
-    private static Operation readOperation(JsonNode node, boolean v2) {
-        JsonNode restNode = nullableObject(node, K_REST);
-        Rest rest = restNode == null ? null
-                : new Rest(string(restNode, K_HTTP_METHOD), string(restNode, K_PATH));
+    // Versions 1 to 3 migrate exactly: 200, every parameter in the query, and no bound (irVersion 4)
+    private static Operation readOperation(JsonNode node, int irVersion) {
+        boolean v2 = irVersion >= CONSTRAINTS_VERSION;
+        List<Parameter> parameters = list(node, K_PARAMETERS, p -> new Parameter(string(p, K_NAME),
+                string(p, K_JAVA_TYPE), string(p, K_DESCRIPTION), strings(p, K_ENUM_CONSTANTS),
+                v2 ? bool(p, K_REQUIRED) : null, v2 ? IrConstraintsJson.readConstraints(p) : null));
         JsonNode returns = object(node, K_RETURNS);
         JsonNode life = object(node, K_LIFECYCLE);
-        return new Operation(string(node, K_SERVICE), string(node, K_METHOD), string(node, K_TOOL_NAME),
-                strings(node, K_CHANNELS), string(node, K_DESCRIPTION), rest,
-                list(node, K_PARAMETERS, p -> new Parameter(string(p, K_NAME), string(p, K_JAVA_TYPE),
-                        string(p, K_DESCRIPTION), strings(p, K_ENUM_CONSTANTS), v2 ? bool(p, K_REQUIRED) : null,
-                        v2 ? IrConstraintsJson.readConstraints(p) : null)),
+        return IrConsistency.check(new Operation(string(node, K_SERVICE), string(node, K_METHOD), string(node, K_TOOL_NAME),
+                strings(node, K_CHANNELS), string(node, K_DESCRIPTION),
+                IrRestJson.read(nullableObject(node, K_REST), irVersion, parameters.size()), parameters,
                 new Return(string(returns, K_JAVA_TYPE), string(returns, K_RETURN_KIND),
-                        nullableString(returns, K_RETURN_TYPE), readTypeRef(returns)),
+                        nullableString(returns, K_RETURN_TYPE), readTypeRef(returns),
+                        IrBoundJson.read(returns, irVersion)),
                 v2 ? IrConstraintsJson.readHints(node) : null,
                 new OperationLifecycle(integer(life, K_API_SINCE), integer(life, K_API_UNTIL),
-                        integer(life, K_API_DEPRECATED_SINCE), string(life, K_API_REPLACEMENT)));
+                        integer(life, K_API_DEPRECATED_SINCE), string(life, K_API_REPLACEMENT))));
     }
 
-    private static JsonNode required(JsonNode node, String key) {
+    static JsonNode required(JsonNode node, String key) {
         JsonNode value = node.get(key);
         if (value == null) {
             throw new IllegalArgumentException("missing '" + key + "'");
@@ -436,7 +428,7 @@ public final class IrJson {
         return value.textValue();
     }
 
-    private static String nullableString(JsonNode node, String key) {
+    static String nullableString(JsonNode node, String key) {
         return required(node, key).isNull() ? null : string(node, key);
     }
 

@@ -38,7 +38,8 @@ import static com.egoge.ai.atlas.processor.contract.ContractGate.OPERATION_PATH;
  * (constraints-and-hints FR-008, FR-009). A field losing a channel breaks the channel's clients
  * when its entity is reachable, through a chain of fields on that channel, from an operation
  * active on it; gaining a channel is compatible, and an entity's AI record appearing or
- * disappearing is informational, as MCP clients never see its name. Used through
+ * disappearing is informational, as MCP clients never see its name. The REST mapping and the
+ * result bound follow {@link RestComparison} and {@link BoundComparison}. Used through
  * {@link ContractGate#compare}.
  */
 final class ContractComparison {
@@ -64,8 +65,6 @@ final class ContractComparison {
     private static final String C_LIFECYCLE = "lifecycle";
     private static final String C_TOOL_NAME = "toolName";
     private static final String C_CHANNELS = "channels";
-    private static final String C_HTTP_METHOD = "rest.httpMethod";
-    private static final String C_REST_PATH = "rest.path";
     private static final String C_OPERATION_ID = "operationId";
     private static final String C_PARAMETER = "parameter ";
     private static final String C_RETURN = "returns.";
@@ -238,9 +237,7 @@ final class ContractComparison {
             if (before && !after && reachable(channel).contains(className)) {
                 breaking(path, change, Direction.OUTPUT, list(old.channels()), list(now.channels()),
                         "Clients of the " + channel + " channel no longer receive the field",
-                        "publish it in a new major (" + AgenticProcessor.OPT_API_MAJOR + " = " + (major + 1)
-                                + ", then " + ContractGate.ACCEPT_TASK + "), as a field's channels have no"
-                                + " lifecycle of their own");
+                        newMajorRemedy(major, "a field's channels have no lifecycle of their own"));
             } else if (before != after) {
                 compatible(path, change, Direction.OUTPUT, list(old.channels()), list(now.channels()));
             }
@@ -283,6 +280,18 @@ final class ContractComparison {
                 channels.put(entity.className() + "#" + field.name(), field.channels())));
         return ChannelProjection.of(ContractProjection.of(ir, major).entities(),
                 (className, fieldName) -> channels.get(className + "#" + fieldName), className -> className);
+    }
+
+    /**
+     * The remedy for a change to a slot with no lifecycle of its own: a new major, or accepting it.
+     *
+     * @param major the published major M
+     * @param why   why no lifecycle declaration applies, e.g. {@code a field's channels have no
+     *              lifecycle of their own}
+     */
+    static String newMajorRemedy(int major, String why) {
+        return "publish it in a new major (" + AgenticProcessor.OPT_API_MAJOR + " = " + (major + 1) + ", then "
+                + ContractGate.ACCEPT_TASK + "), as " + why;
     }
 
     private String fieldRemedy() {
@@ -350,12 +359,7 @@ final class ContractComparison {
                     !removed.isEmpty(), "Clients of the " + list(removed) + " channel lose the operation",
                     operationRemedy());
         }
-        if (old.rest() != null && now.rest() != null) {
-            diff(path, C_HTTP_METHOD, Direction.INPUT, old.rest().httpMethod(), now.rest().httpMethod(), true,
-                    "REST clients call the operation with this HTTP method", operationRemedy());
-            diff(path, C_REST_PATH, Direction.INPUT, old.rest().path(), now.rest().path(), true,
-                    "REST clients call the operation at this path", operationRemedy());
-        }
+        RestComparison.compare(path, old, now, major, operationRemedy(), differences);
         if (old.parameters().size() != now.parameters().size()) {
             // Unreachable while Operation.id() carries the parameter types; guards a future change to the identity
             breaking(path, C_PARAMETER + "count", Direction.INPUT, str(old.parameters().size()),
@@ -363,7 +367,8 @@ final class ContractComparison {
             return;
         }
         for (int i = 0; i < old.parameters().size(); i++) {
-            compareParameter(path, i, old.parameters().get(i), now.parameters().get(i));
+            compareParameter(path, i, old.parameters().get(i), now.parameters().get(i),
+                    RestComparison.renameIsCompatible(old, now, i));
             ConstraintComparison.compare(old, old.parameters().get(i), now.parameters().get(i), operationRemedy(),
                     differences);
         }
@@ -378,6 +383,7 @@ final class ContractComparison {
                 "The DTO the operation returns changes", operationRemedy());
         diff(path, C_RETURN + C_REFERENCE, Direction.OUTPUT, ref(r0.reference()), ref(r1.reference()), true,
                 "The DTO the operation returns changes", operationRemedy());
+        BoundComparison.compare(path, old, now, major, differences);
         diff(path, C_DESCRIPTION, Direction.INPUT, old.description(), now.description(), false, null, null);
         diff(path, C_LIFECYCLE, Direction.INPUT, str(old.lifecycle()), str(now.lifecycle()), false, null, null);
         if (old.hints() != null && now.hints() != null) {
@@ -386,10 +392,13 @@ final class ContractComparison {
         }
     }
 
-    /** Parameters at the same index; the operation identity already fixes their number and types. */
-    private void compareParameter(String path, int index, Parameter old, Parameter now) {
+    /**
+     * Parameters at the same index; the operation identity already fixes their number and types. A
+     * rename is breaking unless no client sends the name ({@link RestComparison#renameIsCompatible}).
+     */
+    private void compareParameter(String path, int index, Parameter old, Parameter now, boolean renameCompatible) {
         String change = C_PARAMETER + index + ".";
-        diff(path, change + "name", Direction.INPUT, old.name(), now.name(), true,
+        diff(path, change + "name", Direction.INPUT, old.name(), now.name(), !renameCompatible,
                 "Clients pass the parameter by its name", operationRemedy());
         diff(path, change + C_DESCRIPTION, Direction.INPUT, old.description(), now.description(), false,
                 null, null);

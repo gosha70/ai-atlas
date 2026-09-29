@@ -18,7 +18,7 @@ model, projected at the configured major.
 
 | Key | Meaning |
 |-----|---------|
-| `irVersion` | Version of the document format. This ai-atlas writes `3` |
+| `irVersion` | Version of the document format. This ai-atlas writes `4` |
 | `apiBasePath` | The configured REST base path (`ai.atlas.api.basePath`) |
 | `apiMajor` | The configured major (`ai.atlas.api.major`) the document was emitted for. In a baseline, this is the **published major M** the gate protects |
 | `entities` | Every `@AgenticEntity`, ordered by qualified class name |
@@ -34,10 +34,11 @@ model, projected at the configured major.
 (`sinceVersion`, `removedInVersion`, `deprecatedSinceVersion`, `deprecatedMessage`),
 `constraints`, and `channels`.
 
-**Operation:** `service`, `method`, `toolName`, `channels`, `description`, `rest` (`httpMethod`
-and `path`, without the base path and version prefix; `null` off the API channel), `parameters`
-(`name`, `javaType`, `description`, `enumConstants`, `constraints`, `required`), `returns` (`javaType`, `returnKind`, the
-effective `returnType` after method-then-class resolution, and its `reference`), and `lifecycle`
+**Operation:** `service`, `method`, `toolName`, `channels`, `description`, `rest` (`httpMethod`,
+`path` without the base path and version prefix, `status` and `parameterIn`; `null` off the API
+channel), `parameters` (`name`, `javaType`, `description`, `enumConstants`, `constraints`,
+`required`), `returns` (`javaType`, `returnKind`, the effective `returnType` after
+method-then-class resolution, its `reference`, and its `bound`), and `lifecycle`
 (`apiSince`, `apiUntil`, `apiDeprecatedSince`, `apiReplacement`), and `hints`. An operation's
 identity is its service, method name and parameter Java types: `service#method(parameter types)`.
 
@@ -57,6 +58,48 @@ A field's **`channels`** are the channels whose responses carry it, sorted and a
 with `@AgenticField(channels)` (see [Per-channel field projections](channel-projections.md)). The
 IR records the declaration only: it never records the name of an AI record, which is derived and
 never reaches the wire.
+
+An API operation's **REST mapping** records the **effective** mapping the controller and the
+OpenAPI document serve, always present on the API channel:
+
+```json
+"rest": {
+  "httpMethod": "POST",
+  "path": "/order-service/find-by-status",
+  "status": 200,
+  "parameterIn": ["QUERY"]
+}
+```
+
+`status` is the success status, a 2xx code. `parameterIn` holds one location per parameter, in
+declaration order: `PATH`, `QUERY` or `BODY`. It sits in `rest` rather than on each parameter
+because MCP operations share the parameter record and have no REST mapping. A `path` segment may be
+a `{name}` variable. Today every mapping is the RPC one: `200`, with every parameter a query
+parameter (Phase 0's canonical form).
+
+Every operation's return records its **`bound`**, the effective bound on its result, always
+present:
+
+```json
+"bound": {
+  "style": "NONE",
+  "envelope": "NONE",
+  "limitParameter": null,
+  "cursorParameter": null,
+  "maxResults": null
+}
+```
+
+- `style` is how clients page the result: `PAGEABLE` (a Spring Data `Pageable` parameter), `LIMIT`
+  (a declared limit parameter, with an optional cursor), `DECLARED` (`maxResults` alone) or `NONE`.
+- `envelope` is the wire shape clients receive: `PAGE`, `SLICE` or `NONE` for the plain result.
+- `limitParameter` and `cursorParameter` name the parameters with those paging roles; for
+  `PAGEABLE`, `limitParameter` names the `Pageable`.
+- `maxResults` is at least 1, or `null`. For a paged style (`PAGEABLE`, `LIMIT`) it is the
+  **page-size ceiling**, the largest page clients may request. For any other style it is the most
+  results the operation returns.
+
+Today every operation records `NONE`/`NONE` with `null` parameters and `maxResults`.
 
 ### Format
 
@@ -108,6 +151,33 @@ writes version 3.
 
 A document that declares `irVersion 3` and has a field whose `channels` is missing, `null`, empty,
 unsorted, repeated, or names anything other than `AI` and `API` is malformed.
+
+### Migration from `irVersion` 3 to `irVersion 4`
+
+`irVersion 4` adds `returns.bound` to every operation, and `rest.status` and `rest.parameterIn`
+to every API operation. Before it, every API operation answered `200` with every parameter in the
+query, and no operation could declare a bound or produce a paging envelope. So the migration is
+**exact**: every operation of a version-1, -2 or -3 baseline gets the bound `NONE`/`NONE` with
+`null` parameters and `maxResults`, and every mapping gets `status` `200` and `QUERY` for each
+parameter. Such a baseline shows no difference against the same contract, in gate mode or lock
+mode, with no special case. `atlasAccept` writes version 4.
+
+A document that declares `irVersion 4` is malformed when a `returns` has no `bound` object or a
+`bound` lacks any of its five keys, or a `rest` lacks `status` or `parameterIn`. It is also
+malformed when a `style` or `envelope` is unknown, `maxResults` is below 1, `status` is not 2xx,
+a location is not `PATH`, `QUERY` or `BODY`, or `parameterIn` does not hold one location per
+parameter.
+
+A document that contradicts itself is malformed too, as a hand-edited baseline could otherwise hide
+a change from the gate:
+
+- a bound whose parameters do not fit its style: `NONE` with a limit or cursor parameter, `LIMIT`
+  without a `limitParameter`, a `cursorParameter` on any style other than `LIMIT`, or `DECLARED`
+  without `maxResults`;
+- a `limitParameter` or `cursorParameter` that names none of the operation's parameters;
+- a `PATH` parameter whose name no `{name}` variable of the path carries, a `{name}` variable that
+  names no `PATH` parameter, or more than one `BODY`;
+- a `rest` object on an operation without the `API` channel, or `rest: null` on one with it.
 
 ## Projection at a major
 
@@ -167,10 +237,13 @@ can change while the Java signature stays the same, for example a `List<?>` meth
 | Change | Classification |
 |--------|----------------|
 | An operation active at M is removed. The identity includes the parameter types, so any change to their number, order or types is a removal | **Breaking** |
-| A parameter's name changes | **Breaking** |
+| A parameter's name changes, unless the rule below applies | **Breaking** |
+| A `PATH` or `BODY` parameter is renamed, on an operation served only on the API channel on both sides | Compatible: REST clients never send its name. On an AI operation it stays breaking, as MCP clients pass arguments by name |
 | A channel is removed from an operation | **Breaking** |
 | The MCP tool name changes | **Breaking** |
 | The REST HTTP method or path changes | **Breaking** |
+| The REST path changes only in the names of its `{name}` variables, each position still binding the same parameter | Compatible |
+| A parameter's REST location (`parameterIn`) changes | **Breaking** |
 | The OpenAPI `operationId` changes, including a rename caused only by another operation being added (a second API-exposed `find()` in another service turns the existing `find` into a qualified ID) | **Breaking** |
 | A value is removed from an input parameter's enum constants | **Breaking** |
 | An operation is added, provided no existing operation's `operationId`, REST path, HTTP method or MCP tool name changes as a result | Compatible |
@@ -179,6 +252,55 @@ can change while the Java signature stays the same, for example a `List<?>` meth
 | A description or deprecation changes | Compatible |
 
 There is no rename detection: a rename is a removal plus an addition, and is reported as such.
+
+### REST status and result bounds
+
+The `irVersion 4` slots, for operations active at M in both documents. Each change is named after
+its IR key: `rest.status`, `rest.parameterIn[<index>]` (above) and `returns.bound.<key>`.
+`maxResults` means two things, so it is reported with a direction: as an **output** it is the
+result bound of a non-paged style (`DECLARED`, `NONE`), and as an **input** the page-size ceiling of
+a paged style (`PAGEABLE`, `LIMIT`).
+
+| Change | Classification |
+|--------|----------------|
+| `rest.status` changes | **Breaking** (output) |
+| The envelope changes | **Breaking** (output) |
+| A result bound appears or falls | Compatible |
+| A result bound disappears or rises | **Breaking** (output) |
+| A page-size ceiling rejects a page size the baseline accepted (below) | **Breaking** (input) |
+| Any other change to a page-size ceiling | Compatible |
+| A paging role is declared or removed on an existing parameter (`style`, `limitParameter`, `cursorParameter`) | `informational` |
+
+A `Pageable` or limit parameter added or removed is already breaking through the operation's
+identity.
+
+**Page-size ceilings and a limit parameter's maximum.** A `LIMIT` parameter can carry its own
+Phase 3 maximum, such as `@Max(100)`, which the constraint rules above already gate as
+`maximum`. So that each real input change is reported once:
+
+- a `LIMIT` ceiling at or above its limit parameter's effective maximum on the same side adds
+  nothing, and counts as no ceiling. Declaring `@AgenticParam(paging = LIMIT)` on
+  `find(@Max(100) int limit)` with a ceiling of 100 reports only the informational paging role;
+- the ceiling is compared only when what it adds differs between the two sides, or when it limits
+  another parameter. `@Max(100)` with a ceiling of 100 becoming `@Max(50)` with a ceiling of 50 is
+  one breaking `maximum` change;
+- a ceiling that remains is **breaking** when it is below every page size the baseline accepted
+  for the parameter it limits: the baseline ceiling, only if it limited the same parameter, and
+  that parameter's baseline maximum. A `Pageable` ceiling of 50 moving to a previously unlimited
+  `size` parameter is breaking at 80 as at 50, as `size=90` was accepted. Otherwise it is
+  compatible. `@Max(50)` with no ceiling becoming `@Max(100)` with a ceiling of 80 rejects nothing
+  that was accepted, so both changes are compatible.
+
+**Crossing between paged and non-paged styles.** `maxResults` changes meaning, so each direction is
+compared on its own. `DECLARED` with 50 becoming `LIMIT` with a ceiling of 50 is:
+
+- a result bound disappearing: **breaking** (output);
+- no input change when the limit parameter's maximum is 50 or less, as its constraint already
+  rejected larger page sizes;
+- otherwise a ceiling appearing below what the baseline accepted: **breaking** (input).
+
+The reverse, `PAGEABLE` or `LIMIT` becoming `DECLARED`, is a result bound appearing and a ceiling
+disappearing, both compatible; a changed envelope is still breaking.
 
 ### Constraints, requiredness and hints
 
@@ -252,6 +374,7 @@ the compilation and without an element otherwise. The message names:
 | Narrowed input constraint or newly required parameter | A replacement operation with `apiSince = M+1` (and `apiUntil = M` on the old one) |
 | Changed `operationId` | Give the operation(s) whose addition caused it a method name that does not collide, or `apiSince = M+1` on them |
 | A field losing a channel it is reachable on | Publish it in a new major (`ai.atlas.api.major = M+1`, then `atlasAccept`): a field's channels have no lifecycle of their own |
+| A changed REST status or parameter location, result bound, page-size ceiling or envelope | Publish it in a new major (`ai.atlas.api.major = M+1`, then `atlasAccept`): a REST mapping and a result bound have no lifecycle of their own |
 | Changed DTO name, DTO package, `includeTypeInfo` or `apiBasePath` | Restore the previous value |
 | Added value on a closed response enum | `openEnum = true`, if clients tolerate unknown values |
 | Empty contract | Restore the annotations, or accept the removal |

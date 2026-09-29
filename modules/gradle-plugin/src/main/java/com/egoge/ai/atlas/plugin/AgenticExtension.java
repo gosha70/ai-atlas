@@ -24,8 +24,9 @@ public abstract class AgenticExtension {
      * The version of the ai-atlas {@code annotations}, {@code processor} and {@code runtime}
      * dependencies the plugin adds. Defaults to this plugin's own version, which the plugin and
      * processor require to match. It never defaults to the project's own version, so releasing the
-     * project under any version leaves the ai-atlas version unchanged. When the plugin cannot
-     * determine its own version (a development build), it must be set explicitly.
+     * project under any version leaves the ai-atlas version unchanged. It must be set explicitly
+     * only when the plugin cannot determine its own version, which happens only when the plugin's
+     * classes are loaded without the version resource its build writes and without jar metadata.
      */
     public abstract Property<String> getVersion();
 

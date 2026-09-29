@@ -26,7 +26,7 @@ class DependencyVersionTest {
     }
 
     @Test
-    void aDevelopmentBuildRequiresAnExplicitVersion() {
+    void anUnknownPluginVersionRequiresAnExplicitVersion() {
         assertThatThrownBy(() -> AgenticPlugin.dependencyVersion(null))
                 .isInstanceOf(GradleException.class)
                 .hasMessageContaining("cannot determine its own version")
