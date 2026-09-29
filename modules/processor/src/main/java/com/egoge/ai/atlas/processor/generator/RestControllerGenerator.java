@@ -9,6 +9,7 @@ import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ReturnKind;
+import com.egoge.ai.atlas.processor.rest.RestOperation;
 import com.egoge.ai.atlas.processor.util.VersionSelector;
 import com.palantir.javapoet.AnnotationSpec;
 import com.palantir.javapoet.ClassName;
@@ -25,13 +26,20 @@ import javax.annotation.processing.Messager;
 import javax.lang.model.element.Modifier;
 import javax.tools.Diagnostic;
 import java.io.IOException;
+import java.util.Locale;
+import java.util.function.Function;
 
 /**
  * Generates Spring {@code @RestController} classes with request mappings
  * that delegate to the original service and return PII-safe DTOs.
  *
- * <p>Methods with no parameters produce {@code @GetMapping},
- * methods with parameters produce {@code @PostMapping}.
+ * <p>Each operation is mapped as its resolved {@link RestOperation} says, the model the OpenAPI
+ * document reads too: the class maps the service's resource, each method its HTTP method and path
+ * below it, with {@code @ResponseStatus} for a status other than 200. A parameter is bound with
+ * {@code @PathVariable}, {@code @RequestParam} or {@code @RequestBody}; an entity body binds its
+ * whitelisted input record and passes {@code toEntity()} to the service. On the RPC mapping,
+ * methods with no parameters produce {@code @GetMapping} and methods with parameters
+ * {@code @PostMapping}, every parameter a {@code @RequestParam}.
  */
 public final class RestControllerGenerator {
 
@@ -42,6 +50,10 @@ public final class RestControllerGenerator {
     private static final ClassName POST_MAPPING = ClassName.get("org.springframework.web.bind.annotation", "PostMapping");
     private static final ClassName REQUEST_BODY = ClassName.get("org.springframework.web.bind.annotation", "RequestBody");
     private static final ClassName REQUEST_PARAM = ClassName.get("org.springframework.web.bind.annotation", "RequestParam");
+    private static final ClassName PATH_VARIABLE = ClassName.get("org.springframework.web.bind.annotation", "PathVariable");
+    private static final ClassName RESPONSE_STATUS = ClassName.get("org.springframework.web.bind.annotation", "ResponseStatus");
+    private static final ClassName HTTP_STATUS = ClassName.get("org.springframework.http", "HttpStatus");
+    private static final String MAPPING_PACKAGE = "org.springframework.web.bind.annotation";
 
     private RestControllerGenerator() {
     }
@@ -50,12 +62,14 @@ public final class RestControllerGenerator {
      * Generates a REST controller class and writes it to the filer.
      *
      * @param constraints the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
+     * @param routes      each API operation's resolved mapping by {@link ContractProjection#operationKey}
      */
     public static void generate(ServiceModel model, String packageName,
                                 String apiBasePath, int apiMajor, ConstraintSurfaces constraints,
-                                Filer filer, Messager messager) {
+                                Function<String, RestOperation> routes, Filer filer, Messager messager) {
         String controllerName = model.serviceClassName().simpleName() + "RestController";
-        TypeSpec controllerSpec = buildControllerSpec(model, controllerName, apiBasePath, apiMajor, constraints);
+        TypeSpec controllerSpec = buildControllerSpec(model, controllerName, apiBasePath, apiMajor, constraints,
+                routes);
         if (controllerSpec == null) {
             messager.printMessage(Diagnostic.Kind.NOTE,
                     "[ai-atlas] Skipped REST controller for " + model.serviceClassName().simpleName()
@@ -78,7 +92,8 @@ public final class RestControllerGenerator {
     }
 
     static TypeSpec buildControllerSpec(ServiceModel model, String controllerName,
-                                        String apiBasePath, int apiMajor, ConstraintSurfaces constraints) {
+                                        String apiBasePath, int apiMajor, ConstraintSurfaces constraints,
+                                        Function<String, RestOperation> routes) {
         // Filter to API-channel methods only
         var apiMethods = model.methods().stream()
                 .filter(m -> m.channels().contains("API") && VersionSelector.isActive(m, apiMajor))
@@ -89,7 +104,9 @@ public final class RestControllerGenerator {
 
         ClassName serviceType = model.serviceClassName();
 
-        String basePath = apiBasePath + "/v" + apiMajor + "/" + toKebabCase(model.serviceClassName().simpleName());
+        // Every operation of a service shares its resource
+        String basePath = apiBasePath + "/v" + apiMajor
+                + "/" + routes.apply(ContractProjection.operationKey(serviceType, apiMethods.get(0))).resource();
 
         TypeSpec.Builder classBuilder = TypeSpec.classBuilder(controllerName)
                 .addModifiers(Modifier.PUBLIC)
@@ -116,7 +133,8 @@ public final class RestControllerGenerator {
         for (MethodModel method : apiMethods) {
             ContractIr.Operation irOperation = constraints != null
                     ? constraints.operation(ContractProjection.operationKey(serviceType, method)) : null;
-            classBuilder.addMethod(buildEndpointMethod(method, apiMajor, irOperation));
+            classBuilder.addMethod(buildEndpointMethod(method, apiMajor, irOperation,
+                    routes.apply(ContractProjection.operationKey(serviceType, method))));
         }
 
         return classBuilder.build();
@@ -127,25 +145,20 @@ public final class RestControllerGenerator {
      *                    {@code null} when {@code ai.atlas.constraints} is off
      */
     private static MethodSpec buildEndpointMethod(MethodModel method, int apiMajor,
-                                                  ContractIr.Operation irOperation) {
-        String path = "/" + toKebabCase(method.methodName());
-        boolean hasParams = !method.parameters().isEmpty();
-
-        // GET for no params, POST for params
-        AnnotationSpec mappingAnnotation;
-        if (hasParams) {
-            mappingAnnotation = AnnotationSpec.builder(POST_MAPPING)
-                    .addMember("value", "$S", path)
-                    .build();
-        } else {
-            mappingAnnotation = AnnotationSpec.builder(GET_MAPPING)
-                    .addMember("value", "$S", path)
-                    .build();
+                                                  ContractIr.Operation irOperation, RestOperation rest) {
+        AnnotationSpec.Builder mapping = AnnotationSpec.builder(mappingAnnotation(rest.httpMethod()));
+        if (!rest.path().isEmpty()) {
+            mapping.addMember("value", "$S", rest.path());
         }
 
         MethodSpec.Builder methodBuilder = MethodSpec.methodBuilder(method.methodName())
                 .addModifiers(Modifier.PUBLIC)
-                .addAnnotation(mappingAnnotation);
+                .addAnnotation(mapping.build());
+        if (rest.status() != RestOperation.DEFAULT_STATUS) {
+            methodBuilder.addAnnotation(AnnotationSpec.builder(RESPONSE_STATUS)
+                    .addMember("value", "$T.$L", HTTP_STATUS, rest.statusName())
+                    .build());
+        }
 
         if (VersionSelector.isDeprecated(method, apiMajor)) {
             methodBuilder.addAnnotation(Deprecated.class);
@@ -164,11 +177,30 @@ public final class RestControllerGenerator {
             methodBuilder.returns(method.returnType());
         }
 
-        // Parameters with @RequestParam
+        // Parameters bound where the mapping locates them; an entity body binds its input record
         for (int i = 0; i < method.parameters().size(); i++) {
             ParameterModel param = method.parameters().get(i);
+            String in = rest.in(i);
+            boolean optional = irOperation != null && !ConstraintSurfaces.parameter(irOperation, i, param).required();
+            if (RestOperation.PATH.equals(in)) {
+                methodBuilder.addParameter(ParameterSpec.builder(param.typeName(), param.name())
+                        .addAnnotation(AnnotationSpec.builder(PATH_VARIABLE).addMember("value", "$S", param.name())
+                                .build())
+                        .build());
+                continue;
+            }
+            if (RestOperation.BODY.equals(in)) {
+                AnnotationSpec.Builder body = AnnotationSpec.builder(REQUEST_BODY);
+                if (optional) {
+                    body.addMember("required", "$L", false);
+                }
+                TypeName bodyType = rest.inputRecord() != null ? rest.inputRecord() : param.typeName();
+                methodBuilder.addParameter(ParameterSpec.builder(bodyType, param.name())
+                        .addAnnotation(body.build()).build());
+                continue;
+            }
             ParameterSpec.Builder paramBuilder = ParameterSpec.builder(param.typeName(), param.name());
-            if (irOperation != null && !ConstraintSurfaces.parameter(irOperation, i, param).required()) {
+            if (optional) {
                 // An OPTIONAL parameter (FR-015); required ones keep the plain binding
                 paramBuilder.addAnnotation(AnnotationSpec.builder(REQUEST_PARAM)
                         .addMember("required", "$L", false)
@@ -180,7 +212,7 @@ public final class RestControllerGenerator {
         }
 
         // Method body: delegate to service, map to DTO
-        String callArgs = buildCallArgs(method);
+        String callArgs = buildCallArgs(method, rest, irOperation);
 
         if (method.returnType().equals(TypeName.VOID)) {
             methodBuilder.addStatement("service.$L($L)", method.methodName(), callArgs);
@@ -213,15 +245,33 @@ public final class RestControllerGenerator {
         }
     }
 
-    private static String buildCallArgs(MethodModel method) {
+    /** The service call's arguments; an input record body passes the entity it creates. */
+    private static String buildCallArgs(MethodModel method, RestOperation rest, ContractIr.Operation irOperation) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < method.parameters().size(); i++) {
             if (i > 0) {
                 sb.append(", ");
             }
-            sb.append(method.parameters().get(i).name());
+            ParameterModel param = method.parameters().get(i);
+            String name = param.name();
+            if (i == rest.bodyIndex() && rest.inputRecord() != null) {
+                boolean optional = irOperation != null
+                        && !ConstraintSurfaces.parameter(irOperation, i, param).required();
+                sb.append(optional ? name + " != null ? " + name + ".toEntity() : null" : name + ".toEntity()");
+            } else {
+                sb.append(name);
+            }
         }
         return sb.toString();
+    }
+
+    private static ClassName mappingAnnotation(String httpMethod) {
+        return switch (httpMethod) {
+            case RestOperation.GET -> GET_MAPPING;
+            case RestOperation.POST -> POST_MAPPING;
+            default -> ClassName.get(MAPPING_PACKAGE,
+                    httpMethod.charAt(0) + httpMethod.substring(1).toLowerCase(Locale.ROOT) + "Mapping");
+        };
     }
 
     public static String toKebabCase(String camelCase) {

@@ -3,8 +3,10 @@
  */
 package com.egoge.ai.atlas.processor.generator;
 
+import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
+import com.egoge.ai.atlas.processor.rest.RestOperation;
 import com.egoge.ai.atlas.processor.util.VersionSelector;
 
 import javax.annotation.processing.Filer;
@@ -15,12 +17,16 @@ import java.io.IOException;
 import java.io.Writer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * Generates {@code META-INF/ai-atlas/deprecation-manifest.json} containing
  * deprecation metadata for all active API-channel REST endpoints. The runtime
  * {@code DeprecationHeaderFilter} reads this manifest at startup — no runtime
  * annotation scanning needed.
+ *
+ * <p>Each endpoint is written with its resolved HTTP method and route template, such as
+ * {@code DELETE /api/v1/orders/{id}}; the filter matches requests against the template.
  */
 public final class DeprecationManifestGenerator {
 
@@ -33,24 +39,24 @@ public final class DeprecationManifestGenerator {
      * Generates the deprecation manifest from the service registry.
      *
      * @param services    all registered service models
+     * @param routes      each API operation's resolved mapping by {@link ContractProjection#operationKey}
      * @param apiBasePath configured base path (e.g. {@code /api})
      * @param apiMajor    configured major version
      * @param filer       JSR 269 filer for writing resources
      * @param messager    JSR 269 messager for diagnostics
      */
-    public static void generate(List<ServiceModel> services, String apiBasePath,
-                                int apiMajor, Filer filer, Messager messager) {
+    public static void generate(List<ServiceModel> services, Function<String, RestOperation> routes,
+                                String apiBasePath, int apiMajor, Filer filer, Messager messager) {
         var entries = new ArrayList<String>();
         for (ServiceModel service : services) {
-            String servicePath = apiBasePath + "/v" + apiMajor + "/"
-                    + RestControllerGenerator.toKebabCase(service.serviceClassName().simpleName());
             for (MethodModel method : service.methods()) {
                 if (!method.channels().contains("API")
                         || !VersionSelector.isActive(method, apiMajor)) {
                     continue;
                 }
-                String path = servicePath + "/" + RestControllerGenerator.toKebabCase(method.methodName());
-                String httpMethod = method.parameters().isEmpty() ? "GET" : "POST";
+                RestOperation rest = routes.apply(ContractProjection.operationKey(service.serviceClassName(), method));
+                String path = apiBasePath + "/v" + apiMajor + rest.fullPath();
+                String httpMethod = rest.httpMethod();
                 boolean deprecated = VersionSelector.isDeprecated(method, apiMajor);
                 int deprecatedSince = deprecated ? method.apiDeprecatedSince() : 0;
                 String replacement = deprecated ? method.apiReplacement() : "";

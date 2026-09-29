@@ -19,9 +19,9 @@ import com.egoge.ai.atlas.processor.contract.ContractIr.Parameter;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Rest;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Return;
 import com.egoge.ai.atlas.processor.contract.ContractIr.TypeRef;
-import com.egoge.ai.atlas.processor.generator.RestControllerGenerator;
 import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.FieldModel;
+import com.egoge.ai.atlas.processor.rest.RestOperation;
 import com.egoge.ai.atlas.processor.util.AttributeResolver;
 import com.egoge.ai.atlas.processor.util.EntityRefResolver;
 import com.egoge.ai.atlas.processor.util.FieldScanner;
@@ -69,8 +69,6 @@ import java.util.function.Function;
 public final class IrBuilder {
 
     private static final String API_CHANNEL = "API";
-    private static final String GET = "GET";
-    private static final String POST = "POST";
 
     /** Swallows the diagnostics of resolutions already reported by the generation path. */
     private static final Messager SILENT = new Messager() {
@@ -236,11 +234,14 @@ public final class IrBuilder {
      * @param service        the service class declaring the method
      * @param method         the method
      * @param typeAnnotation the service's class-level {@code @AgenticExposed}, or {@code null}
+     * @param restOperation  the operation's resolved REST mapping, or {@code null} when it is not on
+     *                       the API channel
      * @return the operation's identity, {@link Operation#id()}, or {@code null} when the method is
      *         not exposed, its channels cannot be resolved, or a parameter or return type cannot be
      *         resolved (reported as an ERROR on the method)
      */
-    public String addOperation(TypeElement service, ExecutableElement method, AgenticExposed typeAnnotation) {
+    public String addOperation(TypeElement service, ExecutableElement method, AgenticExposed typeAnnotation,
+                               RestOperation restOperation) {
         AgenticExposed methodAnnotation = method.getAnnotation(AgenticExposed.class);
         if (methodAnnotation == null && typeAnnotation == null) {
             return null;
@@ -268,9 +269,8 @@ public final class IrBuilder {
         }
         Rest rest = null;
         if (channels.contains(API_CHANNEL)) {
-            rest = new Rest(parameters.isEmpty() ? GET : POST,
-                    "/" + RestControllerGenerator.toKebabCase(service.getSimpleName().toString())
-                            + "/" + RestControllerGenerator.toKebabCase(methodName));
+            // The effective mapping, resolved once, which the generators read too
+            rest = new Rest(restOperation.httpMethod(), restOperation.fullPath());
         }
         ClassName returnType = AttributeResolver.resolveReturnEntityType(
                 methodAnnotation, typeAnnotation, method, env.getTypeUtils());
