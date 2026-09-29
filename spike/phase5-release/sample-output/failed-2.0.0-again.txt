@@ -1,0 +1,5 @@
+* What went wrong:
+Execution failed for task ':agenticRelease'.
+> There was a failure while executing work items
+   > A failure occurred while executing com.egoge.ai.atlas.plugin.ReleaseAction
+      > [ai-atlas] Version 2.0.0 is already released at <projectDir>/.atlas/releases/2.0.0. Released contracts are immutable: release a new version instead.

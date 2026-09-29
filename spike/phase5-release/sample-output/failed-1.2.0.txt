@@ -1,0 +1,6 @@
+* What went wrong:
+Execution failed for task ':agenticRelease'.
+> There was a failure while executing work items
+   > A failure occurred while executing com.egoge.ai.atlas.plugin.ReleaseAction
+      > [ai-atlas] Release 1.2.0 removes 1 previously published element(s) without satisfying the deprecation policy (deprecated in at least 1 release(s), and at least 1 major(s) between deprecation and removal):
+          field test.Order#legacy: deprecated since major 1 in 1 release(s), removed in major 1. Restore it and declare @AgenticField(deprecatedSinceVersion = N) in a release before removing it, or relax agentic { releaseMinDeprecatedReleases / releaseMinDeprecatedMajors }.

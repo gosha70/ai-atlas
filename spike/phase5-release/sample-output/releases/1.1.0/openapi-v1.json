@@ -1,0 +1,61 @@
+{
+  "openapi" : "3.0.3",
+  "info" : {
+    "title" : "AI-ATLAS Generated API",
+    "description" : "Auto-generated API from @AgenticExposed services",
+    "version" : "1.0.0"
+  },
+  "paths" : {
+    "/api/v1/order-service/find" : {
+      "post" : {
+        "summary" : "Finds an order by id",
+        "operationId" : "find",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OrderDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "OrderDto" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "Id",
+            "format" : "int64"
+          },
+          "note" : {
+            "type" : "string",
+            "description" : "A note"
+          },
+          "legacy" : {
+            "type" : "string",
+            "description" : "[DEPRECATED since v1: Use id] Legacy code",
+            "deprecated" : true
+          }
+        },
+        "description" : "An order"
+      }
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "publishedMajor": 0,
+  "differences": [
+    {
+      "path": "field test.Order#id",
+      "change": "added",
+      "direction": "output",
+      "before": null,
+      "after": "java.lang.Long",
+      "classification": "compatible"
+    },
+    {
+      "path": "field test.Order#legacy",
+      "change": "added",
+      "direction": "output",
+      "before": null,
+      "after": "java.lang.String",
+      "classification": "compatible"
+    },
+    {
+      "path": "operation test.OrderService#find(java.lang.Long)",
+      "change": "added",
+      "direction": "input",
+      "before": null,
+      "after": "test.OrderService#find(java.lang.Long)",
+      "classification": "compatible"
+    }
+  ]
+}

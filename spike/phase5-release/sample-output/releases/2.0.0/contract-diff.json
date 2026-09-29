@@ -1,0 +1,13 @@
+{
+  "publishedMajor": 1,
+  "differences": [
+    {
+      "path": "field test.Order#legacy",
+      "change": "removed",
+      "direction": "output",
+      "before": "java.lang.String",
+      "after": null,
+      "classification": "breaking"
+    }
+  ]
+}

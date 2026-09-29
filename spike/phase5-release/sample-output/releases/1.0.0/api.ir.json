@@ -1,0 +1,112 @@
+{
+  "irVersion": 3,
+  "apiBasePath": "/api",
+  "apiMajor": 1,
+  "entities": [
+    {
+      "className": "test.Order",
+      "dtoName": "OrderDto",
+      "dtoPackage": "test.generated",
+      "displayName": "Order",
+      "description": "An order",
+      "includeTypeInfo": true,
+      "fields": [
+        {
+          "name": "id",
+          "displayName": "id",
+          "javaType": "java.lang.Long",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Id",
+          "constraints": {},
+          "channels": [
+            "AI",
+            "API"
+          ],
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        },
+        {
+          "name": "legacy",
+          "displayName": "legacy",
+          "javaType": "java.lang.String",
+          "collectionKind": "NONE",
+          "elementType": null,
+          "typeHint": null,
+          "reference": null,
+          "enumType": false,
+          "allowedValues": [],
+          "openEnum": false,
+          "sensitive": false,
+          "checkCircularReference": true,
+          "description": "Legacy code",
+          "constraints": {},
+          "channels": [
+            "AI",
+            "API"
+          ],
+          "lifecycle": {
+            "sinceVersion": 1,
+            "removedInVersion": 2147483647,
+            "deprecatedSinceVersion": 0,
+            "deprecatedMessage": ""
+          }
+        }
+      ]
+    }
+  ],
+  "operations": [
+    {
+      "id": "test.OrderService#find(java.lang.Long)",
+      "service": "test.OrderService",
+      "method": "find",
+      "toolName": "find",
+      "channels": [
+        "AI",
+        "API"
+      ],
+      "description": "Finds an order by id",
+      "rest": {
+        "httpMethod": "POST",
+        "path": "/order-service/find"
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "javaType": "java.lang.Long",
+          "description": "",
+          "enumConstants": [],
+          "required": true,
+          "constraints": {}
+        }
+      ],
+      "returns": {
+        "javaType": "test.Order",
+        "returnKind": "NONE",
+        "returnType": "test.Order",
+        "reference": {
+          "entity": "test.Order",
+          "dto": "test.generated.OrderDto"
+        }
+      },
+      "hints": {},
+      "lifecycle": {
+        "apiSince": 1,
+        "apiUntil": 2147483647,
+        "apiDeprecatedSince": 0,
+        "apiReplacement": ""
+      }
+    }
+  ]
+}

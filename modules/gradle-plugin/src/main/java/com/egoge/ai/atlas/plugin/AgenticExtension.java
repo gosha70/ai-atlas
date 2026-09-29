@@ -3,6 +3,7 @@
  */
 package com.egoge.ai.atlas.plugin;
 
+import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.provider.Property;
 
@@ -111,4 +112,30 @@ public abstract class AgenticExtension {
      * compilation.
      */
     public abstract Property<Boolean> getProjections();
+
+    /**
+     * SPIKE (epic #23, Phase 5): the version {@code agenticRelease} releases the contract as.
+     * Defaults to the project version. Must be {@code MAJOR.MINOR.PATCH}; a {@code -SNAPSHOT}
+     * or other pre-release version is refused.
+     */
+    public abstract Property<String> getReleaseVersion();
+
+    /**
+     * SPIKE: the directory holding one immutable subdirectory per released version. Defaults to
+     * {@code <projectDir>/.atlas/releases}.
+     */
+    public abstract DirectoryProperty getReleasesDir();
+
+    /**
+     * SPIKE: the number of released versions a field or operation must have been published in
+     * while deprecated before a release may remove it. Defaults to 1.
+     */
+    public abstract Property<Integer> getReleaseMinDeprecatedReleases();
+
+    /**
+     * SPIKE: the number of majors between an element's declared deprecation major and the major
+     * of the release that removes it. Defaults to 1, so an element cannot be removed in the major
+     * it was deprecated in.
+     */
+    public abstract Property<Integer> getReleaseMinDeprecatedMajors();
 }

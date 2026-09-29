@@ -1,0 +1,21 @@
+{
+  "publishedMajor": 1,
+  "differences": [
+    {
+      "path": "field test.Order#legacy",
+      "change": "lifecycle",
+      "direction": "output",
+      "before": "FieldLifecycle[sinceVersion=1, removedInVersion=2147483647, deprecatedSinceVersion=0, deprecatedMessage=null]",
+      "after": "FieldLifecycle[sinceVersion=1, removedInVersion=2147483647, deprecatedSinceVersion=1, deprecatedMessage=Use id]",
+      "classification": "compatible"
+    },
+    {
+      "path": "field test.Order#note",
+      "change": "added",
+      "direction": "output",
+      "before": null,
+      "after": "java.lang.String",
+      "classification": "compatible"
+    }
+  ]
+}

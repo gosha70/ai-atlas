@@ -1,0 +1,16 @@
+{
+  "version": "1.1.0",
+  "apiMajor": 1,
+  "irVersion": 3,
+  "previous": "1.0.0",
+  "deprecationPolicy": {
+    "minDeprecatedReleases": 1,
+    "minDeprecatedMajors": 1
+  },
+  "sha256": {
+    "api.ir.json": "e801c803e892b9ce76a0dbb86bf29036a221e7e14242faa8c3579ee531016115",
+    "openapi-v1.json": "88afcd3f54c36427dc35856a801d0ca6100446da73741658a5a13a512cae544d",
+    "contract-diff.json": "6242e6003ef7f5a5c003f560def6b59ebec2b958a2822ebca153c9b313c989a8",
+    "CHANGELOG.md": "c51240644e8abdaa19a0eab32b4ecf76218d8b04098f7214e9e6f0e85d28a379"
+  }
+}

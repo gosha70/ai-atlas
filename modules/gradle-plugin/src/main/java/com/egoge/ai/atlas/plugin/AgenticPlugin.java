@@ -59,10 +59,13 @@ public class AgenticPlugin implements Plugin<Project> {
     public static final String CONTRACT_CHECK_TASK = "atlasContractCheck";
     /** The task that writes the current contract to the baseline. */
     public static final String ACCEPT_TASK = "atlasAccept";
+    /** SPIKE (epic #23, Phase 5): the task that snapshots the accepted contract as a release. */
+    public static final String RELEASE_TASK = "agenticRelease";
 
     private static final String ACCEPT_COMPILE_TASK = "atlasAcceptCompile";
     private static final String TASK_GROUP = "ai-atlas";
     private static final String DEFAULT_CONTRACT_BASELINE = ".atlas/api.ir.json";
+    private static final String DEFAULT_RELEASES_DIR = ".atlas/releases";
     private static final String ACCEPT_DIR = "atlas/accept";
     private static final String CONTRACT_OPTION_PREFIX = "-Aai.atlas.contract.";
     private static final String PROCESSOR_MODULE = "ai-atlas-processor";
@@ -91,6 +94,10 @@ public class AgenticPlugin implements Plugin<Project> {
         extension.getContractBaseline().convention(
                 project.getLayout().getProjectDirectory().file(DEFAULT_CONTRACT_BASELINE));
         extension.getContractLocked().convention(false);
+        extension.getReleaseVersion().convention(project.provider(() -> project.getVersion().toString()));
+        extension.getReleasesDir().convention(project.getLayout().getProjectDirectory().dir(DEFAULT_RELEASES_DIR));
+        extension.getReleaseMinDeprecatedReleases().convention(1);
+        extension.getReleaseMinDeprecatedMajors().convention(1);
 
         // Add dependencies and processor options after evaluation (so extension values are resolved)
         project.afterEvaluate(p -> {
@@ -191,6 +198,21 @@ public class AgenticPlugin implements Plugin<Project> {
             task.getBaseline().set(extension.getContractBaseline());
             task.getApiBasePath().set(extension.getApiBasePath());
             task.getApiMajor().set(extension.getApiMajorVersion());
+            task.getProcessorVersion().set(processorVersion);
+        });
+
+        // SPIKE: releases what compileJava emitted, after the gate and atlasContractCheck passed
+        tasks.register(RELEASE_TASK, AgenticRelease.class, task -> {
+            task.setGroup(TASK_GROUP);
+            task.setDescription("Snapshots the accepted contract as an immutable release and writes its changelog.");
+            task.dependsOn(tasks.named(JavaPlugin.CLASSES_TASK_NAME));
+            task.getClassesDirs().from(compileJava.flatMap(JavaCompile::getDestinationDirectory));
+            task.getProcessorClasspath().from(processorPath);
+            task.getBaseline().set(extension.getContractBaseline());
+            task.getReleasesDir().set(extension.getReleasesDir());
+            task.getReleaseVersion().set(extension.getReleaseVersion());
+            task.getMinDeprecatedReleases().set(extension.getReleaseMinDeprecatedReleases());
+            task.getMinDeprecatedMajors().set(extension.getReleaseMinDeprecatedMajors());
             task.getProcessorVersion().set(processorVersion);
         });
     }
