@@ -5,6 +5,7 @@ package com.egoge.ai.atlas.plugin;
 
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.GradleRunner;
+import org.gradle.testkit.runner.TaskOutcome;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -25,8 +26,8 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * {@code agenticRelease} (epic #23 §10): immutable released contracts, their changelog and
- * deprecation policy.
+ * {@code agenticRelease} and {@code agenticReleaseCheck} (epic #23 §10): immutable released
+ * contracts, their changelog and deprecation policy, and their verification in {@code check}.
  * Each release is accepted with {@code atlasAccept} first, as the task releases only the accepted
  * contract.
  */
@@ -332,6 +333,41 @@ class AgenticReleaseFunctionalTest {
         assertThat(second.keySet()).isEqualTo(first.keySet());
         first.forEach((name, bytes) -> assertThat(second.get(name)).as(name).isEqualTo(bytes));
         assertThat(Files.readAllBytes(atlas("CHANGELOG.md"))).isEqualTo(aggregate);
+    }
+
+    @Test
+    void checkVerifiesTheDigestsOfEveryRelease() throws IOException {
+        assertThat(runner("check").build().task(":agenticReleaseCheck").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+        release("1.0.0").build();
+        assertThat(runner("check").build().task(":agenticReleaseCheck").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+        Path ir = releaseDir("1.0.0").resolve("api.ir.json");
+        Files.writeString(ir, Files.readString(ir).replace("\"Id\"", "\"Identifier\""));
+
+        BuildResult result = runner("check").buildAndFail();
+
+        assertThat(result.getOutput()).contains("Released file " + ir + " was modified after release",
+                "restore it from version control");
+        assertThat(release("1.1.0").buildAndFail().getOutput()).contains("was modified after release");
+    }
+
+    @Test
+    void checkMatchesTheBuildWithAGivenReleaseVersion() throws IOException {
+        release("1.0.0").build();
+
+        BuildResult matches = runner("check", "agenticReleaseCheck", "--release-version=1.0.0").build();
+        assertThat(matches.getOutput()).contains("The build's contract is the released contract 1.0.0.");
+
+        order(NOTE.formatted(""));
+        runner("atlasAccept").build();
+        BuildResult differs = runner("agenticReleaseCheck", "--release-version=1.0.0").buildAndFail();
+        assertThat(differs.getOutput()).contains("The contract the build emitted differs from the released contract",
+                "1.0.0" + File.separator + "api.ir.json");
+        assertThat(runner("agenticReleaseCheck", "--release-version=1.1.0").buildAndFail().getOutput())
+                .contains("Version 1.1.0 is not released");
+
+        append("agentic { release { checkVersion.set(\"1.0.0\") } }\n");
+        assertThat(runner("check").buildAndFail().getOutput())
+                .contains("The contract the build emitted differs from the released contract");
     }
 
     // ------------------------------------------------------------ helpers

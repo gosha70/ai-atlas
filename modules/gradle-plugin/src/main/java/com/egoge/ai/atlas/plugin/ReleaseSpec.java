@@ -7,12 +7,13 @@ import org.gradle.api.Action;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.model.ObjectFactory;
+import org.gradle.api.provider.Property;
 
 import javax.inject.Inject;
 
 /**
- * {@code agentic { release { … } } }: where {@code agenticRelease} writes released contracts, and
- * the deprecation policy.
+ * {@code agentic { release { … } } }: where {@code agenticRelease} writes released contracts, the
+ * version {@code agenticReleaseCheck} matches the build against, and the deprecation policy.
  *
  * <pre>
  * agentic {
@@ -49,6 +50,13 @@ public abstract class ReleaseSpec {
      * written.
      */
     public abstract RegularFileProperty getChangelog();
+
+    /**
+     * The released version {@code agenticReleaseCheck} requires the build's contract to be, such as
+     * the version CI builds a tag of. Unset by default, and then only the releases' digests are
+     * checked. The task's {@code --release-version} option overrides it.
+     */
+    public abstract Property<String> getCheckVersion();
 
     /** The deprecation policy a release is checked against. */
     public DeprecationSpec getDeprecation() {

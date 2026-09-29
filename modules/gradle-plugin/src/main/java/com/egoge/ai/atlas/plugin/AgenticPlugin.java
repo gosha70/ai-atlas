@@ -50,7 +50,8 @@ import java.util.stream.Stream;
  * <p>Also configures IntelliJ IDEA to recognize generated source directories, and the contract
  * gate: the {@code contractBaseline} and {@code contractLocked} options of the main
  * {@code compileJava}, with the {@code constraints} option next to them, the {@value #CONTRACT_CHECK_TASK} task that {@code classes} depends on, and
- * the {@value #ACCEPT_TASK} task; and the release task, {@value #RELEASE_TASK}.
+ * the {@value #ACCEPT_TASK} task; and the release workflow, {@value #RELEASE_TASK} and
+ * {@value #RELEASE_CHECK_TASK}, which {@code check} depends on.
  */
 public class AgenticPlugin implements Plugin<Project> {
 
@@ -60,6 +61,8 @@ public class AgenticPlugin implements Plugin<Project> {
     public static final String ACCEPT_TASK = "atlasAccept";
     /** The task that releases the accepted contract as an immutable snapshot. */
     public static final String RELEASE_TASK = "agenticRelease";
+    /** The task, part of {@code check}, that verifies the released snapshots. */
+    public static final String RELEASE_CHECK_TASK = "agenticReleaseCheck";
 
     private static final String ACCEPT_COMPILE_TASK = "atlasAcceptCompile";
     private static final String TASK_GROUP = "ai-atlas";
@@ -217,7 +220,7 @@ public class AgenticPlugin implements Plugin<Project> {
 
     /**
      * The release workflow: {@value #RELEASE_TASK} snapshots the accepted contract after the gate
-     * passed.
+     * passed, and {@value #RELEASE_CHECK_TASK}, which {@code check} depends on, verifies the snapshots.
      */
     private void configureRelease(Project project, AgenticExtension extension, TaskProvider<JavaCompile> compileJava,
                                   Configuration processorPath, Provider<String> processorVersion) {
@@ -242,6 +245,19 @@ public class AgenticPlugin implements Plugin<Project> {
             task.getApiMajor().set(extension.getApiMajorVersion());
             task.getProcessorVersion().set(processorVersion);
         });
+        TaskProvider<AgenticReleaseCheck> check = tasks.register(RELEASE_CHECK_TASK, AgenticReleaseCheck.class, task -> {
+            task.setGroup(LifecycleBasePlugin.VERIFICATION_GROUP);
+            task.setDescription("Verifies the released contracts' digests, and the build's contract against a"
+                    + " given release version.");
+            task.getClassesDirs().from(compileJava.flatMap(JavaCompile::getDestinationDirectory));
+            task.getProcessorClasspath().from(processorPath);
+            task.getReleasesDir().set(release.getDirectory());
+            task.getReleaseVersion().convention(release.getCheckVersion());
+            task.getApiBasePath().set(extension.getApiBasePath());
+            task.getApiMajor().set(extension.getApiMajorVersion());
+            task.getProcessorVersion().set(processorVersion);
+        });
+        tasks.named(LifecycleBasePlugin.CHECK_TASK_NAME).configure(task -> task.dependsOn(check));
     }
 
     /**
