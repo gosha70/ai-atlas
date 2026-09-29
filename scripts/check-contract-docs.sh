@@ -30,6 +30,12 @@ for text in irVersion openEnum atlasAccept atlasContractCheck ai.atlas.contract.
     require_text docs/contract-governance.md "$text"
 done
 require_text docs/annotation-guide.md openEnum
+require_file docs/contract-releases.md || true
+for text in agenticRelease agenticReleaseCheck releaseVersion releaseVersionTracksApiMajor minReleases minMajors failOnBreaking release.json manifestVersion SNAPSHOT atlasAccept; do
+    require_text docs/contract-releases.md "$text"
+done
+require_text docs/contract-governance.md contract-releases.md
+require_text CHANGELOG.md agenticRelease
 for text in api.ir.json openEnum atlasAccept ai.atlas.contract.locked; do
     require_text CHANGELOG.md "$text"
 done

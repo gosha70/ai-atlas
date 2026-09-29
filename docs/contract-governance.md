@@ -3,7 +3,8 @@
 ai-atlas records the contract it generates, compares it with a committed baseline on every build,
 and fails the build on a breaking change that no lifecycle declaration explains. This guide covers
 the Contract IR, the compatibility gate's rules, accepting a change, lock mode, and how the
-baseline is kept in version control.
+baseline is kept in version control. Recording what was shipped, as immutable releases under a
+deprecation policy, is covered in [Contract releases](contract-releases.md).
 
 ## The Contract IR
 
@@ -508,3 +509,14 @@ Commit the baseline, `.atlas/api.ir.json` by default, next to the sources it des
 The repository's demo module commits its baseline as `demo/.atlas/api.ir.json`, and
 `ContractBaselineTest` asserts it is byte-identical to the IR the demo build emits, so the demo's
 contract cannot change without its baseline changing in the same commit.
+
+## Releases
+
+The baseline is what the team has accepted, and `atlasAccept` overwrites it. `agenticRelease`
+records what was **shipped**: it snapshots the accepted baseline, byte for byte, as the immutable
+`.atlas/releases/<version>/`, with the OpenAPI document of its major, a changelog section and a
+manifest of digests. It compares each release with the previous one through
+`ContractGate.compareReleases`, which applies this gate's rules to what each release published at its
+own major, and fails a removal that was never released deprecated. `agenticReleaseCheck`, part of
+`check`, verifies the snapshots. The release never writes the baseline, and the gate keeps
+comparing against the baseline. See [Contract releases](contract-releases.md).
