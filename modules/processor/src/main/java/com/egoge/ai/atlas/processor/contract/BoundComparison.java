@@ -25,9 +25,12 @@ import java.util.Objects;
  *       output change, as clients may rely on receiving at most that many results;</li>
  *   <li>a page-size ceiling is compared only where it adds to the limit parameter's own Phase 3
  *       maximum, which {@link ConstraintComparison} already gates: a {@code LIMIT} ceiling at or
- *       above that maximum on the same side is no ceiling. A ceiling that remains is a breaking
- *       input change when it is below every page size the baseline accepted, its own ceiling and
- *       the baseline limit parameter's maximum; otherwise it is compatible;</li>
+ *       above that maximum on the same side is no ceiling. A ceiling limits one parameter, the
+ *       bound's {@code limitParameter}, identified by position; a ceiling that remains is a breaking
+ *       input change when it is below every page size the baseline accepted for that parameter:
+ *       the baseline ceiling, only if it limited the same parameter, and that parameter's baseline
+ *       maximum. Otherwise it is compatible. A ceiling moved to another parameter is compared even
+ *       when its value is unchanged;</li>
  *   <li>a changed envelope is a breaking output change;</li>
  *   <li>a paging role declared or removed on an existing parameter, and so the style, is
  *       informational: adding or removing the parameter already changes the operation's identity.</li>
@@ -64,13 +67,20 @@ final class BoundComparison {
         Integer ceilingAfter = after.paged() ? after.maxResults() : null;
         Integer ownBefore = ownCeiling(old, before);
         Integer ownAfter = ownCeiling(now, after);
-        if (!Objects.equals(ownBefore, ownAfter)) {
-            // Every page size the baseline accepted: its ceiling, and the limit parameter's maximum there
-            BigDecimal accepted = min(ceilingBefore != null ? BigDecimal.valueOf(ceilingBefore) : null,
-                    maximum(old, parameterIndex(now, after)));
+        int limited = limitedIndex(now, after);
+        boolean sameLimited = limitedIndex(old, before) == limited;
+        if (!Objects.equals(ownBefore, ownAfter) || !sameLimited && ownAfter != null) {
+            // Every page size the baseline accepted for the parameter the ceiling now limits: the
+            // baseline ceiling if it limited that parameter, and that parameter's maximum there
+            BigDecimal accepted = min(sameLimited && ceilingBefore != null ? BigDecimal.valueOf(ceilingBefore) : null,
+                    maximum(old, Bound.LIMIT.equals(after.style()) ? limited : -1));
             boolean narrows = ownAfter != null
                     && (accepted == null || BigDecimal.valueOf(ownAfter).compareTo(accepted) < 0);
-            add(differences, path, C_MAX_RESULTS, Direction.INPUT, ceilingBefore, ceilingAfter,
+            // Two ceilings on different parameters name them, as equal values would otherwise read as no change
+            boolean moved = !sameLimited && ceilingBefore != null && ceilingAfter != null;
+            add(differences, path, C_MAX_RESULTS, Direction.INPUT,
+                    moved ? onParameter(ceilingBefore, before) : ceilingBefore,
+                    moved ? onParameter(ceilingAfter, after) : ceilingAfter,
                     narrows ? Classification.BREAKING : Classification.COMPATIBLE,
                     "Requests for pages larger than " + ceilingAfter + " are rejected", remedy);
         }
@@ -92,14 +102,18 @@ final class BoundComparison {
         if (!bound.paged() || bound.maxResults() == null) {
             return null;
         }
-        BigDecimal maximum = Bound.LIMIT.equals(bound.style()) ? maximum(op, parameterIndex(op, bound)) : null;
+        BigDecimal maximum = Bound.LIMIT.equals(bound.style()) ? maximum(op, limitedIndex(op, bound)) : null;
         return maximum != null && BigDecimal.valueOf(bound.maxResults()).compareTo(maximum) >= 0
                 ? null : bound.maxResults();
     }
 
-    /** The index of the bound's {@code LIMIT} parameter, or -1 for none. */
-    private static int parameterIndex(Operation op, Bound bound) {
-        if (!Bound.LIMIT.equals(bound.style())) {
+    /**
+     * The index of the parameter a paged bound's ceiling limits, its {@code limitParameter} (the
+     * {@code Pageable} or the limit parameter), or -1 for none. Positions, unlike names, are stable
+     * across the two sides of an operation.
+     */
+    private static int limitedIndex(Operation op, Bound bound) {
+        if (!bound.paged() || bound.limitParameter() == null) {
             return -1;
         }
         for (int i = 0; i < op.parameters().size(); i++) {
@@ -108,6 +122,11 @@ final class BoundComparison {
             }
         }
         return -1;
+    }
+
+    /** A ceiling with the parameter it limits. */
+    private static String onParameter(Integer ceiling, Bound bound) {
+        return ceiling + " on '" + bound.limitParameter() + "'";
     }
 
     /** The largest integer the parameter at {@code index} accepts, or {@code null} for no maximum. */

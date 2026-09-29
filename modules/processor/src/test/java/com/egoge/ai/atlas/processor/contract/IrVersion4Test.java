@@ -214,6 +214,11 @@ class IrVersion4Test {
                 limit), "PATH parameter 'id' has no {id} variable in the path /orders/{orderId}");
         assertMalformed(document(API, new Rest("GET", "/orders", 200, List.of("PATH", "QUERY", "QUERY")), limit),
                 "PATH parameter 'id' has no {id} variable in the path /orders");
+        // A variable naming no parameter, or a non-PATH one, would hide which parameter a position binds
+        assertMalformed(document(API, new Rest("GET", "/orders/{id}/{x}", 200, List.of("PATH", "QUERY", "QUERY")),
+                limit), "the path variable {x} of /orders/{id}/{x} names no PATH parameter [id]");
+        assertMalformed(document(API, new Rest("GET", "/orders/{id}/{limit}", 200, List.of("PATH", "QUERY", "QUERY")),
+                limit), "the path variable {limit} of /orders/{id}/{limit} names no PATH parameter [id]");
         assertMalformed(document(API, new Rest("POST", "/orders", 200, List.of("BODY", "QUERY", "BODY")), Bound.NONE),
                 "more than one parameter is the BODY");
         assertMalformed(IrJson.write(document(API, byId, limit)).replace("\"API\"", "\"AI\""),

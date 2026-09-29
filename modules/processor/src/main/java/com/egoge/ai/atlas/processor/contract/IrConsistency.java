@@ -27,8 +27,9 @@ final class IrConsistency {
      * The operation, once its slots agree with each other: a hand-edited baseline that contradicts
      * itself could hide a change from the gate. The operation has a REST mapping exactly when it is
      * on the API channel; each {@code PATH} parameter is named by a {@code {name}} variable of the
-     * path; at most one parameter is the {@code BODY}; and the bound's limit and cursor parameters
-     * are parameters of the operation.
+     * path, and each variable names a {@code PATH} parameter, so the gate can tell which parameter
+     * every path position binds; at most one parameter is the {@code BODY}; and the bound's limit
+     * and cursor parameters are parameters of the operation.
      *
      * @throws IllegalArgumentException naming the operation and the contradiction
      */
@@ -48,6 +49,7 @@ final class IrConsistency {
             while (matcher.find()) {
                 variables.add(matcher.group(1));
             }
+            List<String> pathParameters = new ArrayList<>();
             int bodies = 0;
             for (int i = 0; i < op.parameters().size(); i++) {
                 String name = op.parameters().get(i).name();
@@ -55,8 +57,17 @@ final class IrConsistency {
                     throw new IllegalArgumentException(where + ": PATH parameter '" + name + "' has no {" + name
                             + "} variable in the path " + rest.path());
                 }
+                if (Rest.PATH.equals(rest.in(i))) {
+                    pathParameters.add(name);
+                }
                 if (Rest.BODY.equals(rest.in(i)) && ++bodies > 1) {
                     throw new IllegalArgumentException(where + ": more than one parameter is the BODY");
+                }
+            }
+            for (String variable : variables) {
+                if (!pathParameters.contains(variable)) {
+                    throw new IllegalArgumentException(where + ": the path variable {" + variable + "} of "
+                            + rest.path() + " names no PATH parameter " + pathParameters);
                 }
             }
         }
