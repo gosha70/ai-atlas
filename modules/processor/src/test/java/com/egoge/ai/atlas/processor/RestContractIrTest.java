@@ -89,7 +89,7 @@ class RestContractIrTest {
                 "BREAKING INPUT rest.httpMethod POST -> DELETE",
                 "BREAKING INPUT rest.path /customers/delete-by-id -> /customers/{id}",
                 "BREAKING OUTPUT rest.status 200 -> 204",
-                "BREAKING INPUT parameter 0.in QUERY -> PATH");
+                "BREAKING INPUT rest.parameterIn[0] QUERY -> PATH");
     }
 
     @Test
