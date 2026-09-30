@@ -17,7 +17,9 @@ import com.palantir.javapoet.TypeVariableName;
 import javax.lang.model.element.Modifier;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * How an operation's collection result is bounded, as {@link CollectionsOption} recognised it, and
@@ -168,20 +170,37 @@ public record PagingContract(Style style, Envelope envelope, int pageable, int l
                 element);
     }
 
+    /**
+     * A name for a variable the generator declares in a wrapper, {@code base} unless one of the
+     * service method's parameters, which the wrapper declares too, already has it.
+     */
+    static String unusedName(MethodModel method, String base) {
+        Set<String> taken = new HashSet<>();
+        method.parameters().forEach(p -> taken.add(p.name()));
+        String name = base;
+        while (taken.contains(name)) {
+            name = name + "_";
+        }
+        return name;
+    }
+
     /** Calls the service and wraps its Page or Slice, mapping each element to its DTO when there is one. */
     void addEnvelopeStatements(MethodSpec.Builder builder, ClassName enclosing, MethodModel method, CodeBlock callArgs) {
-        builder.addStatement("var result = service.$L($L)", method.methodName(), callArgs);
+        String result = unusedName(method, "result");
+        String element = unusedName(method, "e");
+        builder.addStatement("var $N = service.$L($L)", result, method.methodName(), callArgs);
         CodeBlock content = method.returnDtoType() != null && method.returnEntityType() != null
-                ? CodeBlock.of("result.getContent().stream().map(e -> $T.fromEntity(($T) e)).toList()",
-                        method.returnDtoType(), method.returnEntityType())
-                : CodeBlock.of("result.getContent()");
+                ? CodeBlock.of("$N.getContent().stream().map($N -> $T.fromEntity(($T) $N)).toList()",
+                        result, element, method.returnDtoType(), method.returnEntityType(), element)
+                : CodeBlock.of("$N.getContent()", result);
         ClassName type = enclosing.nestedClass(envelope == Envelope.PAGE ? PAGE_RESULT : SLICE_RESULT);
         if (envelope == Envelope.PAGE) {
-            builder.addStatement("return new $T<>($L, result.getNumber(), result.getSize(), result.hasNext(),"
-                    + " result.getTotalElements(), result.getTotalPages())", type, content);
+            builder.addStatement("return new $T<>($L, $N.getNumber(), $N.getSize(), $N.hasNext(),"
+                    + " $N.getTotalElements(), $N.getTotalPages())", type, content, result, result, result, result,
+                    result);
         } else {
-            builder.addStatement("return new $T<>($L, result.getNumber(), result.getSize(), result.hasNext())",
-                    type, content);
+            builder.addStatement("return new $T<>($L, $N.getNumber(), $N.getSize(), $N.hasNext())",
+                    type, content, result, result, result);
         }
     }
 
@@ -236,8 +255,10 @@ public record PagingContract(Style style, Envelope envelope, int pageable, int l
      *
      * @param param   the {@code Pageable} parameter
      * @param request the {@code WebRequest} parameter, whose raw page and size are checked
+     * @param method  the operation, whose parameter names the generated locals avoid
      */
-    void addRestPageableChecks(MethodSpec.Builder builder, String param, String request, String methodName) {
+    void addRestPageableChecks(MethodSpec.Builder builder, String param, String request, MethodModel method) {
+        String methodName = method.methodName();
         builder.addStatement("$L($L, $L, $S, $L)", CHECK_PAGEABLE, param, request, methodName, maxPageSize());
         if (sortable.isEmpty()) {
             // A sort on a property clients cannot see would leak its values through the order
@@ -246,10 +267,11 @@ public record PagingContract(Style style, Envelope envelope, int pageable, int l
             return;
         }
         CodeBlock allowed = CodeBlock.join(sortable.stream().map(p -> CodeBlock.of("$S", p)).toList(), ", ");
-        builder.beginControlFlow("for ($T order : $L.getSort())", SORT_ORDER, param)
-                .beginControlFlow("if (!$T.of($L).contains(order.getProperty()))", SET, allowed)
-                .addStatement("throw new $T($T.BAD_REQUEST, $S + order.getProperty() + $S)",
-                        RESPONSE_STATUS_EXCEPTION, HTTP_STATUS, PREFIX + methodName + " cannot be sorted by '",
+        String order = unusedName(method, "order");
+        builder.beginControlFlow("for ($T $N : $L.getSort())", SORT_ORDER, order, param)
+                .beginControlFlow("if (!$T.of($L).contains($N.getProperty()))", SET, allowed, order)
+                .addStatement("throw new $T($T.BAD_REQUEST, $S + $N.getProperty() + $S)",
+                        RESPONSE_STATUS_EXCEPTION, HTTP_STATUS, PREFIX + methodName + " cannot be sorted by '", order,
                         "'; sortable: " + sortable)
                 .endControlFlow()
                 .endControlFlow();

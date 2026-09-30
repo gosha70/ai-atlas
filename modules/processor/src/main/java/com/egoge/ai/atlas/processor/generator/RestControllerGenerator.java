@@ -29,8 +29,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Generates Spring {@code @RestController} classes with request mappings
@@ -224,10 +222,10 @@ public final class RestControllerGenerator {
         String callArgs = buildCallArgs(method);
         if (paging != null && paging.pageable() >= 0) {
             // The raw page and size, which Spring Data's resolver would otherwise clamp unseen
-            String request = requestParameterName(method);
+            String request = PagingContract.unusedName(method, "request");
             methodBuilder.addParameter(ParameterSpec.builder(WEB_REQUEST, request).build());
             paging.addRestPageableChecks(methodBuilder, method.parameters().get(paging.pageable()).name(), request,
-                    method.methodName());
+                    method);
         }
 
         if (method.returnType().equals(TypeName.VOID)) {
@@ -264,14 +262,6 @@ public final class RestControllerGenerator {
     }
 
     /** A name for the {@code WebRequest} parameter that no service parameter takes. */
-    private static String requestParameterName(MethodModel method) {
-        Set<String> taken = method.parameters().stream().map(ParameterModel::name).collect(Collectors.toSet());
-        String name = "request";
-        while (taken.contains(name)) {
-            name = name + "_";
-        }
-        return name;
-    }
 
     private static String buildCallArgs(MethodModel method) {
         StringBuilder sb = new StringBuilder();

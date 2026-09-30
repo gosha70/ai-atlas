@@ -358,6 +358,24 @@ class CollectionsGenerationTest {
         assertThat(rest.path("totalPages").asInt()).isEqualTo(1);
     }
 
+    @Test
+    void parametersNamedLikeTheGeneratedLocalsStillCompile() {
+        // The wrappers declare the service's parameters, so their own locals must avoid those names
+        Compilation compilation = CollectionsFixtures.compileWithOrder("shop.Clash", """
+                package shop;
+                import com.egoge.ai.atlas.annotations.*;
+                import org.springframework.data.domain.*;
+                @AgenticExposed(description = "Clash", returnType = Order.class)
+                public class Clash {
+                    @AgenticExposed(description = "Paged, with parameters named like generated locals")
+                    public Page<Order> find(String order, String result, String e, String request,
+                                            @AgenticParam(sortable = "id") Pageable pageable) { return null; }
+                }
+                """, FLAG_ON);
+
+        assertThat(compilation).succeeded();
+    }
+
     // ================================================================ Phase 4
 
     @Test
