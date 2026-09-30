@@ -243,14 +243,21 @@ public final class ContractRelease {
         }
     }
 
-    /** The baseline's bytes, when the build emitted exactly that document. */
+    /**
+     * The baseline's bytes, when the build's emitted document is canonically equal to the baseline:
+     * both parse (after migrating any older {@code irVersion} in memory) to the same {@link ContractIr}.
+     * The baseline's own bytes are always returned, never the emitted ones, so the snapshot keeps
+     * exactly what was accepted.
+     */
     private static byte[] accepted(Path baseline, byte[] emitted) throws ReleaseException, IOException {
         if (!Files.isRegularFile(baseline)) {
             throw new ReleaseException("No contract baseline at " + baseline + ". A release snapshots the accepted"
                     + " contract: run " + ContractGate.ACCEPT_TASK + " first, then release.");
         }
         byte[] accepted = Files.readAllBytes(baseline);
-        if (!Arrays.equals(accepted, emitted)) {
+        ContractIr acceptedIr = parse(new String(accepted, StandardCharsets.UTF_8), baseline.toString());
+        ContractIr emittedIr = parse(new String(emitted, StandardCharsets.UTF_8), "the build's emitted contract");
+        if (!acceptedIr.equals(emittedIr)) {
             throw new ReleaseException("The contract the build emitted differs from the baseline " + baseline
                     + ". A release snapshots the accepted contract: review the difference, run "
                     + ContractGate.ACCEPT_TASK + ", then release.");
