@@ -10,8 +10,8 @@ public enum Requiredness {
 
     /**
      * Not declared: the parameter is required when it is a primitive or carries {@code @NotNull},
-     * {@code @NotBlank} or {@code @NotEmpty}, and otherwise required as REST query parameters
-     * are.
+     * {@code @NotBlank} or {@code @NotEmpty}; otherwise optional when it is a
+     * {@link Paging#CURSOR}, and required as REST query parameters are for anything else.
      */
     DEFAULT,
 

@@ -165,6 +165,7 @@ Marks a service class or individual method for MCP tool, REST controller, and Op
 | `apiUntil` | int | `-1` (inherit) | Maximum major API version, inclusive (framework default: `Integer.MAX_VALUE`) |
 | `apiDeprecatedSince` | int | `-1` (inherit) | Major version at which this method became deprecated (framework default: `0`) |
 | `apiReplacement` | String | `"\0"` (inherit) | Migration guidance for deprecated methods (framework default: `""`) |
+| `maxResults` | int | none | Method-level only. The most elements a collection result holds, or on a method taking a `Pageable` the page-size ceiling; declared, never enforced by truncation. At least 1: an explicit value below 1, `-1` included, is an error. Needs `ai.atlas.collections=true` (see [Collection exposure safety](collection-safety.md)) |
 
 ### Type-Level Usage
 
@@ -260,6 +261,7 @@ tasks.withType<JavaCompile> {
 | Option | Default | Description |
 |--------|---------|-------------|
 | `ai.atlas.strict` | `false` | `true` or `false` (case-insensitive). When `true`, ai-atlas quality diagnostics that are warnings by default are errors. Any other value is a compile error naming the option and the value. |
+| `ai.atlas.collections` | `false` | `true` or `false` (case-insensitive). When `true`, Spring Data paging contracts are bound on every surface, `Page`/`Slice` results keep their metadata, `maxResults` and `@AgenticParam(paging, sortable)` are read, and an unbounded collection result is a warning, an error under `ai.atlas.strict` for AI-channel operations (see [Collection exposure safety](collection-safety.md)) |
 
 ---
 

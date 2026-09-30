@@ -98,6 +98,11 @@ present:
 - `maxResults` is at least 1, or `null`. For a paged style (`PAGEABLE`, `LIMIT`) it is the
   **page-size ceiling**, the largest page clients may request. For any other style it is the most
   results the operation returns.
+- The processor option `ai.atlas.collections` decides the values (see
+  [Collection exposure safety](collection-safety.md#the-contract-ir)). With it off, every
+  operation records `NONE`/`NONE`, since that is what its clients receive. With it on, the bound is
+  the effective contract the wrappers serve. A `LIMIT` records no `maxResults`: its ceiling is the
+  limit parameter's own `maximum`, which the IR already records with the parameter's constraints.
 
 Today every operation records `NONE`/`NONE` with `null` parameters and `maxResults`.
 

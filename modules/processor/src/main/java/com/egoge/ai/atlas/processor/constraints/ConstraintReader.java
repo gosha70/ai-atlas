@@ -5,6 +5,7 @@ package com.egoge.ai.atlas.processor.constraints;
 
 import com.egoge.ai.atlas.annotations.AgenticConstraints;
 import com.egoge.ai.atlas.annotations.AgenticParam;
+import com.egoge.ai.atlas.annotations.Paging;
 import com.egoge.ai.atlas.annotations.Requiredness;
 import com.egoge.ai.atlas.processor.constraints.EffectiveConstraints.PatternConstraint;
 
@@ -164,6 +165,10 @@ public final class ConstraintReader {
                     errors.add("Requiredness.OPTIONAL on " + what + " contradicts its @NotNull, @NotBlank or"
                             + " @NotEmpty");
                 }
+                required = false;
+            } else if (param.required() == Requiredness.DEFAULT && param.paging() == Paging.CURSOR
+                    && !type.getKind().isPrimitive() && !bv.required) {
+                // The first call of a cursor contract has no cursor to pass
                 required = false;
             }
         }

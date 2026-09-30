@@ -6,9 +6,11 @@ package com.egoge.ai.atlas.processor;
 import com.egoge.ai.atlas.annotations.AgenticEntity;
 import com.egoge.ai.atlas.annotations.AgenticExposed;
 import com.egoge.ai.atlas.processor.contract.ContractGate;
+import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.contract.ContractProjection;
 import com.egoge.ai.atlas.processor.contract.IrBuilder;
 import com.egoge.ai.atlas.processor.generator.ApiVersionPropertiesGenerator;
+import com.egoge.ai.atlas.processor.generator.CollectionsOption;
 import com.egoge.ai.atlas.processor.generator.ConstraintsOption;
 import com.egoge.ai.atlas.processor.generator.DeprecationManifestGenerator;
 import com.egoge.ai.atlas.processor.generator.McpToolGenerator;
@@ -28,13 +30,13 @@ import com.egoge.ai.atlas.processor.util.QualityDiagnostics;
 import com.egoge.ai.atlas.processor.util.RestMappingRegistry;
 import com.egoge.ai.atlas.processor.util.ReturnTypeValidator;
 import com.egoge.ai.atlas.processor.util.ToolNameRegistry;
+import com.egoge.ai.atlas.processor.util.VersionConfig;
 import com.egoge.ai.atlas.processor.util.VersionSelector;
 import com.google.auto.service.AutoService;
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.TypeName;
 
 import javax.annotation.processing.AbstractProcessor;
-import javax.annotation.processing.Messager;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.annotation.processing.Processor;
 import javax.annotation.processing.RoundEnvironment;
@@ -65,18 +67,19 @@ import java.util.Set;
         "ai.atlas.pii.patterns", "ai.atlas.pii.patterns.file",
         "ai.atlas.api.basePath", "ai.atlas.api.major", "ai.atlas.openapi.infoVersion",
         "ai.atlas.strict", "ai.atlas.contract.baseline", "ai.atlas.contract.locked", "ai.atlas.constraints",
-        "ai.atlas.projections"
+        "ai.atlas.projections", "ai.atlas.collections"
 })
 public class AgenticProcessor extends AbstractProcessor {
 
-    public static final String OPT_API_BASE_PATH = "ai.atlas.api.basePath";
-    public static final String OPT_API_MAJOR = "ai.atlas.api.major";
-    public static final String OPT_OPENAPI_INFO_VERSION = "ai.atlas.openapi.infoVersion";
+    public static final String OPT_API_BASE_PATH = VersionConfig.OPT_API_BASE_PATH;
+    public static final String OPT_API_MAJOR = VersionConfig.OPT_API_MAJOR;
+    public static final String OPT_OPENAPI_INFO_VERSION = VersionConfig.OPT_OPENAPI_INFO_VERSION;
     public static final String OPT_STRICT = "ai.atlas.strict";
     public static final String OPT_CONTRACT_BASELINE = "ai.atlas.contract.baseline";
     public static final String OPT_CONTRACT_LOCKED = "ai.atlas.contract.locked";
     public static final String OPT_CONSTRAINTS = "ai.atlas.constraints";
     public static final String OPT_PROJECTIONS = "ai.atlas.projections";
+    public static final String OPT_COLLECTIONS = CollectionsOption.OPTION;
     private final Map<String, EntityModel> entityRegistry = new HashMap<>();
     private final Set<String> dtoSkippedKeys = new HashSet<>();
     private final List<ServiceModel> serviceRegistry = new ArrayList<>();
@@ -95,6 +98,7 @@ public class AgenticProcessor extends AbstractProcessor {
     private Diagnostic.Kind qualityKind;
     private ConstraintsOption constraints;
     private ProjectionsOption projections;
+    private CollectionsOption collections;
 
     @Override public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
     @Override
@@ -108,52 +112,22 @@ public class AgenticProcessor extends AbstractProcessor {
         versionConfigValid &= constraints != null;
         projections = ProjectionsOption.resolve(OPT_PROJECTIONS, processingEnv);
         versionConfigValid &= projections != null;
+        collections = CollectionsOption.resolve(OPT_COLLECTIONS, constraints != null && constraints.enabled(),
+                processingEnv);
+        versionConfigValid &= collections != null;
         if (projections != null) {
-            contractIr = new IrBuilder(processingEnv, projections::channels, projections.enabled());
+            contractIr = new IrBuilder(processingEnv, projections::channels, projections.enabled(),
+                    collections != null ? collections::bound : operationId -> ContractIr.Bound.NONE);
         }
     }
 
     private void resolveVersionConfig() {
-        Messager msg = processingEnv.getMessager();
-        Map<String, String> opts = processingEnv.getOptions();
-        versionConfigValid = true;
-        apiBasePath = opts.getOrDefault(OPT_API_BASE_PATH, "/api");
-        if (!apiBasePath.startsWith("/")) {
-            msg.printMessage(Diagnostic.Kind.ERROR,
-                    "[ai-atlas] ai.atlas.api.basePath must start with '/'. Got: " + apiBasePath);
-            versionConfigValid = false;
-            return;
-        }
-        while (apiBasePath.endsWith("/") && apiBasePath.length() > 1) {
-            apiBasePath = apiBasePath.substring(0, apiBasePath.length() - 1);
-        }
-        if ("/".equals(apiBasePath)) {
-            msg.printMessage(Diagnostic.Kind.ERROR,
-                    "[ai-atlas] ai.atlas.api.basePath must not be '/'. Use a path like '/api'.");
-            versionConfigValid = false;
-            return;
-        }
-        String majorStr = opts.getOrDefault(OPT_API_MAJOR, "1");
-        try {
-            apiMajor = Integer.parseInt(majorStr);
-            if (apiMajor < 1) {
-                msg.printMessage(Diagnostic.Kind.ERROR,
-                        "[ai-atlas] ai.atlas.api.major must be a positive integer. Got: " + majorStr);
-                versionConfigValid = false;
-                return;
-            }
-        } catch (NumberFormatException e) {
-            msg.printMessage(Diagnostic.Kind.ERROR,
-                    "[ai-atlas] ai.atlas.api.major must be an integer. Got: " + majorStr);
-            versionConfigValid = false;
-            return;
-        }
-        String infoVersionRaw = opts.get(OPT_OPENAPI_INFO_VERSION);
-        openApiInfoVersion = infoVersionRaw != null ? infoVersionRaw : (apiMajor + ".0.0");
-        if (openApiInfoVersion.isBlank()) {
-            msg.printMessage(Diagnostic.Kind.ERROR,
-                    "[ai-atlas] ai.atlas.openapi.infoVersion must not be empty");
-            versionConfigValid = false;
+        VersionConfig config = VersionConfig.resolve(processingEnv.getOptions(), processingEnv.getMessager());
+        versionConfigValid = config != null;
+        if (config != null) {
+            apiBasePath = config.apiBasePath();
+            apiMajor = config.apiMajor();
+            openApiInfoVersion = config.openApiInfoVersion();
         }
     }
 
@@ -171,10 +145,11 @@ public class AgenticProcessor extends AbstractProcessor {
                 OpenApiGenerator.generate(projections.openApiEntities(entityRegistry),
                         serviceRegistry, projection.operationIds(),
                         apiBasePath, apiMajor, openApiInfoVersion, constraints.surfaces(projection),
-                        processingEnv.getFiler(), processingEnv.getMessager());
+                        collections.contracts(), processingEnv.getFiler(), processingEnv.getMessager());
                 openApiGenerated = true;
             }
-            constraints.generateToolSpecifications(serviceRegistry, apiMajor, projection, processingEnv);
+            constraints.generateToolSpecifications(serviceRegistry, apiMajor, projection, collections.contracts(),
+                    processingEnv);
             if (!apiVersionPropertiesGenerated) {
                 ApiVersionPropertiesGenerator.generate(apiBasePath, apiMajor,
                         processingEnv.getFiler(), processingEnv.getMessager());
@@ -390,6 +365,8 @@ public class AgenticProcessor extends AbstractProcessor {
                         serviceType, method, methodModel, typeAnnotation, apiMajor);
                 QualityDiagnostics.reportMissingHints(qualityKind, processingEnv.getMessager(), serviceType, method,
                         methodModel, constraints.enabled() ? contractIr.operation(operationId).hints() : null, apiMajor);
+                collections.check(serviceType, method, methodModel, typeAnnotation, contractIr.operation(operationId),
+                        qualityKind, apiMajor, () -> projections.openApiEntities(entityRegistry));
             }
         }
         return operationIds;
@@ -402,9 +379,9 @@ public class AgenticProcessor extends AbstractProcessor {
         ServiceModel model = projection.service(ClassName.get(serviceType), operationIds);
         serviceRegistry.add(model);
         McpToolGenerator.generate(projections.toolModel(model, entityRegistry), generatedPackage, apiMajor, constraints.surfaces(projection),
-                processingEnv.getFiler(), processingEnv.getMessager());
-        RestControllerGenerator.generate(model, generatedPackage, apiBasePath, apiMajor,
-                constraints.surfaces(projection), processingEnv.getFiler(), processingEnv.getMessager());
+                collections.contracts(), processingEnv.getFiler(), processingEnv.getMessager());
+        RestControllerGenerator.generate(model, generatedPackage, apiBasePath, apiMajor, constraints.surfaces(projection),
+                collections.contracts(), processingEnv.getFiler(), processingEnv.getMessager());
     }
 
     private MethodModel buildMethodModel(ExecutableElement method, AgenticExposed typeAnnotation) {

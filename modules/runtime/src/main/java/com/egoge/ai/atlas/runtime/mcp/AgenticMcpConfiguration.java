@@ -444,7 +444,7 @@ public class AgenticMcpConfiguration {
                     .toolMetadata(callback.getToolMetadata())
                     .toolMethod(method)
                     .toolObject(beans.get(callback.getToolDefinition().name()))
-                    .toolCallResultConverter(converter)
+                    .toolCallResultConverter(BoundCheckingResultConverter.of(converter, method))
                     .build();
         }
         return result;
