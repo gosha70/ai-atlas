@@ -212,6 +212,10 @@ The 500-line cap applies to every file, tests included. Each phase ends with a f
     release leaves the class-output artifact bytes and `contract-resources.json` unchanged,
     creates no `.atlas/releases/<version>/` and leaves `.atlas/CHANGELOG.md` unchanged (release
     path).
+  - TestKit (fourth round): after a normal build, a tracked output is tampered with and
+    `agenticRelease` is invoked alone, without forcing `compileJava` up to date: `compileJava`
+    does not run, the release fails naming the file, and the four invariants hold. Tests of the
+    normal flow run `classes agenticRelease`.
 - **Depends:** C3a.
 
 ### C4. The release consumes the manifest (F2, D2.1, D2.3, D2.6, D2.8, AC2, AC4)
@@ -389,7 +393,8 @@ The 500-line cap applies to every file, tests included. Each phase ends with a f
     effective configuration structurally, and which artifacts are present or absent).
 - **Accept:**
   - Covered by the E3 tests.
-  - It writes no file.
+  - It writes no file, and, like `agenticRelease`, has no task dependency that could regenerate the
+    class output it verifies (spec, fourth round).
 - **Depends:** E1, C4.
 
 ### E3. Verify functional tests (AC14)

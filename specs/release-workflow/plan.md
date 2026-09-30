@@ -362,6 +362,10 @@ digest the manifest records (OQ-2, decided).
   4. **The release path never writes** (owner correction, third round): `ClassOutputResources`
      only reads, and the release never runs the writer. A stale or mismatched reserved resource
      it encounters fails the release; it is never repaired and then passed.
+  5. **No repairing dependency** (fourth round): `agenticRelease` has no task dependency on
+     `compileJava` or `classes`. Its class output is an `@Internal` file collection built from a
+     plain `project.provider`, which carries no producer, and it is ordered with `mustRunAfter`.
+     The task has no outputs, so it always runs. The same applies to `agenticReleaseVerify` (E2).
 - **Where the writer runs** is settled by a time-boxed spike, C3a. Two options:
   - **Preferred:** a `compileJava.doLast` action that submits through `WorkerExecutor`. The file is
     then part of `compileJava`'s tracked output, cached and up to date.

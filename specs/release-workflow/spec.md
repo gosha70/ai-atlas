@@ -62,6 +62,14 @@ Second round, the same day, settling the plan's remaining open questions (`plan.
     and `contract-resources.json` unchanged, creates no release snapshot and leaves
     `.atlas/CHANGELOG.md` unchanged; the compile/accept path leaves a fresh empty contract that
     then releases.
+- **Dependency boundary (fourth round):** a read-only release action is not enough if a task it
+  depends on can repair its inputs. `agenticRelease` therefore does not depend on `compileJava` or
+  `classes`, explicitly or through a task-output provider; it validates the class output as it
+  finds it, ordered only by `mustRunAfter`, so `classes agenticRelease` still compiles first when
+  both are requested. A regression tampers with an output Gradle tracks, invokes `agenticRelease`
+  alone without forcing `compileJava` up to date, and asserts that the compilation does not run,
+  the release fails naming the file, and the four invariants above hold.
+  `agenticReleaseVerify` (Phase E) follows the same boundary.
 - **Reserved set (OQ-5):** the enumerated ai-atlas paths only, including the versioned OpenAPI
   files of every major (`openapi-v<N>.json`, any N ≥ 1). Unrelated files are ignored.
 - **Tag name (OQ-8):** `release.json` records the resolved tag name, and later proofs use it.
