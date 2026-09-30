@@ -20,7 +20,7 @@ class EffectiveOptionsTest {
     @Test
     void fromArgumentsAppliesTheDefaults() {
         assertThat(EffectiveOptions.fromArguments(Map.of()))
-                .isEqualTo(new EffectiveOptions("/api", 1, "1.0.0", false, false));
+                .isEqualTo(new EffectiveOptions("/api", 1, "1.0.0", false, false, false));
     }
 
     @Test
@@ -40,6 +40,14 @@ class EffectiveOptionsTest {
 
         assertThat(options.constraints()).isTrue();
         assertThat(options.projections()).isTrue();
+    }
+
+    @Test
+    void fromArgumentsReadsCollections() {
+        // The collections option changes the IR's bounds, OpenAPI and MCP schemas, so it is recorded too
+        assertThat(EffectiveOptions.fromArguments(Map.of("ai.atlas.collections", "true")).collections()).isTrue();
+        assertThat(EffectiveOptions.fromArguments(Map.of()).collections()).isFalse();
+        assertThat(EffectiveOptions.fromArguments(Map.of("ai.atlas.collections", "on"))).isNull();
     }
 
     @Test

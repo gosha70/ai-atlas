@@ -13,6 +13,7 @@ import javax.tools.Diagnostic;
 import java.util.List;
 import java.util.Map;
 
+import static com.egoge.ai.atlas.processor.AgenticProcessor.OPT_COLLECTIONS;
 import static com.egoge.ai.atlas.processor.AgenticProcessor.OPT_CONSTRAINTS;
 import static com.egoge.ai.atlas.processor.AgenticProcessor.OPT_PROJECTIONS;
 
@@ -27,9 +28,11 @@ import static com.egoge.ai.atlas.processor.AgenticProcessor.OPT_PROJECTIONS;
  * @param openApiInfoVersion the OpenAPI document's {@code info.version}, defaulting to {@code <apiMajor>.0.0}
  * @param constraints        whether {@value com.egoge.ai.atlas.processor.AgenticProcessor#OPT_CONSTRAINTS} is on
  * @param projections        whether {@value com.egoge.ai.atlas.processor.AgenticProcessor#OPT_PROJECTIONS} is on
+ * @param collections        whether {@value com.egoge.ai.atlas.processor.AgenticProcessor#OPT_COLLECTIONS} is on,
+ *                           which changes the IR's bounds, the OpenAPI document and the MCP schemas
  */
 public record EffectiveOptions(String apiBasePath, int apiMajor, String openApiInfoVersion, boolean constraints,
-                               boolean projections) {
+                               boolean projections, boolean collections) {
 
     /** Discards diagnostics: {@link #fromArguments} reports an invalid option by returning {@code null}. */
     private static final Messager SILENT = new Messager() {
@@ -54,14 +57,14 @@ public record EffectiveOptions(String apiBasePath, int apiMajor, String openApiI
     /**
      * Resolves options already reduced to their last value, such as {@code compileJava}'s effective
      * compiler arguments. Silent: an invalid option gives {@code null}, with no diagnostic. It also
-     * rejects a constraints or projections flag that is neither {@code true} nor {@code false},
+     * rejects a constraints, projections or collections flag that is neither {@code true} nor {@code false},
      * which the processor, when it runs, reports itself.
      *
      * @param lastWinsOptions the options, one value per key
      * @return the effective options, or {@code null} when an option is invalid
      */
     public static EffectiveOptions fromArguments(Map<String, String> lastWinsOptions) {
-        for (String flag : List.of(OPT_CONSTRAINTS, OPT_PROJECTIONS)) {
+        for (String flag : List.of(OPT_CONSTRAINTS, OPT_PROJECTIONS, OPT_COLLECTIONS)) {
             String value = lastWinsOptions.get(flag);
             if (value != null && !"true".equalsIgnoreCase(value) && !"false".equalsIgnoreCase(value)) {
                 return null;
@@ -73,6 +76,7 @@ public record EffectiveOptions(String apiBasePath, int apiMajor, String openApiI
         }
         return new EffectiveOptions(version.apiBasePath(), version.apiMajor(), version.openApiInfoVersion(),
                 "true".equalsIgnoreCase(lastWinsOptions.get(OPT_CONSTRAINTS)),
-                "true".equalsIgnoreCase(lastWinsOptions.get(OPT_PROJECTIONS)));
+                "true".equalsIgnoreCase(lastWinsOptions.get(OPT_PROJECTIONS)),
+                "true".equalsIgnoreCase(lastWinsOptions.get(OPT_COLLECTIONS)));
     }
 }

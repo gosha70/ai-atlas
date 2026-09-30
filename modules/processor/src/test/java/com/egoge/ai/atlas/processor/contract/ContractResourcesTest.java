@@ -16,7 +16,7 @@ class ContractResourcesTest {
 
     private static final String A = "a".repeat(64);
     private static final String B = "b".repeat(64);
-    private static final EffectiveOptions CONFIG = new EffectiveOptions("/api", 2, "2.0.0", true, false);
+    private static final EffectiveOptions CONFIG = new EffectiveOptions("/api", 2, "2.0.0", true, false, false);
 
     @Test
     void reservedMatcherAcceptsVersionedOpenApiDocuments() {
@@ -52,6 +52,15 @@ class ContractResourcesTest {
     }
 
     @Test
+    void theCollectionsOptionIsRecordedAndReadBack() {
+        EffectiveOptions collections = new EffectiveOptions("/api", 1, "1.0.0", false, false, true);
+        Manifest manifest = new Manifest("declared", collections, new TreeMap<>());
+
+        assertThat(manifest.write()).contains("\"ai.atlas.collections\": true");
+        assertThat(Manifest.read(manifest.write()).configuration().collections()).isTrue();
+    }
+
+    @Test
     void writeThenReadRoundTripsForAnEmptyContract() {
         Manifest manifest = new Manifest("empty", CONFIG, new TreeMap<>(java.util.Map.of(ContractIr.RESOURCE_PATH, A)));
 
@@ -74,6 +83,7 @@ class ContractResourcesTest {
                   "configuration": {
                     "ai.atlas.api.basePath": "/api",
                     "ai.atlas.api.major": 2,
+                    "ai.atlas.collections": false,
                     "ai.atlas.constraints": true,
                     "ai.atlas.openapi.infoVersion": "2.0.0",
                     "ai.atlas.projections": false
@@ -112,7 +122,7 @@ class ContractResourcesTest {
         assertThatThrownBy(() -> Manifest.read(upper)).hasMessageContaining("lowercase SHA-256");
     }
 
-    private static final EffectiveOptions NO_CONSTRAINTS = new EffectiveOptions("/api", 2, "2.0.0", false, false);
+    private static final EffectiveOptions NO_CONSTRAINTS = new EffectiveOptions("/api", 2, "2.0.0", false, false, false);
 
     @Test
     void requiredAlwaysIncludesTheIr() {
@@ -131,7 +141,7 @@ class ContractResourcesTest {
 
     @Test
     void requiredIncludesMcpToolsWhenConstraintsIsOn() {
-        EffectiveOptions noConstraints = new EffectiveOptions("/api", 1, "1.0.0", false, false);
+        EffectiveOptions noConstraints = new EffectiveOptions("/api", 1, "1.0.0", false, false, false);
         Manifest withConstraints = new Manifest("declared", CONFIG, new TreeMap<>());
         Manifest withoutConstraints = new Manifest("declared", noConstraints, new TreeMap<>());
 

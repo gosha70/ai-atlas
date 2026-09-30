@@ -25,6 +25,7 @@ import java.util.regex.Pattern;
 
 import static com.egoge.ai.atlas.processor.AgenticProcessor.OPT_API_BASE_PATH;
 import static com.egoge.ai.atlas.processor.AgenticProcessor.OPT_API_MAJOR;
+import static com.egoge.ai.atlas.processor.AgenticProcessor.OPT_COLLECTIONS;
 import static com.egoge.ai.atlas.processor.AgenticProcessor.OPT_CONSTRAINTS;
 import static com.egoge.ai.atlas.processor.AgenticProcessor.OPT_OPENAPI_INFO_VERSION;
 import static com.egoge.ai.atlas.processor.AgenticProcessor.OPT_PROJECTIONS;
@@ -147,6 +148,7 @@ public final class ContractResources {
             Map<String, Object> config = new LinkedHashMap<>();
             config.put(OPT_API_BASE_PATH, configuration.apiBasePath());
             config.put(OPT_API_MAJOR, configuration.apiMajor());
+            config.put(OPT_COLLECTIONS, configuration.collections());
             config.put(OPT_CONSTRAINTS, configuration.constraints());
             config.put(OPT_OPENAPI_INFO_VERSION, configuration.openApiInfoVersion());
             config.put(OPT_PROJECTIONS, configuration.projections());
@@ -193,7 +195,8 @@ public final class ContractResources {
 
         private static EffectiveOptions readConfiguration(JsonNode node) {
             return new EffectiveOptions(string(node, OPT_API_BASE_PATH), integer(node, OPT_API_MAJOR),
-                    string(node, OPT_OPENAPI_INFO_VERSION), bool(node, OPT_CONSTRAINTS), bool(node, OPT_PROJECTIONS));
+                    string(node, OPT_OPENAPI_INFO_VERSION), bool(node, OPT_CONSTRAINTS), bool(node, OPT_PROJECTIONS),
+                    bool(node, OPT_COLLECTIONS));
         }
 
         private static SortedMap<String, String> readArtifacts(JsonNode node) {
