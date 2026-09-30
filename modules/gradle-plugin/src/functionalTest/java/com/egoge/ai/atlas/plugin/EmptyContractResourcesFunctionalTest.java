@@ -105,7 +105,7 @@ class EmptyContractResourcesFunctionalTest {
 
         run("atlasAccept").build();
         assertThat(fresh).isEqualTo(Files.readAllBytes(new File(projectDir, ".atlas/api.ir.json").toPath()));
-        run("agenticRelease", "-Pversion=1.0.0").build();
+        run("classes", "agenticRelease", "-Pversion=1.0.0").build();
 
         assertThat(Files.readAllBytes(new File(projectDir, ".atlas/releases/1.0.0/api.ir.json").toPath()))
                 .isEqualTo(fresh);

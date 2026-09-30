@@ -120,6 +120,32 @@ class ReleaseResourcesFunctionalTest {
         assertReleaseNeverWrites("META-INF/openapi/openapi-v99.json", "clean");
     }
 
+    /**
+     * The dependency boundary: tampering with an output Gradle tracks would make compileJava out of
+     * date, so a release depending on it would regenerate the IR before validating it. Invoked
+     * alone, agenticRelease must not run the compilation at all, and must report the mismatch.
+     */
+    @Test
+    void aReleaseInvokedAloneNeverRecompilesATamperedOutputAndFailsOnIt() throws IOException {
+        Path classesDir = projectDir.toPath().resolve("build/classes/java/main");
+        Path ir = classesDir.resolve("META-INF/ai-atlas/api.ir.json");
+        Path manifestFile = classesDir.resolve("META-INF/ai-atlas/contract-resources.json");
+        Path changelog = projectDir.toPath().resolve(".atlas/CHANGELOG.md");
+        runner("classes").build();
+        Files.writeString(ir, " ", StandardOpenOption.APPEND);
+        byte[] classOutputBefore = concatenatedBytes(classesDir);
+        byte[] manifestBefore = Files.readAllBytes(manifestFile);
+
+        BuildResult result = runner("agenticRelease", "-Pversion=" + UNRELEASED_VERSION).buildAndFail();
+
+        assertThat(result.task(":compileJava")).as("the release must not run the compilation").isNull();
+        assertThat(result.getOutput()).contains("META-INF/ai-atlas/api.ir.json", "does not match the digest");
+        assertThat(concatenatedBytes(classesDir)).isEqualTo(classOutputBefore);
+        assertThat(Files.readAllBytes(manifestFile)).isEqualTo(manifestBefore);
+        assertThat(releaseDir(UNRELEASED_VERSION)).doesNotExist();
+        assertThat(changelog).doesNotExist();
+    }
+
     @Test
     void anotherProcessorsResourceIsIgnored() throws IOException {
         append("""
@@ -135,7 +161,7 @@ class ReleaseResourcesFunctionalTest {
                 """);
         runner("atlasAccept").build();
 
-        BuildResult result = runner("agenticRelease", "-Pversion=1.0.0").build();
+        BuildResult result = runner("classes", "agenticRelease", "-Pversion=1.0.0").build();
 
         assertThat(result.task(":agenticRelease").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
         assertThat(new File(projectDir, "build/classes/java/main/META-INF/foo/bar.json")).isFile();
@@ -147,7 +173,7 @@ class ReleaseResourcesFunctionalTest {
         write(SERVICE, "package test;\n\npublic class OrderService {\n}\n");
         runner("atlasAccept").build();
 
-        BuildResult result = runner("agenticRelease", "-Pversion=1.0.0").build();
+        BuildResult result = runner("classes", "agenticRelease", "-Pversion=1.0.0").build();
 
         assertThat(result.task(":agenticRelease").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
         Path dir = releaseDir("1.0.0");
@@ -180,7 +206,7 @@ class ReleaseResourcesFunctionalTest {
                 """);
         runner("atlasAccept").build();
 
-        BuildResult result = runner("agenticRelease", "-Pversion=1.0.0").buildAndFail();
+        BuildResult result = runner("classes", "agenticRelease", "-Pversion=1.0.0").buildAndFail();
 
         assertThat(result.getOutput()).contains("openapi-v1.json", "clean");
         assertThat(releaseDir("1.0.0")).doesNotExist();

@@ -39,9 +39,12 @@ final class ReleaseTasks {
         tasks.register(AgenticPlugin.RELEASE_TASK, AgenticRelease.class, task -> {
             task.setGroup(AgenticPlugin.TASK_GROUP);
             task.setDescription("Releases the accepted contract as an immutable snapshot, with its changelog.");
-            // After the gate in compileJava and atlasContractCheck
-            task.dependsOn(tasks.named(JavaPlugin.CLASSES_TASK_NAME));
-            task.getClassesDirs().from(compileJava.flatMap(JavaCompile::getDestinationDirectory));
+            // The release validates the class output as it finds it, and so never depends on the
+            // compilation that could regenerate it: a plain provider carries no task dependency.
+            // Requested together, as in `classes agenticRelease`, the compilation still runs first.
+            task.getClassesDirs().from(project.provider(
+                    () -> compileJava.get().getDestinationDirectory().get().getAsFile()));
+            task.mustRunAfter(tasks.named(JavaPlugin.CLASSES_TASK_NAME), tasks.named(AgenticPlugin.CONTRACT_CHECK_TASK));
             task.getProcessorClasspath().from(processorPath);
             task.getBaseline().set(extension.getContractBaseline());
             task.getReleasesDir().set(release.getDirectory());

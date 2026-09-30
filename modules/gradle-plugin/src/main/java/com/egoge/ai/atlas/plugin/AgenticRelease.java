@@ -10,10 +10,7 @@ import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Input;
-import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Internal;
-import org.gradle.api.tasks.PathSensitive;
-import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.work.DisableCachingByDefault;
 import org.gradle.workers.WorkerExecutor;
@@ -33,9 +30,12 @@ import javax.inject.Inject;
 @DisableCachingByDefault(because = "Writes an immutable release snapshot, a source file")
 public abstract class AgenticRelease extends DefaultTask {
 
-    /** The main compilation's class output, which the gate checked. */
-    @InputFiles
-    @PathSensitive(PathSensitivity.RELATIVE)
+    /**
+     * The main compilation's class output, validated as found. Untracked on purpose: as an input
+     * it would make this task depend on the compilation, which could regenerate the very resources
+     * the release validates. The task has no outputs, so it always runs.
+     */
+    @Internal
     public abstract ConfigurableFileCollection getClassesDirs();
 
     /** The {@code annotationProcessor} classpath the release step is loaded from. */

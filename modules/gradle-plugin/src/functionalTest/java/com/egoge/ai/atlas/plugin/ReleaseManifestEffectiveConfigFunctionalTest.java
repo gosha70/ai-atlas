@@ -186,7 +186,7 @@ class ReleaseManifestEffectiveConfigFunctionalTest {
     /** Accepts the current sources, then returns a runner releasing them as {@code version}. */
     private GradleRunner release(String version) {
         runner("atlasAccept").build();
-        return runner("agenticRelease", "-Pversion=" + version);
+        return runner("classes", "agenticRelease", "-Pversion=" + version);
     }
 
     private Path releaseDir(String version) {

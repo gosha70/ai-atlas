@@ -172,7 +172,7 @@ class AgenticReleaseFunctionalTest {
     void aSnapshotIsRefused() {
         runner("atlasAccept").build();
 
-        BuildResult result = runner("agenticRelease", "-Pversion=1.2.0-SNAPSHOT").buildAndFail();
+        BuildResult result = runner("classes", "agenticRelease", "-Pversion=1.2.0-SNAPSHOT").buildAndFail();
 
         assertThat(result.getOutput()).contains("Version '1.2.0-SNAPSHOT' is a SNAPSHOT, and a SNAPSHOT is never"
                 + " released: its contract can still change under the same name. Release 1.2.0 instead.",
@@ -194,7 +194,7 @@ class AgenticReleaseFunctionalTest {
         order(NOTE.formatted(""));
 
         // The gate passes an added field, but the baseline does not carry it yet
-        BuildResult result = runner("agenticRelease", "-Pversion=1.1.0").buildAndFail();
+        BuildResult result = runner("classes", "agenticRelease", "-Pversion=1.1.0").buildAndFail();
 
         assertThat(result.getOutput()).contains("The contract the build emitted differs from the baseline",
                 "run atlasAccept, then release");
@@ -379,7 +379,7 @@ class AgenticReleaseFunctionalTest {
         List<String> accept = new ArrayList<>(List.of("atlasAccept"));
         accept.addAll(List.of(extra));
         runner(accept.toArray(String[]::new)).build();
-        List<String> release = new ArrayList<>(List.of("agenticRelease", "-Pversion=" + version));
+        List<String> release = new ArrayList<>(List.of("classes", "agenticRelease", "-Pversion=" + version));
         release.addAll(List.of(extra));
         return runner(release.toArray(String[]::new));
     }
