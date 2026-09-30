@@ -402,6 +402,10 @@ class CollectionsDiagnosticsTest {
                     public Page<Order> hiddenSort(@AgenticParam(sortable = {"id", "creditScore"}) Pageable p) {
                         return null;
                     }
+                    @AgenticExposed(description = "shadowed, not a collection")
+                    public Order shadowedSingle(Pageable p, int size) { return null; }
+                    @AgenticExposed(description = "hidden sort, not a collection")
+                    public Order hiddenSortSingle(@AgenticParam(sortable = "creditScore") Pageable p) { return null; }
                 }
                 """, FLAG_ON);
 
@@ -427,7 +431,13 @@ class CollectionsDiagnosticsTest {
                         + " Data Pageable",
                 "[ai-atlas] @AgenticParam(sortable) on shop.Bad#hiddenSort names [creditScore], which must each be a"
                         + " distinct field of Order's REST DTO: [id, status, marginCents]. A sort on a property clients"
-                        + " cannot see leaks its values through the order");
+                        + " cannot see leaks its values through the order",
+                // The same checks when the Pageable's method does not return a collection
+                "[ai-atlas] shop.Bad#shadowedSingle takes a Pageable and a parameter named 'size', which would"
+                        + " collide with the Pageable's page, size and sort inputs. Rename the parameter",
+                "[ai-atlas] @AgenticParam(sortable) on shop.Bad#hiddenSortSingle names [creditScore], which must each"
+                        + " be a distinct field of Order's REST DTO: [id, status, marginCents]. A sort on a property"
+                        + " clients cannot see leaks its values through the order");
     }
 
     @Test

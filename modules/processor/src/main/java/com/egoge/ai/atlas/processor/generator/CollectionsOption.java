@@ -165,7 +165,10 @@ public final class CollectionsOption {
             if (bound != -1 || limit != -1 || cursor != -1) {
                 messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + where + " declares maxResults or a paging"
                         + " role, but returns " + returned + ", which is not a collection", method);
-            } else if (pageable >= 0) {
+            } else if (pageable >= 0
+                    // The wrappers bind the same page, size and sort inputs as for a collection
+                    && checkRoles(where, method, params, pageable, limit, cursor, bound)
+                    && checkSortableProperties(params.get(pageable), model, where, apiEntities)) {
                 // Still bound as page and size, so the wrappers can be called; nothing is bounded
                 record(irOperation.id(), contract(Style.NONE, Envelope.NONE, pageable, -1, -1, irOperation,
                         -1, params, returned), params);
