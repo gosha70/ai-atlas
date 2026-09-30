@@ -13,6 +13,9 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -66,6 +69,48 @@ class EmptyContractResourcesFunctionalTest {
         assertThat(second.task(":compileJava").getOutcome()).isEqualTo(TaskOutcome.UP_TO_DATE);
     }
 
+    /**
+     * The compile/accept path, the counterpart of {@code ReleaseResourcesFunctionalTest}'s release
+     * path: removing every annotation without {@code clean} leaves a fresh empty contract, never the
+     * stale non-empty IR, with a manifest digesting those new bytes, and the release then passes
+     * with the accepted empty IR in its snapshot.
+     */
+    @Test
+    void removingEveryAnnotationRegeneratesAFreshEmptyContractThatReleases() throws Exception {
+        write("src/main/java/test/Empty.java", """
+                package test;
+
+                import com.egoge.ai.atlas.annotations.AgenticEntity;
+                import com.egoge.ai.atlas.annotations.AgenticField;
+
+                @AgenticEntity(description = "Once a contract")
+                public class Empty {
+                    @AgenticField(description = "Id") private Long id;
+
+                    public Long getId() { return id; }
+                }
+                """);
+        run("atlasAccept").build();
+        run("compileJava").build();
+        byte[] stale = Files.readAllBytes(ir().toPath());
+        write("src/main/java/test/Empty.java", "package test;\n\npublic class Empty {\n}\n");
+
+        // Incremental, with the baseline unchanged, as in the remove-all-annotations flow
+        run("compileJava").build();
+
+        byte[] fresh = Files.readAllBytes(ir().toPath());
+        assertThat(fresh).isNotEqualTo(stale);
+        assertThat(Files.readString(manifest().toPath())).contains("\"contract\": \"empty\"",
+                "\"META-INF/ai-atlas/api.ir.json\": \"" + sha256(fresh) + "\"");
+
+        run("atlasAccept").build();
+        assertThat(fresh).isEqualTo(Files.readAllBytes(new File(projectDir, ".atlas/api.ir.json").toPath()));
+        run("agenticRelease", "-Pversion=1.0.0").build();
+
+        assertThat(Files.readAllBytes(new File(projectDir, ".atlas/releases/1.0.0/api.ir.json").toPath()))
+                .isEqualTo(fresh);
+    }
+
     @Test
     void theWiringIsConfigurationCacheSafe() {
         BuildResult stored = run("compileJava", "--configuration-cache").build();
@@ -82,6 +127,10 @@ class EmptyContractResourcesFunctionalTest {
 
     private File manifest() {
         return new File(projectDir, "build/classes/java/main/META-INF/ai-atlas/contract-resources.json");
+    }
+
+    private static String sha256(byte[] bytes) throws NoSuchAlgorithmException {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
     }
 
     private void write(String path, String content) throws IOException {
