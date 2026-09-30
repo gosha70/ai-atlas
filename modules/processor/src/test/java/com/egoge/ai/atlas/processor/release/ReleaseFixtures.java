@@ -126,6 +126,8 @@ final class ReleaseFixtures {
      */
     static Map<String, byte[]> artifacts(String ir, String openApi, String mcpTools) {
         Map<String, byte[]> artifacts = new LinkedHashMap<>();
+        // As the plugin passes them: the class output's IR is among the artifacts
+        artifacts.put(ContractRelease.IR_FILE, ir.getBytes(StandardCharsets.UTF_8));
         if (openApi != null) {
             artifacts.put(ContractRelease.openApiFile(parse(ir).apiMajor()), openApi.getBytes(StandardCharsets.UTF_8));
         }

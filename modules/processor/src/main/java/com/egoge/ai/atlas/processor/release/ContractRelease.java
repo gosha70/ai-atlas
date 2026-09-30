@@ -16,7 +16,6 @@ import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -169,7 +168,8 @@ public final class ContractRelease {
         String section = ReleaseChangelog.render(version, current, previous, differences, verdict.evidence());
         Map<String, byte[]> files = new LinkedHashMap<>();
         files.put(IR_FILE, accepted);
-        files.putAll(request.artifacts());
+        // The build's own IR among the artifacts was only checked: the snapshot keeps the baseline's bytes
+        request.artifacts().forEach((name, bytes) -> files.putIfAbsent(name, bytes));
         files.put(DIFF_FILE, ContractGate.diffJson(previous != null ? previous.ir().apiMajor() : 0, differences)
                 .getBytes(StandardCharsets.UTF_8));
         files.put(CHANGELOG_FILE, section.getBytes(StandardCharsets.UTF_8));
@@ -193,8 +193,8 @@ public final class ContractRelease {
     }
 
     /**
-     * Verifies every release, and that {@code version} is released with exactly the build's IR,
-     * as CI checks the version it tags.
+     * Verifies every release, and that {@code version} is released with the build's IR, canonically
+     * equal as a release compares it with the baseline, as CI checks the version it tags.
      *
      * @param releases  the directory of releases
      * @param version   the version the build claims to be, {@code MAJOR.MINOR.PATCH}
@@ -212,7 +212,8 @@ public final class ContractRelease {
             throw new ReleaseException("Version " + parsed + " is not released: there is no " + ir + ". Run"
                     + " agenticRelease for it and commit the release, then build the tag.");
         }
-        if (!Arrays.equals(Files.readAllBytes(ir), emittedIr)) {
+        ContractIr released = parse(Files.readString(ir, StandardCharsets.UTF_8), ir.toString());
+        if (!released.equals(parse(new String(emittedIr, StandardCharsets.UTF_8), "the build's emitted contract"))) {
             throw new ReleaseException("The contract the build emitted differs from the released contract " + ir
                     + ". The build does not publish the contract version " + parsed + " released: build the"
                     + " sources that were released, or release a new version.");

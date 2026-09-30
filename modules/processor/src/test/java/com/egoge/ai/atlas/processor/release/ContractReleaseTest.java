@@ -155,6 +155,30 @@ class ContractReleaseTest {
     }
 
     @Test
+    void theSnapshotKeepsTheBaselinesBytesWhenTheBuildsIrIsOnlyCanonicallyEqual() throws Exception {
+        String ir = accept(irJson(1, ""));
+        String emitted = ir + "\n";
+
+        ContractRelease.release(releases, changelog, request("1.0.0", emitted, null, null));
+
+        Path snapshot = releases.resolve("1.0.0/api.ir.json");
+        assertThat(Files.readAllBytes(snapshot)).isEqualTo(Files.readAllBytes(baseline))
+                .isNotEqualTo(emitted.getBytes(StandardCharsets.UTF_8));
+        assertThat(ReleaseManifest.read(Files.readString(releases.resolve("1.0.0/release.json"))).digests()
+                .get("api.ir.json")).isEqualTo(ContractRelease.sha256(ir.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void checkReleasedComparesTheBuildsIrCanonically() throws Exception {
+        String ir = accept(irJson(1, ""));
+        ContractRelease.release(releases, changelog, request("1.0.0", ir, null, null));
+
+        ContractRelease.checkReleased(releases, "1.0.0", (ir + "\n").getBytes(StandardCharsets.UTF_8));
+        assertThatThrownBy(() -> ContractRelease.checkReleased(releases, "1.0.0",
+                irJson(1, NOTE).getBytes(StandardCharsets.UTF_8))).hasMessageContaining("differs from the released");
+    }
+
+    @Test
     void optionalFilesAreLeftOutWhenNotGenerated() throws Exception {
         ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
 
