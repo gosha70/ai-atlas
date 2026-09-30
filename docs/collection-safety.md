@@ -88,8 +88,13 @@ They never clamp one into range.
   without `size` gets the application's default page size; when that default is above the ceiling,
   or the application's default is unpaged and a ceiling is declared, it is rejected, saying `size`
   is required there. The checks read the parameters by their default names, `page` and `size`, the
-  names OpenAPI publishes, so they assume `spring.data.web.pageable` keeps those names and adds no
-  prefix.
+  names OpenAPI publishes, zero-based. The runtime enforces that at startup: when a Contract IR on
+  the class path lists an API operation taking a `Pageable`, and the application's Spring Data paging
+  resolver would bind it otherwise, startup fails, naming the operations. That covers a renamed
+  `page`, `size` or `sort` parameter, a prefix and one-indexed pages, whether set through
+  `spring.data.web.*` properties or a `PageableHandlerMethodArgumentResolverCustomizer`. The check
+  resolves probe requests with the application's own resolver, so it sees the effective
+  configuration; an application without such an operation is never affected.
 
 ### A declared limit, and a cursor
 

@@ -34,13 +34,15 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  *   <li>The {@code @AgenticField} whitelist for the application's own MCP tools via
  *       {@link AgentSafeMcpToolSpecifications} and {@link AgentSafeToolCallbacks}</li>
  *   <li>PII audit interceptor for generated REST endpoints</li>
+ *   <li>A startup check that Spring Data binds generated {@code Pageable} endpoints as published,
+ *       via {@link PageableBindingCheck}</li>
  * </ul>
  */
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @EnableConfigurationProperties(AgenticProperties.class)
 @Import({AgenticMcpConfiguration.class, AgentSafeToolCallbacks.class, AgentSafeMcpToolSpecifications.class,
-        McpToolEntityCheck.class})
+        McpToolEntityCheck.class, PageableBindingCheck.class})
 public class AgenticAutoConfiguration implements WebMvcConfigurer {
 
     private final AgenticProperties properties;
