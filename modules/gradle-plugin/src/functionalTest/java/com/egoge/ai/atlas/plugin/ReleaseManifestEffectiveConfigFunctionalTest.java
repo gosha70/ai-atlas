@@ -37,6 +37,8 @@ class ReleaseManifestEffectiveConfigFunctionalTest {
     @TempDir
     File projectDir;
 
+    private GitFixture git;
+
     @BeforeEach
     void setup() throws IOException {
         write("settings.gradle.kts", "rootProject.name = \"release-manifest-config-test\"");
@@ -81,11 +83,12 @@ class ReleaseManifestEffectiveConfigFunctionalTest {
                     public Order find(Long id) { return null; }
                 }
                 """);
+        git = new GitFixture(projectDir);
     }
 
     @Test
     void aStaleOpenApiDocumentFailsAfterABumpToMajor2() throws IOException {
-        release("1.0.0").build();
+        releaseAndTag("1.0.0");
 
         append("""
 
@@ -111,7 +114,7 @@ class ReleaseManifestEffectiveConfigFunctionalTest {
     @Test
     void aStaleMcpToolsFileFailsAfterConstraintsAreTurnedOff() throws IOException {
         append("agentic { constraints.set(true) }\n");
-        release("1.0.0").build();
+        releaseAndTag("1.0.0");
 
         append("""
 
@@ -187,6 +190,12 @@ class ReleaseManifestEffectiveConfigFunctionalTest {
     private GradleRunner release(String version) {
         runner("atlasAccept").build();
         return runner("classes", "agenticRelease", "-Pversion=" + version);
+    }
+
+    /** Releases {@code version}, then commits and tags it as {@code v<version>} (F1). */
+    private void releaseAndTag(String version) {
+        release(version).build();
+        git.commitAndTag("v" + version);
     }
 
     private Path releaseDir(String version) {

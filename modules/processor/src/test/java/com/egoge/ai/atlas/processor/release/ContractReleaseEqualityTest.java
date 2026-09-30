@@ -142,7 +142,7 @@ class ContractReleaseEqualityTest {
 
         ContractRelease.Outcome outcome = ContractRelease.release(releases, changelog,
                 new ContractRelease.Request("1.0.0", false, ReleasePolicy.Policy.DEFAULT, baseline, emitted,
-                        Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME));
+                        Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of()));
 
         assertThat(outcome.directory()).isEqualTo(releases.resolve("1.0.0"));
         assertThat(Files.readString(releases.resolve("1.0.0/api.ir.json")))
@@ -160,7 +160,7 @@ class ContractReleaseEqualityTest {
 
         assertThatThrownBy(() -> ContractRelease.release(releases, changelog,
                 new ContractRelease.Request("1.0.0", false, ReleasePolicy.Policy.DEFAULT, baseline, emitted,
-                        Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME)))
+                        Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of())))
                 .isInstanceOf(ContractRelease.ReleaseException.class)
                 .hasMessageContaining("The contract the build emitted differs from the baseline " + baseline)
                 .hasMessageContaining("run atlasAccept, then release");

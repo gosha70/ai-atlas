@@ -53,9 +53,10 @@ public final class ReleaseHistory {
                         + " records apiMajor " + manifest.apiMajor() + ", but its " + ContractRelease.IR_FILE
                         + " has apiMajor " + ir.apiMajor() + "." + RESTORE);
             }
-            // Transitional: every committed snapshot counts as published until D4 wires the tag-proved
-            // publication verdict in (D10.1).
-            result.add(new ReleasePolicy.Release(version, ir, true));
+            // Not the real publication verdict: this reader does not touch git. ContractRelease
+            // remaps each entry's published flag from PublishedHistory's tag-proved verdict (F1,
+            // D10.1) before using this list for anything that depends on it.
+            result.add(new ReleasePolicy.Release(version, ir, false));
         }
         return result;
     }

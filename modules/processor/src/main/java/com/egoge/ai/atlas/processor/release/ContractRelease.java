@@ -21,6 +21,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -82,10 +83,17 @@ public final class ContractRelease {
      * @param contractResourcesJson the class output's contract-resources manifest, verbatim
      * @param tagName               the resolved git tag name this release is proved by, such as
      *                              {@code "v1.4.0"} (F1), recorded verbatim in {@code release.json}
+     * @param published             the versions, among the releases already on disk, that a proved
+     *                              git tag backs (F1, D10.1): the plugin's {@code PublishedHistory}
+     *                              verdict, as
+     *                              only the plugin can read git. Only a published release earns
+     *                              deprecation credit; the newest release on disk missing from this
+     *                              set is pending, and this release refuses to be made until it is
+     *                              tagged.
      */
     public record Request(String version, boolean versionTracksApiMajor, ReleasePolicy.Policy policy, Path baseline,
                           byte[] emittedIr, Map<String, byte[]> artifacts, String contractResourcesJson,
-                          String tagName) {
+                          String tagName, Set<ReleaseVersion> published) {
     }
 
     /**
@@ -138,7 +146,12 @@ public final class ContractRelease {
         String acceptedJson = new String(accepted, StandardCharsets.UTF_8);
         ContractIr current = parse(acceptedJson, request.baseline().toString());
 
-        List<ReleasePolicy.Release> history = new ArrayList<>(ReleaseHistory.history(releases));
+        List<ReleasePolicy.Release> history = published(ReleaseHistory.history(releases), request.published());
+        if (!history.isEmpty() && !history.get(history.size() - 1).published()) {
+            ReleasePolicy.Release pending = history.get(history.size() - 1);
+            throw new ReleaseException("Release " + pending.version() + " is pending: tag its commit as "
+                    + readTagName(releases, pending.version()) + " and push the tag, then release.");
+        }
         ReleasePolicy.Release previous = history.isEmpty() ? null : history.get(history.size() - 1);
         if (previous != null && version.compareTo(previous.version()) <= 0) {
             throw new ReleaseException("Version " + version + " is not above the latest release " + previous.version()
@@ -158,8 +171,10 @@ public final class ContractRelease {
         ContractIr before = previous != null ? previous.ir()
                 : EmptyContract.document(current.apiBasePath(), current.apiMajor());
         List<ContractGate.Difference> differences = compare(before, current);
-        // Transitional: published = true until D4 wires the tag-proved publication verdict in (D10.1).
-        history.add(new ReleasePolicy.Release(version, current, true));
+        // This release is not published yet: it has no tag until it is committed and tagged after
+        // this call returns, so it earns no credit of its own (irrelevant here: only earlier
+        // releases in `history` are consulted for evidence).
+        history.add(new ReleasePolicy.Release(version, current, false));
         ReleasePolicy.Result verdict = ReleasePolicy.check(history, differences, request.policy());
         if (!verdict.passed()) {
             ReleasePolicy.Policy policy = request.policy();
@@ -249,6 +264,26 @@ public final class ContractRelease {
             return ReleaseVersion.parse(version);
         } catch (IllegalArgumentException e) {
             throw new ReleaseException(e.getMessage() + ".");
+        }
+    }
+
+    /** {@code history}, with each release's {@code published} flag set from {@code published} (F1, D10.1). */
+    private static List<ReleasePolicy.Release> published(List<ReleasePolicy.Release> history,
+                                                          Set<ReleaseVersion> published) {
+        List<ReleasePolicy.Release> result = new ArrayList<>(history.size());
+        for (ReleasePolicy.Release release : history) {
+            result.add(new ReleasePolicy.Release(release.version(), release.ir(), published.contains(release.version())));
+        }
+        return result;
+    }
+
+    /** The tag name {@code version}'s own {@value #MANIFEST_FILE} recorded (F1, OQ-8). */
+    private static String readTagName(Path releases, ReleaseVersion version) throws ReleaseException, IOException {
+        Path manifestFile = releases.resolve(version.toString()).resolve(MANIFEST_FILE);
+        try {
+            return ReleaseManifest.read(Files.readString(manifestFile, StandardCharsets.UTF_8)).tagName();
+        } catch (IllegalArgumentException e) {
+            throw new ReleaseException(manifestFile + " cannot be read: " + e.getMessage());
         }
     }
 

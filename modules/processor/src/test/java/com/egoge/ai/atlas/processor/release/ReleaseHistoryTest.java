@@ -79,9 +79,10 @@ class ReleaseHistoryTest {
         return ir;
     }
 
-    private ContractRelease.Request request(String version, String ir, String openApi, String mcpTools) {
+    private ContractRelease.Request request(String version, String ir, String openApi, String mcpTools)
+            throws IOException {
         return new ContractRelease.Request(version, false, ReleasePolicy.Policy.DEFAULT, baseline,
                 ir.getBytes(StandardCharsets.UTF_8), artifacts(ir, openApi, mcpTools), CONTRACT_RESOURCES_JSON,
-                TAG_NAME);
+                TAG_NAME, ReleaseFixtures.allExistingVersions(releases));
     }
 }

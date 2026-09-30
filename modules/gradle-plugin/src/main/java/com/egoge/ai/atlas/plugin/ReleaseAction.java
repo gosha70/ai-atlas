@@ -86,10 +86,13 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
         } catch (IllegalArgumentException e) {
             throw new GradleException("[ai-atlas] " + e.getMessage() + ": check " + ReleasePolicy.CONFIGURATION + ".");
         }
-        String resolvedTagName = TagName.parse(parameters.getTagNameTemplate().get())
-                .render(ReleaseVersion.parse(version));
+        TagName tagName = TagName.parse(parameters.getTagNameTemplate().get());
+        String resolvedTagName = tagName.render(ReleaseVersion.parse(version));
         Path releases = parameters.getReleasesDir().get().getAsFile().toPath();
+        GitRepository git = new GitRepository(GitRepository.nearestExistingAncestor(releases));
         try {
+            PublishedHistory.Verdict verdict = PublishedHistory.verify(releases, git.releasesPrefix(releases),
+                    tagName, git);
             ClassOutputResources.Result resources =
                     ClassOutputResources.validate(parameters.getClassesDirs().getFiles());
             ContractRelease.Outcome outcome = ContractRelease.release(releases,
@@ -97,7 +100,7 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
                             parameters.getVersionTracksApiMajor().get(), policy,
                             parameters.getBaseline().get().getAsFile().toPath(),
                             resources.artifacts().get(ContractRelease.IR_FILE), resources.artifacts(),
-                            resources.contractResourcesJson(), resolvedTagName));
+                            resources.contractResourcesJson(), resolvedTagName, verdict.published()));
             LOGGER.lifecycle("[ai-atlas] Released contract " + outcome.version() + " (API major " + outcome.apiMajor()
                     + ") to " + outcome.directory() + System.lineSeparator() + outcome.changelog());
         } catch (ContractRelease.ReleaseException e) {

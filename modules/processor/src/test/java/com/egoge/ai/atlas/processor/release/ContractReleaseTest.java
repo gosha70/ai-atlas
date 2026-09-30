@@ -16,6 +16,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.CONTRACT_RESOURCES_JSON;
@@ -202,7 +203,7 @@ class ContractReleaseTest {
     }
 
     @Test
-    void aSnapshotAndOtherVersionsAreRefused() {
+    void aSnapshotAndOtherVersionsAreRefused() throws Exception {
         String ir = accept(irJson(1, ""));
 
         assertThatThrownBy(() -> ContractRelease.release(releases, changelog, request("1.0.0-SNAPSHOT", ir, null, null)))
@@ -219,12 +220,12 @@ class ContractReleaseTest {
         byte[] emitted = irJson(1, NOTE).getBytes(StandardCharsets.UTF_8);
 
         assertThatThrownBy(() -> ContractRelease.release(releases, changelog, new ContractRelease.Request("1.0.0",
-                false, ReleasePolicy.Policy.DEFAULT, baseline, emitted, Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME)))
+                false, ReleasePolicy.Policy.DEFAULT, baseline, emitted, Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of())))
                 .hasMessageContaining("The contract the build emitted differs from the baseline " + baseline)
                 .hasMessageContaining("run atlasAccept, then release");
         Files.delete(baseline);
         assertThatThrownBy(() -> ContractRelease.release(releases, changelog, new ContractRelease.Request("1.0.0",
-                false, ReleasePolicy.Policy.DEFAULT, baseline, emitted, Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME)))
+                false, ReleasePolicy.Policy.DEFAULT, baseline, emitted, Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of())))
                 .hasMessageContaining("No contract baseline at " + baseline);
         assertThat(releases).doesNotExist();
     }
@@ -245,14 +246,14 @@ class ContractReleaseTest {
     void theVersionCanBeRequiredToTrackTheApiMajor() throws Exception {
         String ir = accept(irJson(2, ""));
         ContractRelease.Request request = new ContractRelease.Request("1.0.0", true, ReleasePolicy.Policy.DEFAULT,
-                baseline, ir.getBytes(StandardCharsets.UTF_8), Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME);
+                baseline, ir.getBytes(StandardCharsets.UTF_8), Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of());
 
         assertThatThrownBy(() -> ContractRelease.release(releases, changelog, request))
                 .hasMessageContaining("Version 1.0.0 has major 1, but the contract's apiMajor is 2")
                 .hasMessageContaining("releaseVersionTracksApiMajor");
         ContractRelease.release(releases, changelog, new ContractRelease.Request("2.0.0", true,
                 ReleasePolicy.Policy.DEFAULT, baseline, ir.getBytes(StandardCharsets.UTF_8), Map.of(),
-                CONTRACT_RESOURCES_JSON, TAG_NAME));
+                CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of()));
         assertThat(releases.resolve("2.0.0")).isDirectory();
     }
 
@@ -355,9 +356,59 @@ class ContractReleaseTest {
                 .hasMessageContaining("operation test.OrderService#find(java.lang.Long) (removed)");
         ContractRelease.release(releases, changelog, new ContractRelease.Request("1.1.0", false,
                 new ReleasePolicy.Policy(0, 0, true), baseline, empty.getBytes(StandardCharsets.UTF_8), Map.of(),
-                CONTRACT_RESOURCES_JSON, TAG_NAME));
+                CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of(ReleaseVersion.parse("1.0.0"))));
         assertThat(Files.readString(releases.resolve("1.1.0/CHANGELOG.md"))).contains("### Removed",
                 "- `entity test.Order` (output)\n");
+    }
+
+    @Test
+    void aPendingReleaseBlocksTheNextOne() throws Exception {
+        // 1.0.0 is on disk but excluded from `published` (F1): it is pending, so the next release
+        // must refuse, naming it and its own tag name.
+        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
+        ContractRelease.Request pendingNext = new ContractRelease.Request("1.1.0", false, ReleasePolicy.Policy.DEFAULT,
+                baseline, accept(irJson(1, NOTE)).getBytes(StandardCharsets.UTF_8), Map.of(), CONTRACT_RESOURCES_JSON,
+                TAG_NAME, Set.of());
+
+        assertThatThrownBy(() -> ContractRelease.release(releases, changelog, pendingNext))
+                .hasMessageContaining("Release 1.0.0 is pending")
+                .hasMessageContaining("tag its commit as " + TAG_NAME)
+                .hasMessageContaining("push the tag, then release");
+        assertThat(releases.resolve("1.1.0")).doesNotExist();
+    }
+
+    @Test
+    void anUnpublishedDeprecationEarnsNoCreditEndToEnd() throws Exception {
+        String deprecated = LEGACY.formatted(", deprecatedSinceVersion = 1, removedInVersion = 2,"
+                + " deprecatedMessage = \"Use id\"");
+        ReleaseVersion v100 = ReleaseVersion.parse("1.0.0");
+        ReleaseVersion v110 = ReleaseVersion.parse("1.1.0");
+        ReleaseVersion v120 = ReleaseVersion.parse("1.2.0");
+        ContractRelease.release(releases, changelog, new ContractRelease.Request("1.0.0", false,
+                ReleasePolicy.Policy.DEFAULT, baseline, accept(irJson(1, LEGACY.formatted(""))).getBytes(StandardCharsets.UTF_8),
+                Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of()));
+        // 1.1.0 first declares the field deprecated, and is itself published when it is made.
+        ContractRelease.release(releases, changelog, new ContractRelease.Request("1.1.0", false,
+                ReleasePolicy.Policy.DEFAULT, baseline, accept(irJson(1, deprecated)).getBytes(StandardCharsets.UTF_8), Map.of(),
+                CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of(v100)));
+        // 1.2.0 repeats the same deprecated declaration, and is also published when it is made.
+        ContractRelease.release(releases, changelog, new ContractRelease.Request("1.2.0", false,
+                ReleasePolicy.Policy.DEFAULT, baseline, accept(irJson(1, deprecated)).getBytes(StandardCharsets.UTF_8), Map.of(),
+                CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of(v100, v110)));
+
+        // Removing the field now needs 2 releases deprecated; 1.1.0 is deliberately excluded from
+        // `published` here (it is not the newest snapshot, so this is not "pending"), so only 1.2.0
+        // may count, even though 1.1.0's own IR is deprecated too.
+        ReleasePolicy.Policy needsTwo = new ReleasePolicy.Policy(2, 1, true);
+        ContractRelease.Request removal = new ContractRelease.Request("2.0.0", false, needsTwo, baseline,
+                accept(irJson(2, "")).getBytes(StandardCharsets.UTF_8), Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME,
+                Set.of(v100, v120));
+
+        assertThatThrownBy(() -> ContractRelease.release(releases, changelog, removal))
+                .hasMessageContaining("Release 2.0.0 violates the release policy")
+                .hasMessageContaining("field test.Order#legacy (removed): removed in API major 2, deprecated since"
+                        + " major 1 and released deprecated in 1 release(s) from 1.2.0");
+        assertThat(releases.resolve("2.0.0")).doesNotExist();
     }
 
     // ------------------------------------------------------------ helpers
@@ -373,10 +424,11 @@ class ContractReleaseTest {
         return ir;
     }
 
-    private ContractRelease.Request request(String version, String ir, String openApi, String mcpTools) {
+    private ContractRelease.Request request(String version, String ir, String openApi, String mcpTools)
+            throws IOException {
         return new ContractRelease.Request(version, false, ReleasePolicy.Policy.DEFAULT, baseline,
                 ir.getBytes(StandardCharsets.UTF_8), artifacts(ir, openApi, mcpTools), CONTRACT_RESOURCES_JSON,
-                TAG_NAME);
+                TAG_NAME, ReleaseFixtures.allExistingVersions(releases));
     }
 
     /** A release as an earlier ai-atlas wrote it: its IR, a changelog and a manifest recording both. */

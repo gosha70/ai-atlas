@@ -14,10 +14,15 @@ import javax.tools.StandardLocation;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Stream;
 
 import static com.google.testing.compile.Compiler.javac;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -137,5 +142,22 @@ final class ReleaseFixtures {
             artifacts.put(ContractRelease.MCP_TOOLS_FILE, mcpTools.getBytes(StandardCharsets.UTF_8));
         }
         return artifacts;
+    }
+
+    /**
+     * Every release already on disk under {@code releases}, F1's {@code published} set as most
+     * tests want it: everything already there counts as published, so a test not exercising F1's
+     * pending rule directly never has to think about it.
+     */
+    static Set<ReleaseVersion> allExistingVersions(Path releases) throws IOException {
+        Set<ReleaseVersion> versions = new LinkedHashSet<>();
+        if (!Files.isDirectory(releases)) {
+            return versions;
+        }
+        try (Stream<Path> entries = Files.list(releases)) {
+            entries.filter(Files::isDirectory).map(dir -> dir.getFileName().toString())
+                    .filter(ReleaseVersion::matches).map(ReleaseVersion::parse).forEach(versions::add);
+        }
+        return versions;
     }
 }
