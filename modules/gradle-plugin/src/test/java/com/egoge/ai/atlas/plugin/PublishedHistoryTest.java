@@ -68,8 +68,11 @@ class PublishedHistoryTest {
         FakeGit git = new FakeGit().withTag("v1.0.0", "c1");
 
         assertThatThrownBy(() -> PublishedHistory.verify(releases.resolve("does-not-exist"), "", TAG_NAME, git))
-                .isInstanceOf(GradleException.class).hasMessageContaining("Tag v1.0.0").hasMessageContaining(
-                        "no").hasMessageContaining("directory to match it");
+                .isInstanceOf(GradleException.class).hasMessageContaining("Tag v1.0.0")
+                .hasMessageContaining("snapshot for it")
+                // A project tagged before ai-atlas needs its own pattern, not its published tags deleted
+                .hasMessageContaining("tagName.set(\"api-v{version}\")")
+                .hasMessageNotContaining("remove the tag").hasMessageNotContaining(".,");
     }
 
     @Test

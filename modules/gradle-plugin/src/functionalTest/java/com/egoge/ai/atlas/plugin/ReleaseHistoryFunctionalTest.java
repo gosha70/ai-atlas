@@ -134,8 +134,8 @@ class ReleaseHistoryFunctionalTest {
 
         BuildResult result = release("1.1.0").buildAndFail();
 
-        assertThat(result.getOutput()).contains("Tag v2.0.0 matches", "no", "2.0.0 directory to match it",
-                "Fetch tags and full history");
+        assertThat(result.getOutput()).contains("Tag v2.0.0 matches", "2.0.0 snapshot for it",
+                "tagName.set(\"api-v{version}\")", "Fetch tags and full history");
         assertThat(releaseDir("1.1.0")).doesNotExist();
     }
 

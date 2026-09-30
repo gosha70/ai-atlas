@@ -123,7 +123,10 @@ final class PublishedHistory {
             Optional<ReleaseVersion> matched = tagName.match(tag);
             if (matched.isPresent() && !versions.contains(matched.get())) {
                 throw fail("Tag " + tag + " matches agentic { release { tagName } }, but there is no " + releasesDir
-                        + "/" + matched.get() + " directory to match it. " + FETCH_REMEDY + ", or remove the tag.");
+                        + "/" + matched.get() + " snapshot for it. If the repository's tags are not ai-atlas contract"
+                        + " releases, as for a project tagged before it adopted ai-atlas, give its contract releases"
+                        + " their own pattern, such as agentic { release { tagName.set(\"api-v{version}\") } }."
+                        + " If " + tag + " is an ai-atlas release, its snapshot is missing here. " + FETCH_REMEDY);
             }
         }
     }
