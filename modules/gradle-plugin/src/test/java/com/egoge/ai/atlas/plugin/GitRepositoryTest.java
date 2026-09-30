@@ -64,7 +64,8 @@ class GitRepositoryTest {
         GitRepository repo = new GitRepository(dir, "definitely-not-a-real-git-binary-xyz", Duration.ofSeconds(5));
 
         assertThat(repo.isInsideWorkTree()).isFalse();
-        assertThat(repo.tags()).isEmpty();
+        // Past that answer nothing is queried; a query that runs anyway fails rather than answers
+        assertThatThrownBy(repo::tags).isInstanceOf(GradleException.class).hasMessageContaining("could not be started");
     }
 
     @Test
@@ -161,6 +162,22 @@ class GitRepositoryTest {
 
         assertThat(GitRepository.nearestExistingAncestor(missing)).isEqualTo(dir.toAbsolutePath().normalize());
         assertThat(GitRepository.nearestExistingAncestor(dir)).isEqualTo(dir.toAbsolutePath().normalize());
+    }
+
+    @Test
+    void aGitErrorOtherThanNoRepositoryFailsWithGitsMessage() throws IOException {
+        // As git answers a checkout owned by another user, common in containerized CI
+        Path script = dir.resolveSibling("dubious-git.sh");
+        Files.writeString(script, "#!/bin/sh\necho \"fatal: detected dubious ownership in repository at '/work'\" >&2\n"
+                + "exit 128\n", StandardCharsets.UTF_8);
+        Files.setPosixFilePermissions(script, EnumSet.of(PosixFilePermission.OWNER_READ,
+                PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE));
+        GitRepository repo = new GitRepository(dir, script.toString(), Duration.ofSeconds(5));
+
+        assertThatThrownBy(repo::isInsideWorkTree).isInstanceOf(GradleException.class)
+                .hasMessageContaining("detected dubious ownership").hasMessageContaining("exit code 128");
+        assertThatThrownBy(repo::isShallow).isInstanceOf(GradleException.class)
+                .hasMessageContaining("detected dubious ownership");
     }
 
     @Test

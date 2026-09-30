@@ -91,8 +91,9 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
         Path releases = parameters.getReleasesDir().get().getAsFile().toPath();
         GitRepository git = new GitRepository(GitRepository.nearestExistingAncestor(releases));
         try {
-            PublishedHistory.Verdict verdict = PublishedHistory.verify(releases, git.releasesPrefix(releases),
-                    tagName, git);
+            // The prefix locates snapshots in tagged trees, so it exists only inside a repository
+            String releasesPrefix = git.isInsideWorkTree() ? git.releasesPrefix(releases) : "";
+            PublishedHistory.Verdict verdict = PublishedHistory.verify(releases, releasesPrefix, tagName, git);
             ClassOutputResources.Result resources =
                     ClassOutputResources.validate(parameters.getClassesDirs().getFiles());
             ContractRelease.Outcome outcome = ContractRelease.release(releases,

@@ -29,6 +29,8 @@ import java.util.concurrent.TimeUnit;
 final class GitRepository implements GitQuery {
 
     private static final String PREFIX = "[ai-atlas] ";
+    /** How git, run with {@code LC_ALL=C}, says a directory belongs to no repository. */
+    private static final String NOT_A_REPOSITORY = "not a git repository";
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
 
     private final Path directory;
@@ -54,23 +56,57 @@ final class GitRepository implements GitQuery {
         this.timeout = timeout;
     }
 
-    /** One command's outcome: its exit code and its standard output, raw bytes. */
-    private record Result(int exitCode, byte[] stdout) {
+    /** One command's outcome: its exit code, its standard output as raw bytes, and git's error text. */
+    private record Result(int exitCode, byte[] stdout, byte[] stderr) {
         String text() {
             return new String(stdout, StandardCharsets.UTF_8).strip();
         }
+
+        String errorText() {
+            return new String(stderr, StandardCharsets.UTF_8).strip();
+        }
+    }
+
+    /** Runs a command that has no meaningful failure: any non-zero exit fails with git's message. */
+    private Result succeeded(String... args) {
+        Optional<Result> result = run(args);
+        if (result.isEmpty()) {
+            throw new GradleException(PREFIX + "git could not be started to run git " + String.join(" ", args) + ".");
+        }
+        if (result.get().exitCode() != 0) {
+            throw failure(result.get(), args);
+        }
+        return result.get();
+    }
+
+    /** A command that failed for a reason other than the answer it exists to give, with git's own message. */
+    private GradleException failure(Result result, String... args) {
+        return new GradleException(PREFIX + "git " + String.join(" ", args) + " failed in " + directory
+                + " with exit code " + result.exitCode() + ": " + result.errorText());
     }
 
     /**
-     * Whether {@code directory} is inside a git work tree. {@code false} when {@code git} is not on
-     * the path, or the directory is not (yet) part of any repository.
+     * Whether {@code directory} is inside a git work tree. {@code false} only when {@code git} is not
+     * on the path, or git answers that the directory is not part of any repository. Any other error,
+     * such as git refusing a repository of dubious ownership, fails with git's message: taking it
+     * for "no repository" would skip the checks a repository requires.
      *
      * @return whether a git repository was found
      */
     @Override
     public boolean isInsideWorkTree() {
-        return run("rev-parse", "--is-inside-work-tree").filter(r -> r.exitCode() == 0)
-                .map(r -> "true".equals(r.text())).orElse(false);
+        String[] args = {"rev-parse", "--is-inside-work-tree"};
+        Optional<Result> result = run(args);
+        if (result.isEmpty()) {
+            return false;
+        }
+        if (result.get().exitCode() == 0) {
+            return "true".equals(result.get().text());
+        }
+        if (result.get().errorText().contains(NOT_A_REPOSITORY)) {
+            return false;
+        }
+        throw failure(result.get(), args);
     }
 
     /**
@@ -81,8 +117,7 @@ final class GitRepository implements GitQuery {
      */
     @Override
     public boolean isShallow() {
-        return run("rev-parse", "--is-shallow-repository").filter(r -> r.exitCode() == 0)
-                .map(r -> "true".equals(r.text())).orElse(false);
+        return "true".equals(succeeded("rev-parse", "--is-shallow-repository").text());
     }
 
     /**
@@ -92,12 +127,8 @@ final class GitRepository implements GitQuery {
      */
     @Override
     public List<String> tags() {
-        Optional<Result> result = run("for-each-ref", "--format=%(refname:strip=2)", "refs/tags");
-        if (result.isEmpty() || result.get().exitCode() != 0) {
-            return List.of();
-        }
         List<String> tags = new ArrayList<>();
-        for (String line : result.get().text().lines().toList()) {
+        for (String line : succeeded("for-each-ref", "--format=%(refname:strip=2)", "refs/tags").text().lines().toList()) {
             String trimmed = line.strip();
             if (!trimmed.isEmpty()) {
                 tags.add(trimmed);
@@ -116,9 +147,13 @@ final class GitRepository implements GitQuery {
      */
     @Override
     public Optional<String> peelToCommit(String tag) {
-        Optional<Result> result = run("rev-parse", "--verify", "--quiet", "refs/tags/" + tag + "^{commit}");
-        if (result.isEmpty() || result.get().exitCode() != 0) {
-            return Optional.empty();
+        String[] args = {"rev-parse", "--verify", "--quiet", "refs/tags/" + tag + "^{commit}"};
+        Optional<Result> result = run(args);
+        if (result.isEmpty() || result.get().exitCode() == 1) {
+            return Optional.empty(); // no such tag, or not one peeling to a commit
+        }
+        if (result.get().exitCode() != 0) {
+            throw failure(result.get(), args);
         }
         String sha = result.get().text();
         return sha.isEmpty() ? Optional.empty() : Optional.of(sha);
@@ -145,8 +180,7 @@ final class GitRepository implements GitQuery {
         if (exitCode == 1) {
             return false;
         }
-        throw new GradleException(PREFIX + "git merge-base --is-ancestor " + commit + " HEAD failed with exit code "
-                + exitCode + " in " + directory + ".");
+        throw failure(result.get(), "merge-base", "--is-ancestor", commit, "HEAD");
     }
 
     /**
@@ -165,8 +199,7 @@ final class GitRepository implements GitQuery {
         if (exists.isEmpty() || exists.get().exitCode() != 0) {
             return new byte[0];
         }
-        Optional<Result> content = run("cat-file", "blob", commit + ":" + path);
-        return content.filter(r -> r.exitCode() == 0).map(Result::stdout).orElse(new byte[0]);
+        return succeeded("cat-file", "blob", commit + ":" + path).stdout();
     }
 
     /**
@@ -179,8 +212,7 @@ final class GitRepository implements GitQuery {
      * @return the prefix to combine with {@code <version>/release.json}, etc.
      */
     String releasesPrefix(Path releasesDir) {
-        String showPrefix = run("rev-parse", "--show-prefix").filter(r -> r.exitCode() == 0).map(Result::text)
-                .orElse("");
+        String showPrefix = succeeded("rev-parse", "--show-prefix").text();
         String fromAnchor = directory.toAbsolutePath().normalize()
                 .relativize(releasesDir.toAbsolutePath().normalize()).toString().replace(java.io.File.separatorChar,
                         '/');
@@ -249,7 +281,7 @@ final class GitRepository implements GitQuery {
             }
             stdout.join(timeout.toMillis());
             stderr.join(timeout.toMillis());
-            return Optional.of(new Result(process.exitValue(), stdout.bytes()));
+            return Optional.of(new Result(process.exitValue(), stdout.bytes(), stderr.bytes()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new GradleException(PREFIX + "git " + String.join(" ", args) + " in " + directory
