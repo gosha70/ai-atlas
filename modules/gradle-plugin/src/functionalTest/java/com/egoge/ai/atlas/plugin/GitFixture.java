@@ -51,9 +51,62 @@ final class GitFixture {
         git("commit", "-q", "-m", message, "--allow-empty");
     }
 
-    private void git(String... args) {
+    /** A lightweight tag on the current {@code HEAD}. */
+    void tag(String tagName) {
+        git("tag", tagName);
+    }
+
+    /** An annotated tag on the current {@code HEAD} (D6: an annotated tag works, peeled to its commit). */
+    void annotatedTag(String tagName) {
+        git("tag", "-a", tagName, "-m", "Release " + tagName);
+    }
+
+    /** Deletes a tag, so it no longer backs any release. */
+    void deleteTag(String tagName) {
+        git("tag", "-d", tagName);
+    }
+
+    /**
+     * Switches to a brand-new, parentless branch, keeping every working-tree file exactly as it is
+     * (unlike an ordinary checkout), then commits them: a commit with no common ancestor with any
+     * earlier one (D6: a tag not an ancestor of {@code HEAD}).
+     */
+    void commitOnAnOrphanBranch(String branchName, String message) {
+        git("checkout", "-q", "--orphan", branchName);
+        git("add", "-A");
+        git("commit", "-q", "-m", message);
+    }
+
+    /** The current branch's name. */
+    String currentBranch() {
+        return output("symbolic-ref", "--short", "HEAD");
+    }
+
+    /** Runs an arbitrary read-only or repository-local git command, such as {@code clone} or {@code log}. */
+    void git(String... args) {
+        run(List.of(args));
+    }
+
+    /** {@code git <args>}'s standard output, trimmed. */
+    private String output(String... args) {
         List<String> command = new ArrayList<>(List.of("git", "-C", projectDir.getAbsolutePath()));
         command.addAll(List.of(args));
+        try {
+            Process process = new ProcessBuilder(command).redirectErrorStream(false).start();
+            String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
+            int exit = process.waitFor();
+            if (exit != 0) {
+                throw new IllegalStateException("git " + String.join(" ", args) + " in " + projectDir + " failed");
+            }
+            return out;
+        } catch (IOException | InterruptedException e) {
+            throw new IllegalStateException("git " + String.join(" ", args) + " in " + projectDir + " failed", e);
+        }
+    }
+
+    private void run(List<String> args) {
+        List<String> command = new ArrayList<>(List.of("git", "-C", projectDir.getAbsolutePath()));
+        command.addAll(args);
         try {
             Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
             byte[] output = process.getInputStream().readAllBytes();
