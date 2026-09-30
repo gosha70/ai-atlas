@@ -48,6 +48,20 @@ Second round, the same day, settling the plan's remaining open questions (`plan.
   When javac does not invoke the processor, the plugin produces both. Reserved resources already
   in the class output are detected before anything is written: an old non-empty IR is never kept,
   digested or treated as fresh. The release snapshot holds the accepted empty IR.
+- **Two paths (third round, correcting the second):** logging a replaced stale IR is not what
+  makes it valid.
+  - The **compile/accept path** (the empty-contract writer run with `compileJava`, and
+    `atlasAccept`'s compilation) may replace old reserved output with a fresh empty IR and a
+    matching manifest, and only after confirming that the class output declares no contract.
+    This keeps the remove-all-annotations then `atlasAccept` flow working.
+  - The **release path** validates what it finds and never writes, regenerates or repairs class
+    output. Any stale or mismatched reserved resource it encounters fails the release, naming it.
+    Other stale reserved resources (a leftover `openapi-v<N>.json` or `mcp-tools.json`) remain
+    release errors.
+  - A regression distinguishes the two: a failed release leaves the class-output artifact bytes
+    and `contract-resources.json` unchanged, creates no release snapshot and leaves
+    `.atlas/CHANGELOG.md` unchanged; the compile/accept path leaves a fresh empty contract that
+    then releases.
 - **Reserved set (OQ-5):** the enumerated ai-atlas paths only, including the versioned OpenAPI
   files of every major (`openapi-v<N>.json`, any N ≥ 1). Unrelated files are ignored.
 - **Tag name (OQ-8):** `release.json` records the resolved tag name, and later proofs use it.

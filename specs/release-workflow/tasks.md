@@ -202,10 +202,16 @@ The 500-line cap applies to every file, tests included. Each phase ends with a f
     `EmptyContract.json` and `contract-resources.json` with `"contract": "empty"`, the effective
     configuration including a manual `-A`, and only the `api.ir.json` artifact, whose digest is
     that of the bytes written (OQ-2).
-  - TestKit (in C6): removing every annotation without `clean` replaces the stale non-empty
-    `api.ir.json` with the fresh empty one and logs the replacement; its digest is never recorded;
-    a leftover `openapi-v1.json` is kept and fails the release, naming it; the build still passes
-    once the empty contract is accepted.
+  - TestKit (in C6): removing every annotation without `clean` leaves a fresh empty
+    `api.ir.json`, never the stale non-empty one, whose digest is never recorded; the manifest
+    digests the fresh bytes; the empty contract then releases with the accepted empty IR in its
+    snapshot (compile/accept path); a leftover `openapi-v1.json` is kept and fails the release,
+    naming it; the build still passes once the empty contract is accepted.
+  - TestKit (in C6, owner correction): a stale or tampered reserved resource the compile path did
+    not regenerate (`compileJava` UP-TO-DATE) fails `agenticRelease`, naming it, and the failed
+    release leaves the class-output artifact bytes and `contract-resources.json` unchanged,
+    creates no `.atlas/releases/<version>/` and leaves `.atlas/CHANGELOG.md` unchanged (release
+    path).
 - **Depends:** C3a.
 
 ### C4. The release consumes the manifest (F2, D2.1, D2.3, D2.6, D2.8, AC2, AC4)

@@ -351,12 +351,17 @@ digest the manifest records (OQ-2, decided).
      compilation's would be the silent-overwrite error the owner ruled out.
   2. It writes a freshly built canonical `EmptyContract.json` to `api.ir.json`, digests the bytes
      it wrote, and writes the manifest. When step 1 found an `api.ir.json` with other bytes, it
-     logs one line naming the replaced stale file.
+     logs one line naming the replaced stale file. The log is informational: what authorizes the
+     replacement is the caller's confirmation that the class output declares no contract
+     (owner correction, third round; see `spec.md`). This is the compile/accept path only.
   3. Any other reserved file found in step 1 (for example a leftover `openapi-v1.json` or
      `mcp-tools.json`) is left in place. It is not in the empty manifest, so the release fails on
      it as an unlisted reserved file, naming it and `clean`. The build itself, including
      `atlasContractCheck`, is unaffected, so removing every annotation without `clean` still
      builds once accepted.
+  4. **The release path never writes** (owner correction, third round): `ClassOutputResources`
+     only reads, and the release never runs the writer. A stale or mismatched reserved resource
+     it encounters fails the release; it is never repaired and then passed.
 - **Where the writer runs** is settled by a time-boxed spike, C3a. Two options:
   - **Preferred:** a `compileJava.doLast` action that submits through `WorkerExecutor`. The file is
     then part of `compileJava`'s tracked output, cached and up to date.
