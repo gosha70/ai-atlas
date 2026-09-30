@@ -32,6 +32,11 @@ dependencies {
     testImplementation("org.springframework:spring-test")
     testImplementation("jakarta.servlet:jakarta.servlet-api")
     testImplementation(libs.spring.ai.mcp.server)
+    // Spring Data paging types, and MockMvc to call generated controllers as Spring MVC would with Spring
+    // Data's Pageable resolver; the processor reads Pageable, Page and Slice by name only
+    testImplementation("org.springframework.data:spring-data-commons")
+    testImplementation("org.springframework:spring-webmvc")
+    testImplementation("org.springframework:spring-test")
     // Bean Validation annotations for constraint fixtures; the processor reads them by name only
     testImplementation("jakarta.validation:jakarta.validation-api")
     // FR-017a consistency and FR-014/FR-017 schema validity — test-only, never on the processor's

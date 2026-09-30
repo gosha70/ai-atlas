@@ -14,6 +14,7 @@ import com.egoge.ai.atlas.processor.model.ServiceModel.ReturnKind;
 import com.egoge.ai.atlas.processor.util.VersionSelector;
 import com.palantir.javapoet.AnnotationSpec;
 import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.FieldSpec;
 import com.palantir.javapoet.JavaFile;
 import com.palantir.javapoet.MethodSpec;
@@ -27,6 +28,9 @@ import javax.annotation.processing.Messager;
 import javax.lang.model.element.Modifier;
 import javax.tools.Diagnostic;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Generates Spring {@code @Service} classes with {@code @Tool}-annotated methods
@@ -60,11 +64,15 @@ public final class McpToolGenerator {
      * Generates an MCP tool wrapper class and writes it to the filer.
      *
      * @param constraints the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
+     * @param paging      the paging contracts by operation identity, or {@code null} when
+     *                    {@code ai.atlas.collections} is off
      */
     public static void generate(ServiceModel model, String packageName, int apiMajor,
-                                ConstraintSurfaces constraints, Filer filer, Messager messager) {
+                                ConstraintSurfaces constraints, Map<String, PagingContract> paging,
+                                Filer filer, Messager messager) {
         String toolClassName = model.serviceClassName().simpleName() + "McpTool";
-        TypeSpec toolSpec = buildToolSpec(model, toolClassName, apiMajor, constraints);
+        TypeSpec toolSpec = buildToolSpec(model, ClassName.get(packageName, toolClassName), apiMajor, constraints,
+                paging);
         if (toolSpec == null) {
             messager.printMessage(Diagnostic.Kind.NOTE,
                     "[ai-atlas] Skipped MCP tool for " + model.serviceClassName().simpleName()
@@ -88,6 +96,12 @@ public final class McpToolGenerator {
 
     static TypeSpec buildToolSpec(ServiceModel model, String toolClassName, int apiMajor,
                                   ConstraintSurfaces constraints) {
+        return buildToolSpec(model, ClassName.get("", toolClassName), apiMajor, constraints, null);
+    }
+
+    private static TypeSpec buildToolSpec(ServiceModel model, ClassName toolClass, int apiMajor,
+                                          ConstraintSurfaces constraints, Map<String, PagingContract> paging) {
+        String toolClassName = toolClass.simpleName();
         // Filter to AI-channel methods that are active for the configured major
         var aiMethods = model.methods().stream()
                 .filter(m -> m.channels().contains("AI") && VersionSelector.isActive(m, apiMajor))
@@ -122,11 +136,15 @@ public final class McpToolGenerator {
                 .build());
 
         // @Tool methods
+        List<PagingContract> contracts = new ArrayList<>();
         for (MethodModel method : aiMethods) {
-            ContractIr.Operation irOperation = constraints != null
-                    ? constraints.operation(ContractProjection.operationKey(serviceType, method)) : null;
-            classBuilder.addMethod(buildToolMethod(method, apiMajor, irOperation, enforce));
+            String key = ContractProjection.operationKey(serviceType, method);
+            ContractIr.Operation irOperation = constraints != null ? constraints.operation(key) : null;
+            PagingContract contract = paging != null ? paging.get(key) : null;
+            contracts.add(contract);
+            classBuilder.addMethod(buildToolMethod(method, apiMajor, irOperation, enforce, contract, toolClass));
         }
+        PagingContract.envelopeRecords(contracts).forEach(classBuilder::addType);
 
         return classBuilder.build();
     }
@@ -135,9 +153,12 @@ public final class McpToolGenerator {
      * @param irOperation the IR operation whose parameters' contracts the parameters carry, or
      *                    {@code null} when {@code ai.atlas.constraints} is off
      * @param enforce     whether to emit the contracts as Bean Validation annotations
+     * @param paging      the method's paging contract, or {@code null} when it has none or
+     *                    {@code ai.atlas.collections} is off
+     * @param toolClass   the generated class, which nests the envelope records
      */
-    private static MethodSpec buildToolMethod(MethodModel method, int apiMajor,
-                                              ContractIr.Operation irOperation, boolean enforce) {
+    private static MethodSpec buildToolMethod(MethodModel method, int apiMajor, ContractIr.Operation irOperation,
+                                              boolean enforce, PagingContract paging, ClassName toolClass) {
         // Enrich description with version/deprecation metadata
         String desc = method.description();
         if (VersionSelector.isDeprecated(method, apiMajor)) {
@@ -147,6 +168,11 @@ public final class McpToolGenerator {
         } else if (method.apiSince() > 1) {
             desc = "[Since v" + method.apiSince() + "] " + desc;
         }
+        String guidance = paging != null
+                ? paging.toolGuidance(method.parameters().stream().map(ParameterModel::name).toList()) : "";
+        if (!guidance.isEmpty()) {
+            desc = desc.isEmpty() ? guidance : desc + (desc.endsWith(".") ? " " : ". ") + guidance;
+        }
 
         MethodSpec.Builder methodBuilder = MethodSpec.methodBuilder(method.toolName())
                 .addModifiers(Modifier.PUBLIC)
@@ -154,10 +180,16 @@ public final class McpToolGenerator {
                         .addMember("name", "$S", method.toolName())
                         .addMember("description", "$S", desc)
                         .build());
+        AnnotationSpec bound = paging != null ? paging.boundAnnotation() : null;
+        if (bound != null) {
+            methodBuilder.addAnnotation(bound);
+        }
 
         // Return type
         boolean isCollection = method.returnKind() != ReturnKind.NONE;
-        if (method.returnDtoType() != null) {
+        if (paging != null && paging.enveloped()) {
+            methodBuilder.returns(paging.envelopeType(toolClass, method));
+        } else if (method.returnDtoType() != null) {
             if (isCollection) {
                 methodBuilder.returns(ParameterizedTypeName.get(
                         ClassName.get("java.util", "List"), method.returnDtoType()));
@@ -171,11 +203,27 @@ public final class McpToolGenerator {
         // Parameters with @ToolParam
         for (int i = 0; i < method.parameters().size(); i++) {
             ParameterModel param = method.parameters().get(i);
+            if (paging != null && paging.replaces(i)) {
+                // The service takes a Pageable: the tool takes the page and size it is built from, never a sort
+                // Longs, so the tool itself rejects a size or page beyond an int, naming it and its range
+                methodBuilder.addParameter(ParameterSpec.builder(Long.class, PagingContract.PAGE_PARAM)
+                        .addAnnotation(AnnotationSpec.builder(TOOL_PARAM)
+                                .addMember("description", "$S", PagingContract.PAGE_DESCRIPTION)
+                                .addMember("required", "$L", false).build())
+                        .build());
+                methodBuilder.addParameter(ParameterSpec.builder(Long.class, PagingContract.SIZE_PARAM)
+                        .addAnnotation(AnnotationSpec.builder(TOOL_PARAM)
+                                .addMember("description", "$S", PagingContract.SIZE_DESCRIPTION).build())
+                        .build());
+                continue;
+            }
             ParameterSpec.Builder paramBuilder = ParameterSpec.builder(param.typeName(), param.name());
             String paramDesc = param.description().isEmpty() ? param.name() : param.description();
             AnnotationSpec.Builder toolParam = AnnotationSpec.builder(TOOL_PARAM)
                     .addMember("description", "$S", paramDesc);
-            if (irOperation != null) {
+            if (irOperation == null && paging != null && paging.optionalCursor(i)) {
+                paramBuilder.addAnnotation(toolParam.addMember("required", "$L", false).build());
+            } else if (irOperation != null) {
                 ContractIr.Parameter irParam = ConstraintSurfaces.parameter(irOperation, i, param);
                 toolParam.addMember("required", "$L", irParam.required());
                 paramBuilder.addAnnotation(toolParam.build());
@@ -189,10 +237,15 @@ public final class McpToolGenerator {
         }
 
         // Method body: delegate to service, map to DTO if applicable
-        String callArgs = buildCallArgs(method);
+        CodeBlock callArgs = buildCallArgs(method, paging);
+        if (paging != null && paging.pageable() >= 0) {
+            paging.addMcpPagingChecks(methodBuilder, method.toolName());
+        }
 
         if (method.returnType().equals(TypeName.VOID)) {
             methodBuilder.addStatement("service.$L($L)", method.methodName(), callArgs);
+        } else if (paging != null && paging.enveloped()) {
+            paging.addEnvelopeStatements(methodBuilder, toolClass, method, callArgs);
         } else if (method.returnDtoType() != null && method.returnEntityType() != null) {
             addMappingStatement(methodBuilder, method, callArgs);
         } else {
@@ -262,7 +315,7 @@ public final class McpToolGenerator {
     }
 
     private static void addMappingStatement(MethodSpec.Builder methodBuilder,
-                                               MethodModel method, String callArgs) {
+                                               MethodModel method, CodeBlock callArgs) {
         switch (method.returnKind()) {
             case COLLECTION -> methodBuilder.addStatement(
                     "return service.$L($L).stream().map(e -> $T.fromEntity(($T) e)).toList()",
@@ -281,14 +334,15 @@ public final class McpToolGenerator {
         }
     }
 
-    private static String buildCallArgs(MethodModel method) {
-        StringBuilder sb = new StringBuilder();
+    private static CodeBlock buildCallArgs(MethodModel method, PagingContract paging) {
+        CodeBlock.Builder args = CodeBlock.builder();
         for (int i = 0; i < method.parameters().size(); i++) {
             if (i > 0) {
-                sb.append(", ");
+                args.add(", ");
             }
-            sb.append(method.parameters().get(i).name());
+            args.add(paging != null && paging.replaces(i)
+                    ? PagingContract.pageRequestArgument() : CodeBlock.of("$L", method.parameters().get(i).name()));
         }
-        return sb.toString();
+        return args.build();
     }
 }

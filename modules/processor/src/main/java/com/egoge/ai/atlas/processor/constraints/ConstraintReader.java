@@ -5,6 +5,7 @@ package com.egoge.ai.atlas.processor.constraints;
 
 import com.egoge.ai.atlas.annotations.AgenticConstraints;
 import com.egoge.ai.atlas.annotations.AgenticParam;
+import com.egoge.ai.atlas.annotations.Paging;
 import com.egoge.ai.atlas.annotations.Requiredness;
 import com.egoge.ai.atlas.processor.constraints.EffectiveConstraints.PatternConstraint;
 
@@ -120,11 +121,10 @@ public final class ConstraintReader {
     }
 
     /**
-     * Whether a request must set an {@code @AgenticField} field when it is an input, as a REST
-     * request body's: Phase 3's requiredness applied to a field, which has no
-     * {@code @AgenticParam(required)}. A primitive always has a value; any other field is required
-     * only when a Bean Validation {@code @NotNull}, {@code @NotBlank} or {@code @NotEmpty} of the
-     * default group says so. Reports nothing: {@link #readField} reports the field's diagnostics.
+     * Whether a request must set an {@code @AgenticField} field when it is an input, as a REST request body's:
+     * Phase 3's requiredness applied to a field, which has no {@code @AgenticParam(required)}. A primitive always
+     * has a value; any other field is required only when a Bean Validation {@code @NotNull}, {@code @NotBlank} or
+     * {@code @NotEmpty} of the default group says so. Reports nothing: {@link #readField} reports its diagnostics.
      *
      * @param field the field
      * @return whether the field is required
@@ -139,8 +139,7 @@ public final class ConstraintReader {
                 continue;
             }
             String simple = name.substring(BV_PACKAGE.length());
-            List<AnnotationMirror> read = simple.endsWith(LIST_SUFFIX)
-                    ? annotations(values(mirror).get(A_VALUE)) : List.of(mirror);
+            List<AnnotationMirror> read = simple.endsWith(LIST_SUFFIX) ? annotations(values(mirror).get(A_VALUE)) : List.of(mirror);
             String constraint = simple.endsWith(LIST_SUFFIX)
                     ? simple.substring(0, simple.length() - LIST_SUFFIX.length()) : simple;
             if (Set.of(NOT_NULL, NOT_BLANK, NOT_EMPTY).contains(constraint)
@@ -196,6 +195,10 @@ public final class ConstraintReader {
                     errors.add("Requiredness.OPTIONAL on " + what + " contradicts its @NotNull, @NotBlank or"
                             + " @NotEmpty");
                 }
+                required = false;
+            } else if (param.required() == Requiredness.DEFAULT && param.paging() == Paging.CURSOR
+                    && !type.getKind().isPrimitive() && !bv.required) {
+                // The first call of a cursor contract has no cursor to pass
                 required = false;
             }
         }

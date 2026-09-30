@@ -34,6 +34,24 @@ public @interface AgenticParam {
     Requiredness required() default Requiredness.DEFAULT;
 
     /**
+     * The parameter's role in a paging contract the service honours: {@link Paging#LIMIT} for the
+     * most results it returns, {@link Paging#CURSOR} for the position it resumes after.
+     * {@link Paging#NONE} (default) gives it none. Read only with the processor option
+     * {@code ai.atlas.collections} on; a role declared with it off is a compile error.
+     */
+    Paging paging() default Paging.NONE;
+
+    /**
+     * On a Spring Data {@code Pageable} parameter, the entity properties a REST client may sort
+     * by, each a field of the returned entity's DTO. When empty (default), the generated REST
+     * controller drops any requested sort, as a sort on a property clients cannot see leaks its
+     * values through the order. Sorting is never offered on MCP. Read only with the processor
+     * option {@code ai.atlas.collections} on; declared with it off, or on any other parameter, it is
+     * a compile error.
+     */
+    String[] sortable() default {};
+
+    /**
      * Where a REST request carries the parameter. Requires the processor option
      * {@code ai.atlas.rest=true}; without it, any value other than {@link In#DEFAULT} is a compile
      * error. MCP tools are unaffected: they always take the parameter by name.

@@ -12,6 +12,10 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     annotationProcessor("org.springframework.boot:spring-boot-configuration-processor:${libs.versions.spring.boot.get()}")
 
+    // Spring Data web paging: optional, read by PageableBindingCheck only when present
+    compileOnly(platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.spring.boot.get()}"))
+    compileOnly("org.springframework.data:spring-data-commons")
+
     // Spring AI MCP — provides @Tool/@ToolParam annotations + MCP server auto-config
     api(libs.spring.ai.mcp.server)
 
@@ -26,4 +30,6 @@ dependencies {
     testImplementation(libs.json.schema.validator)
     // The real processor, for ProcessorOutputMergeTest's generated mcp-tools.json (test only)
     testImplementation(project(":modules:processor"))
+    // Spring Data's paging resolver, for PageableBindingCheckTest (test only)
+    testImplementation("org.springframework.data:spring-data-commons")
 }

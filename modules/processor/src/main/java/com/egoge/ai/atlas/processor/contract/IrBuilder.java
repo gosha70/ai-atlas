@@ -97,6 +97,8 @@ public final class IrBuilder {
     private final BiFunction<String, String, List<String>> channels;
     /** Whether a direct field's entity type hint is in effect, as {@code ai.atlas.projections=true} has it. */
     private final boolean directHints;
+    /** An operation's effective result bound by its identity. */
+    private final Function<String, Bound> bounds;
     private final Map<String, EntityModel> entities = new TreeMap<>();
     private final Map<String, Operation> operations = new TreeMap<>();
     /** {@code entity#field} of every field declared {@code openEnum = true}. */
@@ -121,10 +123,24 @@ public final class IrBuilder {
      */
     public IrBuilder(ProcessingEnvironment env, BiFunction<String, String, List<String>> channels,
                      boolean directHints) {
+        this(env, channels, directHints, operationId -> Bound.NONE);
+    }
+
+    /**
+     * @param env         the processing environment of the compilation
+     * @param channels    a field's effective channels, sorted, by entity class name and field name
+     * @param directHints whether a direct field's {@code @AgenticField(type)} naming an entity makes
+     *                    the field refer to it, as with {@code ai.atlas.projections=true}
+     * @param bounds      an operation's effective result bound by its identity, as
+     *                    {@code ai.atlas.collections} decides it
+     */
+    public IrBuilder(ProcessingEnvironment env, BiFunction<String, String, List<String>> channels,
+                     boolean directHints, Function<String, Bound> bounds) {
         this.env = env;
         this.constraintReader = new ConstraintReader(env);
         this.channels = channels;
         this.directHints = directHints;
+        this.bounds = bounds;
     }
 
     /**
@@ -392,7 +408,7 @@ public final class IrBuilder {
             irOperations.add(new Operation(op.service(), op.method(), op.toolName(), op.channels(),
                     op.description(), op.rest(), op.parameters(),
                     new Return(returns.javaType(), returns.returnKind(), returns.returnType(), reference,
-                            returns.bound()),
+                            bounds.apply(op.id())),
                     op.hints(), op.lifecycle()));
         }
         irOperations.sort(Comparator.comparing(Operation::service).thenComparing(Operation::signature));

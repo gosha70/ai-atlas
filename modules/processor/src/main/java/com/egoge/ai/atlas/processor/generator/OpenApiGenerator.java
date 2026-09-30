@@ -64,9 +64,9 @@ import java.util.function.Function;
 public final class OpenApiGenerator {
 
   private static final String OPENAPI_VERSION = "3.0.3";
-  private static final String APPLICATION_JSON = "application/json";
+  static final String APPLICATION_JSON = "application/json";
   private static final String TEXT_PLAIN = "text/plain";
-  private static final ClassName STRING = ClassName.get(String.class);
+  static final ClassName STRING = ClassName.get(String.class);
   private static final String BIG_DECIMAL = "java.math.BigDecimal";
   private static final String BIG_INTEGER = "java.math.BigInteger";
   /** Body types JSON carries as a string; a {@code String} body itself is a compile error. */
@@ -99,6 +99,8 @@ public final class OpenApiGenerator {
    *                     the model the controllers read too
    * @param inputRecords the input records request bodies bind, described as component schemas
    * @param constraints  the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
+   * @param paging       the paging contracts by operation identity, or {@code null} when
+   *                     {@code ai.atlas.collections} is off
    */
   public static void generate(
       List<EntityModel> entities,
@@ -107,10 +109,10 @@ public final class OpenApiGenerator {
       Function<String, RestOperation> routes,
       Collection<InputRecord> inputRecords,
       String apiBasePath, int apiMajor, String infoVersion,
-      ConstraintSurfaces constraints,
+      ConstraintSurfaces constraints, Map<String, PagingContract> paging,
       Filer filer, Messager messager) {
     OpenAPI openAPI = buildSpec(entities, services, operationIds, routes, inputRecords, apiBasePath, apiMajor,
-        infoVersion, constraints);
+        infoVersion, constraints, paging);
 
     try {
       String json = serializeToJson(openAPI);
@@ -149,7 +151,7 @@ public final class OpenApiGenerator {
       Function<String, RestOperation> routes,
       Collection<InputRecord> inputRecords,
       String apiBasePath, int apiMajor, String infoVersion,
-      ConstraintSurfaces constraints) {
+      ConstraintSurfaces constraints, Map<String, PagingContract> paging) {
     OpenAPI openAPI = new OpenAPI();
     openAPI.openapi(OPENAPI_VERSION);
     openAPI.info(new Info()
@@ -187,7 +189,8 @@ public final class OpenApiGenerator {
         paths.addPathItem(entry.path(), pathItem);
       }
       pathItem.operation(entry.httpMethod(), buildOperation(entry.method(), operationId, apiMajor,
-          constraints != null ? constraints.operation(entry.operationKey()) : null, constraints, entry.rest()));
+          constraints != null ? constraints.operation(entry.operationKey()) : null, constraints, entry.rest(),
+          paging != null ? paging.get(entry.operationKey()) : null));
     }
     openAPI.paths(paths);
 
@@ -269,7 +272,7 @@ public final class OpenApiGenerator {
     return schema;
   }
 
-  private static Schema<?> mapJavaTypeToSchema(String javaType) {
+  static Schema<?> mapJavaTypeToSchema(String javaType) {
     return switch (javaType) {
       case "java.lang.Long", "long", "Long" -> new Schema<>().type("integer").format("int64");
       case "java.lang.Integer", "int", "Integer" -> new Schema<>().type("integer").format("int32");
@@ -304,10 +307,12 @@ public final class OpenApiGenerator {
    * @param irOperation the IR operation whose parameters' requiredness and constraints the
    *                    parameters carry, or {@code null} when {@code ai.atlas.constraints} is off
    * @param constraints the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
+   * @param paging      the method's paging contract, or {@code null} when it has none or
+   *                    {@code ai.atlas.collections} is off
    */
   private static Operation buildOperation(MethodModel method, String operationId, int apiMajor,
                                           ContractIr.Operation irOperation, ConstraintSurfaces constraints,
-                                          RestOperation rest) {
+                                          RestOperation rest, PagingContract paging) {
     Operation operation = new Operation();
     operation.operationId(operationId);
     operation.summary(method.description());
@@ -318,6 +323,10 @@ public final class OpenApiGenerator {
     // Arguments are where the mapping locates them, as the controller binds them
     for (int i = 0; i < method.parameters().size(); i++) {
       ParameterModel param = method.parameters().get(i);
+      if (paging != null && paging.replaces(i)) {
+        PagedOpenApi.pageableParameters(paging).forEach(operation::addParametersItem);
+        continue;
+      }
       String in = rest.in(i);
       if (RestOperation.BODY.equals(in)) {
         boolean required = irOperation == null || ConstraintSurfaces.parameter(irOperation, i, param).required();
@@ -343,6 +352,8 @@ public final class OpenApiGenerator {
           parameter.schema(constrainedSchema(param.typeName(), constraints));
         }
         ConstraintSurfaces.applyOpenApi(parameter.getSchema(), irParam.constraints());
+      } else if (paging != null && paging.optionalCursor(i)) {
+        parameter.required(false);
       }
       operation.addParametersItem(parameter);
     }
@@ -351,7 +362,8 @@ public final class OpenApiGenerator {
     int status = rest.status();
     ApiResponse success = new ApiResponse().description(status == 201 ? "Created"
         : status == RestOperation.NO_CONTENT ? "No Content" : "Success");
-    Content content = status == RestOperation.NO_CONTENT ? null : buildResponseContent(method);
+    Content content = status == RestOperation.NO_CONTENT ? null
+        : paging != null ? PagedOpenApi.responseContent(method, paging) : buildResponseContent(method);
     if (content != null) {
       success.content(content);
     }
@@ -408,7 +420,7 @@ public final class OpenApiGenerator {
   }
 
   /** Response content matching what the generated controller returns; {@code null} for void. */
-  private static Content buildResponseContent(MethodModel method) {
+  static Content buildResponseContent(MethodModel method) {
     if (method.returnDtoType() != null) {
       String dtoRef = "#/components/schemas/" + method.returnDtoType().simpleName();
       Schema<?> dtoSchema = new Schema<>().$ref(dtoRef);
@@ -434,12 +446,12 @@ public final class OpenApiGenerator {
     return jsonContent(new Schema<>().type("object"));
   }
 
-  private static Content jsonContent(Schema<?> schema) {
+  static Content jsonContent(Schema<?> schema) {
     return new Content().addMediaType(APPLICATION_JSON, new MediaType().schema(schema));
   }
 
   /** A boxed or primitive number or boolean with a dedicated schema mapping. */
-  private static boolean isScalar(TypeName type) {
+  static boolean isScalar(TypeName type) {
     return !"string".equals(mapJavaTypeToSchema(type.toString()).getType());
   }
 

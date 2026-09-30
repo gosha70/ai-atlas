@@ -259,6 +259,7 @@ Every error names the declaration: the method, the parameter, the class or the f
 | More than one body parameter | ERROR |
 | A body on `GET` or `DELETE` | ERROR |
 | `in = BODY` on an operation on the RPC mapping | ERROR |
+| With `ai.atlas.collections` on, a paging input bound from the path or the body: a Spring Data `Pageable`, or an `@AgenticParam(paging = LIMIT \| CURSOR)` parameter, declared `in = PATH` or `in = BODY` or named by a `{var}`. Paging inputs are query parameters only, as the generated `page`/`size` checks and OpenAPI read them (see [Collection exposure safety](collection-safety.md)) | ERROR |
 | A `String` body, an entity subtype body, a collection of entities, an `Optional` of an entity, or a body type that reaches an entity through its type arguments or properties | ERROR |
 | A status outside the 2xx codes Spring's `HttpStatus` names | ERROR |
 | `204` on a method that returns a value | ERROR |

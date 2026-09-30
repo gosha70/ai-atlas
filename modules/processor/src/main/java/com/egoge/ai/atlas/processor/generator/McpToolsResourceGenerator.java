@@ -21,6 +21,7 @@ import javax.tools.Diagnostic;
 import javax.tools.StandardLocation;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -87,10 +88,12 @@ public final class McpToolsResourceGenerator {
      * @param services    the generated services, holding their operations active at the major
      * @param apiMajor    the configured major
      * @param constraints the constraint surfaces; the flag is on
+     * @param paging      the paging contracts by operation identity, or {@code null} when
+     *                    {@code ai.atlas.collections} is off
      */
     public static void generate(List<ServiceModel> services, int apiMajor, ConstraintSurfaces constraints,
-                                Filer filer, Messager messager) {
-        Map<String, Object> document = document(services, apiMajor, constraints);
+                                Map<String, PagingContract> paging, Filer filer, Messager messager) {
+        Map<String, Object> document = document(services, apiMajor, constraints, paging);
         if (!constraints.beanValidation() && !((List<?>) document.get(K_TOOLS)).isEmpty()) {
             // One NOTE per compilation: the tool classes were generated without Bean Validation (FR-016)
             messager.printMessage(Diagnostic.Kind.NOTE, "[ai-atlas] " + McpToolGenerator.VALIDATION_API_PROBE
@@ -116,6 +119,11 @@ public final class McpToolsResourceGenerator {
     }
 
     static Map<String, Object> document(List<ServiceModel> services, int apiMajor, ConstraintSurfaces constraints) {
+        return document(services, apiMajor, constraints, null);
+    }
+
+    private static Map<String, Object> document(List<ServiceModel> services, int apiMajor,
+                                                ConstraintSurfaces constraints, Map<String, PagingContract> paging) {
         List<Tool> tools = new ArrayList<>();
         for (ServiceModel service : services) {
             for (MethodModel method : service.methods()) {
@@ -130,7 +138,8 @@ public final class McpToolsResourceGenerator {
         for (Tool tool : tools) {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put(K_NAME, tool.name());
-            entry.put(K_INPUT_SCHEMA, inputSchema(tool.method(), tool.operation(), constraints));
+            entry.put(K_INPUT_SCHEMA, inputSchema(tool.method(), tool.operation(), constraints,
+                    paging != null ? paging.get(tool.operationKey()) : null));
             entry.put(K_ANNOTATIONS, annotations(tool.operation().hints()));
             entries.add(entry);
         }
@@ -140,11 +149,19 @@ public final class McpToolsResourceGenerator {
     }
 
     private static Map<String, Object> inputSchema(MethodModel method, ContractIr.Operation operation,
-                                                   ConstraintSurfaces constraints) {
+                                                   ConstraintSurfaces constraints, PagingContract paging) {
         Map<String, Object> properties = new LinkedHashMap<>();
         List<Object> required = new ArrayList<>();
         for (int i = 0; i < method.parameters().size(); i++) {
             ParameterModel param = method.parameters().get(i);
+            if (paging != null && paging.replaces(i)) {
+                // The tool class takes page and size in place of the Pageable, and never a sort
+                properties.put(PagingContract.PAGE_PARAM, pagingInput(0, null, PagingContract.PAGE_DESCRIPTION));
+                properties.put(PagingContract.SIZE_PARAM, pagingInput(1, paging.pageSizeCeiling(),
+                        PagingContract.SIZE_DESCRIPTION));
+                required.add(PagingContract.SIZE_PARAM);
+                continue;
+            }
             ContractIr.Parameter irParam = ConstraintSurfaces.parameter(operation, i, param);
             Map<String, Object> property = type(param.typeName(), irParam.enumConstants(), constraints);
             property.put(K_DESCRIPTION, param.description().isEmpty() ? param.name() : param.description());
@@ -161,6 +178,15 @@ public final class McpToolsResourceGenerator {
         schema.put(K_REQUIRED, required);
         schema.put(K_ADDITIONAL_PROPERTIES, false);
         return schema;
+    }
+
+    private static Map<String, Object> pagingInput(int minimum, Integer maximum, String description) {
+        Map<String, Object> property = new LinkedHashMap<>();
+        property.put(K_TYPE, T_INTEGER);
+        property.put(K_DESCRIPTION, description);
+        property.put(ConstraintSurfaces.K_MINIMUM, BigDecimal.valueOf(minimum));
+        putIfSet(property, ConstraintSurfaces.K_MAXIMUM, maximum != null ? BigDecimal.valueOf(maximum) : null);
+        return property;
     }
 
     /** The declared hints only, under MCP's {@code ToolAnnotations} keys. */

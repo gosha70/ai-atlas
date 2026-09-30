@@ -144,6 +144,26 @@ public @interface AgenticExposed {
      */
     Hint openWorld() default Hint.UNSET;
 
+    /** The default of {@link #maxResults()}: no bound is declared. Writing it explicitly is a compile error. */
+    int NO_MAX_RESULTS = -1;
+
+    /**
+     * The most elements the method's collection result holds, so exposing it without a paging
+     * contract is safe; on a method taking a Spring Data {@code Pageable}, the largest page size a
+     * client may request. Method-level only: a class-level value is a compile error. It must be at
+     * least 1, on a method returning a collection, iterable, array, {@code Map}, or an
+     * {@code Optional} of one. A {@code byte[]} is a binary payload, not a collection. On a
+     * {@code Stream} it is a compile error unless the method takes a {@code Pageable}: a stream's
+     * bound can be neither published nor counted.
+     *
+     * <p>The bound is declared, not enforced: generated wrappers never truncate a result, and the
+     * runtime logs a WARN when a result holds more. A page size above the ceiling is rejected.
+     * Read only with the processor option {@code ai.atlas.collections} on; declared with it off,
+     * it is a compile error. Leaving it out declares none; any value written explicitly, including
+     * {@link #NO_MAX_RESULTS}, is a declaration, and one below 1 is a compile error.
+     */
+    int maxResults() default NO_MAX_RESULTS;
+
     /**
      * The REST mapping of the operation. Requires the processor option {@code ai.atlas.rest=true};
      * without it, any value other than the default is a compile error, because the operation would

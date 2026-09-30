@@ -13,6 +13,7 @@ import com.egoge.ai.atlas.processor.rest.RestOperation;
 import com.egoge.ai.atlas.processor.util.VersionSelector;
 import com.palantir.javapoet.AnnotationSpec;
 import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.FieldSpec;
 import com.palantir.javapoet.JavaFile;
 import com.palantir.javapoet.MethodSpec;
@@ -26,7 +27,10 @@ import javax.annotation.processing.Messager;
 import javax.lang.model.element.Modifier;
 import javax.tools.Diagnostic;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -43,6 +47,8 @@ import java.util.function.Function;
  */
 public final class RestControllerGenerator {
 
+    private static final ClassName WEB_REQUEST =
+            ClassName.get("org.springframework.web.context.request", "WebRequest");
     private static final ClassName GENERATED = ClassName.get("javax.annotation.processing", "Generated");
     private static final ClassName REST_CONTROLLER = ClassName.get("org.springframework.web.bind.annotation", "RestController");
     private static final ClassName REQUEST_MAPPING = ClassName.get("org.springframework.web.bind.annotation", "RequestMapping");
@@ -63,13 +69,16 @@ public final class RestControllerGenerator {
      *
      * @param constraints the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
      * @param routes      each API operation's resolved mapping by {@link ContractProjection#operationKey}
+     * @param paging      the paging contracts by operation identity, or {@code null} when
+     *                    {@code ai.atlas.collections} is off
      */
     public static void generate(ServiceModel model, String packageName,
                                 String apiBasePath, int apiMajor, ConstraintSurfaces constraints,
-                                Function<String, RestOperation> routes, Filer filer, Messager messager) {
+                                Function<String, RestOperation> routes, Map<String, PagingContract> paging,
+                                Filer filer, Messager messager) {
         String controllerName = model.serviceClassName().simpleName() + "RestController";
-        TypeSpec controllerSpec = buildControllerSpec(model, controllerName, apiBasePath, apiMajor, constraints,
-                routes);
+        TypeSpec controllerSpec = buildControllerSpec(model, ClassName.get(packageName, controllerName), apiBasePath,
+                apiMajor, constraints, routes, paging);
         if (controllerSpec == null) {
             messager.printMessage(Diagnostic.Kind.NOTE,
                     "[ai-atlas] Skipped REST controller for " + model.serviceClassName().simpleName()
@@ -91,9 +100,11 @@ public final class RestControllerGenerator {
         }
     }
 
-    static TypeSpec buildControllerSpec(ServiceModel model, String controllerName,
-                                        String apiBasePath, int apiMajor, ConstraintSurfaces constraints,
-                                        Function<String, RestOperation> routes) {
+    private static TypeSpec buildControllerSpec(ServiceModel model, ClassName controllerClass, String apiBasePath,
+                                                int apiMajor, ConstraintSurfaces constraints,
+                                                Function<String, RestOperation> routes,
+                                                Map<String, PagingContract> paging) {
+        String controllerName = controllerClass.simpleName();
         // Filter to API-channel methods only
         var apiMethods = model.methods().stream()
                 .filter(m -> m.channels().contains("API") && VersionSelector.isActive(m, apiMajor))
@@ -130,12 +141,19 @@ public final class RestControllerGenerator {
                 .build());
 
         // Endpoint methods
+        List<PagingContract> contracts = new ArrayList<>();
         for (MethodModel method : apiMethods) {
-            ContractIr.Operation irOperation = constraints != null
-                    ? constraints.operation(ContractProjection.operationKey(serviceType, method)) : null;
-            classBuilder.addMethod(buildEndpointMethod(method, apiMajor, irOperation,
-                    routes.apply(ContractProjection.operationKey(serviceType, method))));
+            String key = ContractProjection.operationKey(serviceType, method);
+            ContractIr.Operation irOperation = constraints != null ? constraints.operation(key) : null;
+            PagingContract contract = paging != null ? paging.get(key) : null;
+            contracts.add(contract);
+            classBuilder.addMethod(buildEndpointMethod(method, apiMajor, irOperation, routes.apply(key), contract,
+                    controllerClass));
         }
+        if (contracts.stream().anyMatch(c -> c != null && c.pageable() >= 0)) {
+            classBuilder.addMethods(PagingContract.restPagingCheckMethods());
+        }
+        PagingContract.envelopeRecords(contracts).forEach(classBuilder::addType);
 
         return classBuilder.build();
     }
@@ -143,9 +161,13 @@ public final class RestControllerGenerator {
     /**
      * @param irOperation the IR operation whose parameters' requiredness the bindings follow, or
      *                    {@code null} when {@code ai.atlas.constraints} is off
+     * @param paging      the method's paging contract, or {@code null} when it has none or
+     *                    {@code ai.atlas.collections} is off
+     * @param controllerClass the generated class, which nests the envelope records
      */
-    private static MethodSpec buildEndpointMethod(MethodModel method, int apiMajor,
-                                                  ContractIr.Operation irOperation, RestOperation rest) {
+    private static MethodSpec buildEndpointMethod(MethodModel method, int apiMajor, ContractIr.Operation irOperation,
+                                                  RestOperation rest, PagingContract paging,
+                                                  ClassName controllerClass) {
         AnnotationSpec.Builder mapping = AnnotationSpec.builder(mappingAnnotation(rest.httpMethod()));
         if (!rest.path().isEmpty()) {
             mapping.addMember("value", "$S", rest.path());
@@ -163,10 +185,16 @@ public final class RestControllerGenerator {
         if (VersionSelector.isDeprecated(method, apiMajor)) {
             methodBuilder.addAnnotation(Deprecated.class);
         }
+        AnnotationSpec bound = paging != null ? paging.boundAnnotation() : null;
+        if (bound != null) {
+            methodBuilder.addAnnotation(bound);
+        }
 
         // Return type
         boolean isCollection = method.returnKind() != ReturnKind.NONE;
-        if (method.returnDtoType() != null) {
+        if (paging != null && paging.enveloped()) {
+            methodBuilder.returns(paging.envelopeType(controllerClass, method));
+        } else if (method.returnDtoType() != null) {
             if (isCollection) {
                 methodBuilder.returns(ParameterizedTypeName.get(
                         ClassName.get("java.util", "List"), method.returnDtoType()));
@@ -180,8 +208,14 @@ public final class RestControllerGenerator {
         // Parameters bound where the mapping locates them; an entity body binds its input record
         for (int i = 0; i < method.parameters().size(); i++) {
             ParameterModel param = method.parameters().get(i);
+            if (paging != null && paging.replaces(i)) {
+                // Unannotated: Spring Data's PageableHandlerMethodArgumentResolver binds page, size and sort
+                methodBuilder.addParameter(ParameterSpec.builder(param.typeName(), param.name()).build());
+                continue;
+            }
             String in = rest.in(i);
-            boolean optional = irOperation != null && !ConstraintSurfaces.parameter(irOperation, i, param).required();
+            boolean optional = irOperation != null ? !ConstraintSurfaces.parameter(irOperation, i, param).required()
+                    : paging != null && paging.optionalCursor(i);
             if (RestOperation.PATH.equals(in)) {
                 methodBuilder.addParameter(ParameterSpec.builder(param.typeName(), param.name())
                         .addAnnotation(AnnotationSpec.builder(PATH_VARIABLE).addMember("value", "$S", param.name())
@@ -213,9 +247,18 @@ public final class RestControllerGenerator {
 
         // Method body: delegate to service, map to DTO
         String callArgs = buildCallArgs(method, rest, irOperation);
+        if (paging != null && paging.pageable() >= 0) {
+            // The raw page and size, which Spring Data's resolver would otherwise clamp unseen
+            String request = PagingContract.unusedName(method, "request");
+            methodBuilder.addParameter(ParameterSpec.builder(WEB_REQUEST, request).build());
+            paging.addRestPageableChecks(methodBuilder, method.parameters().get(paging.pageable()).name(), request,
+                    method);
+        }
 
         if (method.returnType().equals(TypeName.VOID)) {
             methodBuilder.addStatement("service.$L($L)", method.methodName(), callArgs);
+        } else if (paging != null && paging.enveloped()) {
+            paging.addEnvelopeStatements(methodBuilder, controllerClass, method, CodeBlock.of("$L", callArgs));
         } else if (method.returnDtoType() != null && method.returnEntityType() != null) {
             addMappingStatement(methodBuilder, method, callArgs);
         } else {
