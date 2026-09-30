@@ -168,8 +168,8 @@ public class AgenticPlugin implements Plugin<Project> {
             task.getProcessorClasspath().from(processorPath);
             task.getBaseline().set(extension.getContractBaseline());
             task.getLocked().set(extension.getContractLocked());
-            task.getApiBasePath().set(extension.getApiBasePath());
-            task.getApiMajor().set(extension.getApiMajorVersion());
+            task.getCompilerArguments().set(compileJava.map(
+                    compile -> EffectiveCompilerArguments.lastWins(compile.getOptions().getAllCompilerArgs())));
             task.getProcessorVersion().set(processorVersion);
         });
         tasks.named(JavaPlugin.CLASSES_TASK_NAME).configure(task -> task.dependsOn(check));
@@ -223,8 +223,8 @@ public class AgenticPlugin implements Plugin<Project> {
             task.getClassesDirs().from(acceptCompile.flatMap(JavaCompile::getDestinationDirectory));
             task.getProcessorClasspath().from(processorPath);
             task.getBaseline().set(extension.getContractBaseline());
-            task.getApiBasePath().set(extension.getApiBasePath());
-            task.getApiMajor().set(extension.getApiMajorVersion());
+            task.getCompilerArguments().set(acceptCompile.map(
+                    compile -> EffectiveCompilerArguments.lastWins(compile.getOptions().getAllCompilerArgs())));
             task.getProcessorVersion().set(processorVersion);
         });
 

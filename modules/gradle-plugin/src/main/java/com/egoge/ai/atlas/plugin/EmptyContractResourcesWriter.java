@@ -23,9 +23,9 @@ import java.util.Map;
  * sees them, since {@link JavaCompile#getOptions()}{@code .getAllCompilerArgs()} is a plain,
  * eagerly-evaluated getter rather than a lazy {@code Provider}.
  *
- * <p>Never wired into the release workflow: {@code agenticRelease} depends on {@code classes},
- * which already depends on {@code compileJava}, so release validation runs after this writer has
- * had its chance, without ever invoking it itself.
+ * <p>Never wired into the release workflow: {@code agenticRelease} has no task dependency on
+ * {@code compileJava} or {@code classes}, only a {@code mustRunAfter} ordering, so the release
+ * validates the class output as it finds it and can never trigger this writer.
  */
 final class EmptyContractResourcesWriter implements Action<Task> {
 

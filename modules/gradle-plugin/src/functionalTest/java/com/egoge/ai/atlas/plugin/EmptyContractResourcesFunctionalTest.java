@@ -111,6 +111,26 @@ class EmptyContractResourcesFunctionalTest {
                 .isEqualTo(fresh);
     }
 
+    /** A major overriding the extension's through compileJava's arguments reaches the empty contract. */
+    @Test
+    void anOverriddenMajorReachesTheEmptyContractsAcceptAndCheck() throws IOException {
+        Files.writeString(new File(projectDir, "build.gradle.kts").toPath(), """
+
+                agentic { contractLocked.set(true) }
+                tasks.named<JavaCompile>("compileJava") {
+                    options.compilerArgumentProviders.add(CommandLineArgumentProvider { listOf("-Aai.atlas.api.major=2") })
+                }
+                """, java.nio.file.StandardOpenOption.APPEND);
+
+        run("atlasAccept").build();
+        assertThat(Files.readString(new File(projectDir, ".atlas/api.ir.json").toPath()))
+                .contains("\"apiMajor\": 2");
+
+        BuildResult checked = run("classes").build();
+
+        assertThat(checked.task(":atlasContractCheck").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+    }
+
     @Test
     void theWiringIsConfigurationCacheSafe() {
         BuildResult stored = run("compileJava", "--configuration-cache").build();

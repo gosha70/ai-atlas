@@ -4,11 +4,13 @@
 package com.egoge.ai.atlas.plugin;
 
 import com.egoge.ai.atlas.processor.contract.ContractGate;
+import com.egoge.ai.atlas.processor.contract.EffectiveOptions;
 import com.egoge.ai.atlas.processor.contract.EmptyContract;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
+import org.gradle.api.provider.MapProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.workers.WorkAction;
 import org.gradle.workers.WorkParameters;
@@ -34,19 +36,22 @@ public abstract class EmptyContractAction implements WorkAction<EmptyContractAct
         /** Whether lock mode is on. */
         Property<Boolean> getLocked();
 
-        /** The configured REST base path. */
-        Property<String> getApiBasePath();
-
-        /** The configured major. */
-        Property<Integer> getApiMajor();
+        /** {@code compileJava}'s effective {@code -A} options, last value winning. */
+        MapProperty<String, String> getCompilerArguments();
     }
 
     @Override
     public void execute() {
         Parameters parameters = getParameters();
+        // The options the compilation ran with, as the empty-contract writer reads them
+        EffectiveOptions options = EffectiveOptions.fromArguments(parameters.getCompilerArguments().get());
+        if (options == null) {
+            throw new GradleException("The ai-atlas contract check cannot run: compileJava's ai.atlas.* configuration"
+                    + " is invalid.");
+        }
         ContractGate.Outcome outcome = EmptyContract.check(
                 parameters.getBaseline().get().getAsFile().getAbsolutePath(), parameters.getLocked().get(),
-                parameters.getApiBasePath().get(), parameters.getApiMajor().get());
+                options.apiBasePath(), options.apiMajor());
         for (ContractGate.Finding finding : outcome.findings()) {
             if (finding.kind() == Diagnostic.Kind.WARNING) {
                 LOGGER.warn(finding.message());
