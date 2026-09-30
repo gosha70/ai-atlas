@@ -54,8 +54,6 @@ final class ReleaseTasks {
             task.getMinDeprecatedReleases().set(release.getPolicy().getMinDeprecatedReleases());
             task.getMinApiMajorAdvance().set(release.getPolicy().getMinApiMajorAdvance());
             task.getFailOnBreaking().set(release.getPolicy().getFailOnBreaking());
-            task.getApiBasePath().set(extension.getApiBasePath());
-            task.getApiMajor().set(extension.getApiMajorVersion());
             task.getProcessorVersion().set(processorVersion);
         });
         TaskProvider<AgenticReleaseCheck> check = tasks.register(AgenticPlugin.RELEASE_CHECK_TASK,
@@ -67,8 +65,6 @@ final class ReleaseTasks {
             task.getProcessorClasspath().from(processorPath);
             task.getReleasesDir().set(release.getDirectory());
             task.getReleaseVersion().convention(release.getCheckVersion());
-            task.getApiBasePath().set(extension.getApiBasePath());
-            task.getApiMajor().set(extension.getApiMajorVersion());
             task.getProcessorVersion().set(processorVersion);
         });
         tasks.named(LifecycleBasePlugin.CHECK_TASK_NAME).configure(task -> task.dependsOn(check));

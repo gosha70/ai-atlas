@@ -74,14 +74,6 @@ public abstract class AgenticRelease extends DefaultTask {
     @Input
     public abstract Property<Boolean> getFailOnBreaking();
 
-    /** The configured REST base path, for the empty contract of a module that declares none. */
-    @Input
-    public abstract Property<String> getApiBasePath();
-
-    /** The configured major, for the OpenAPI document and the empty contract. */
-    @Input
-    public abstract Property<Integer> getApiMajor();
-
     /** The processor on the {@code annotationProcessor} classpath, named when this plugin cannot run it. */
     @Internal
     public abstract Property<String> getProcessorVersion();
@@ -94,8 +86,6 @@ public abstract class AgenticRelease extends DefaultTask {
         getWorkerExecutor().classLoaderIsolation(spec -> spec.getClasspath().from(getProcessorClasspath()))
                 .submit(ReleaseAction.class, parameters -> {
                     parameters.getClassesDirs().from(getClassesDirs());
-                    parameters.getApiBasePath().set(getApiBasePath());
-                    parameters.getApiMajor().set(getApiMajor());
                     parameters.getBaseline().set(getBaseline());
                     parameters.getReleasesDir().set(getReleasesDir());
                     parameters.getChangelog().set(getChangelog());

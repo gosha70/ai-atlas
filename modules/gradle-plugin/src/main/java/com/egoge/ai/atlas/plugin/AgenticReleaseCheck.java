@@ -57,14 +57,6 @@ public abstract class AgenticReleaseCheck extends DefaultTask {
             + " the version of the tag CI builds.")
     public abstract Property<String> getReleaseVersion();
 
-    /** The configured REST base path, for the empty contract of a module that declares none. */
-    @Input
-    public abstract Property<String> getApiBasePath();
-
-    /** The configured major, for the empty contract of a module that declares none. */
-    @Input
-    public abstract Property<Integer> getApiMajor();
-
     /** The processor on the {@code annotationProcessor} classpath, named when this plugin cannot run it. */
     @Internal
     public abstract Property<String> getProcessorVersion();
@@ -77,14 +69,13 @@ public abstract class AgenticReleaseCheck extends DefaultTask {
         if (!getReleaseVersion().isPresent() && !getReleasesDir().get().getAsFile().isDirectory()) {
             return; // nothing released, nothing claimed
         }
-        File classes = ContractDeclarations.declaringOutput(getClassesDirs().getFiles());
+        // The class output's own IR: the processor's, or the empty contract compileJava wrote from its
+        // effective options, as the release snapshots it
+        File declaring = ContractDeclarations.declaringOutput(getClassesDirs().getFiles());
+        File classes = declaring != null ? declaring : getClassesDirs().getSingleFile();
         getWorkerExecutor().classLoaderIsolation(spec -> spec.getClasspath().from(getProcessorClasspath()))
                 .submit(ReleaseCheckAction.class, parameters -> {
-                    if (classes != null) {
-                        parameters.getEmittedIr().set(new File(classes, ContractDeclarations.IR_PATH));
-                    }
-                    parameters.getApiBasePath().set(getApiBasePath());
-                    parameters.getApiMajor().set(getApiMajor());
+                    parameters.getEmittedIr().set(new File(classes, ContractDeclarations.IR_PATH));
                     parameters.getReleasesDir().set(getReleasesDir());
                     parameters.getReleaseVersion().set(getReleaseVersion());
                 });

@@ -3,7 +3,6 @@
  */
 package com.egoge.ai.atlas.plugin;
 
-import com.egoge.ai.atlas.processor.contract.EmptyContract;
 import com.egoge.ai.atlas.processor.release.ContractRelease;
 import com.egoge.ai.atlas.processor.release.ReleasePolicy;
 import com.egoge.ai.atlas.processor.release.ReleaseVersion;
@@ -18,7 +17,6 @@ import org.gradle.workers.WorkAction;
 import org.gradle.workers.WorkParameters;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -35,14 +33,11 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
     /** The build's contract and the releases, shared with the release check. */
     public interface ContractParameters extends WorkParameters {
 
-        /** The IR the build emitted, or unset when the sources declare nothing. */
+        /**
+         * The IR in the build's class output: the processor's, or, for sources declaring nothing, the
+         * empty contract {@code compileJava} wrote from its effective options.
+         */
         RegularFileProperty getEmittedIr();
-
-        /** The configured REST base path, for the empty document. */
-        Property<String> getApiBasePath();
-
-        /** The configured major, for the empty document. */
-        Property<Integer> getApiMajor();
 
         /** The directory of releases. */
         DirectoryProperty getReleasesDir();
@@ -116,12 +111,13 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
         }
     }
 
-    /** The IR the build emitted, or the empty document when its sources declare nothing. */
+    /** The IR in the build's class output, which compileJava always writes. */
     static byte[] emitted(ContractParameters parameters) throws IOException {
-        if (parameters.getEmittedIr().isPresent()) {
-            return Files.readAllBytes(parameters.getEmittedIr().get().getAsFile().toPath());
+        Path ir = parameters.getEmittedIr().get().getAsFile().toPath();
+        if (!Files.isRegularFile(ir)) {
+            throw new GradleException("[ai-atlas] The build's class output has no " + ir + ". Run compileJava"
+                    + " first.");
         }
-        return EmptyContract.json(parameters.getApiBasePath().get(), parameters.getApiMajor().get())
-                .getBytes(StandardCharsets.UTF_8);
+        return Files.readAllBytes(ir);
     }
 }

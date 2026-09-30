@@ -131,6 +131,23 @@ class EmptyContractResourcesFunctionalTest {
         assertThat(checked.task(":atlasContractCheck").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
     }
 
+    /** The release check reads the class output's empty contract, at the overridden major it was released at. */
+    @Test
+    void anEmptyContractReleasedAtAnOverriddenMajorPassesTheReleaseCheck() throws IOException {
+        Files.writeString(new File(projectDir, "build.gradle.kts").toPath(), """
+
+                tasks.named<JavaCompile>("compileJava") {
+                    options.compilerArgumentProviders.add(CommandLineArgumentProvider { listOf("-Aai.atlas.api.major=2") })
+                }
+                """, java.nio.file.StandardOpenOption.APPEND);
+        run("atlasAccept").build();
+        run("classes", "agenticRelease", "-Pversion=2.0.0").build();
+
+        BuildResult checked = run("agenticReleaseCheck", "--release-version=2.0.0").build();
+
+        assertThat(checked.getOutput()).contains("The build's contract is the released contract 2.0.0.");
+    }
+
     @Test
     void theWiringIsConfigurationCacheSafe() {
         BuildResult stored = run("compileJava", "--configuration-cache").build();
