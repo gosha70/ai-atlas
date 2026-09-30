@@ -157,7 +157,7 @@ public final class ContractRelease {
             ReleasePolicy.Policy policy = request.policy();
             List<String> lines = new ArrayList<>();
             lines.add("Release " + version + " violates the release policy (released deprecated in at least "
-                    + policy.minReleases() + " release(s), removed at least " + policy.minMajors()
+                    + policy.minDeprecatedReleases() + " release(s), removed at least " + policy.minApiMajorAdvance()
                     + " major(s) after deprecation, failOnBreaking = " + policy.failOnBreaking() + ") at "
                     + verdict.violations().size() + " element(s):");
             verdict.violations().forEach(v -> lines.add("  " + v.message()));

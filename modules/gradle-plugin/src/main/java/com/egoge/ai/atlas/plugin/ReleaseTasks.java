@@ -48,9 +48,9 @@ final class ReleaseTasks {
             task.getChangelog().set(release.getChangelog());
             task.getReleaseVersion().set(extension.getReleaseVersion());
             task.getVersionTracksApiMajor().set(extension.getReleaseVersionTracksApiMajor());
-            task.getMinReleases().set(release.getDeprecation().getMinReleases());
-            task.getMinMajors().set(release.getDeprecation().getMinMajors());
-            task.getFailOnBreaking().set(release.getDeprecation().getFailOnBreaking());
+            task.getMinDeprecatedReleases().set(release.getPolicy().getMinDeprecatedReleases());
+            task.getMinApiMajorAdvance().set(release.getPolicy().getMinApiMajorAdvance());
+            task.getFailOnBreaking().set(release.getPolicy().getFailOnBreaking());
             task.getApiBasePath().set(extension.getApiBasePath());
             task.getApiMajor().set(extension.getApiMajorVersion());
             task.getProcessorVersion().set(processorVersion);

@@ -47,8 +47,8 @@ public record ReleaseManifest(String version, int apiMajor, int irVersion, Strin
     private static final String K_IR_VERSION = "irVersion";
     private static final String K_PREVIOUS = "previous";
     private static final String K_POLICY = "policy";
-    private static final String K_MIN_RELEASES = "minReleases";
-    private static final String K_MIN_MAJORS = "minMajors";
+    private static final String K_MIN_DEPRECATED_RELEASES = "minDeprecatedReleases";
+    private static final String K_MIN_API_MAJOR_ADVANCE = "minApiMajorAdvance";
     private static final String K_FAIL_ON_BREAKING = "failOnBreaking";
     private static final String K_SHA256 = "sha256";
 
@@ -65,8 +65,8 @@ public record ReleaseManifest(String version, int apiMajor, int irVersion, Strin
         doc.put(K_IR_VERSION, irVersion);
         doc.put(K_PREVIOUS, previous);
         Map<String, Object> rules = new LinkedHashMap<>();
-        rules.put(K_MIN_RELEASES, policy.minReleases());
-        rules.put(K_MIN_MAJORS, policy.minMajors());
+        rules.put(K_MIN_DEPRECATED_RELEASES, policy.minDeprecatedReleases());
+        rules.put(K_MIN_API_MAJOR_ADVANCE, policy.minApiMajorAdvance());
         rules.put(K_FAIL_ON_BREAKING, policy.failOnBreaking());
         doc.put(K_POLICY, rules);
         doc.put(K_SHA256, new LinkedHashMap<String, Object>(digests));
@@ -120,8 +120,8 @@ public record ReleaseManifest(String version, int apiMajor, int irVersion, Strin
         }
         return new ReleaseManifest(string(root, K_VERSION), integer(root, K_API_MAJOR), integer(root, K_IR_VERSION),
                 previous.isNull() ? null : previous.asText(),
-                new ReleasePolicy.Policy(integer(rules, K_MIN_RELEASES), integer(rules, K_MIN_MAJORS),
-                        failOnBreaking.asBoolean()), digests);
+                new ReleasePolicy.Policy(integer(rules, K_MIN_DEPRECATED_RELEASES),
+                        integer(rules, K_MIN_API_MAJOR_ADVANCE), failOnBreaking.asBoolean()), digests);
     }
 
     /**

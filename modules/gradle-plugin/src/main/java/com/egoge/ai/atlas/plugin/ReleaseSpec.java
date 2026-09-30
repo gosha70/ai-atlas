@@ -13,14 +13,14 @@ import javax.inject.Inject;
 
 /**
  * {@code agentic { release { … } } }: where {@code agenticRelease} writes released contracts, the
- * version {@code agenticReleaseCheck} matches the build against, and the deprecation policy.
+ * version {@code agenticReleaseCheck} matches the build against, and the release policy.
  *
  * <pre>
  * agentic {
  *     releaseVersion.set("1.4.0")
  *     release {
- *         deprecation {
- *             minReleases.set(2)
+ *         policy {
+ *             minDeprecatedReleases.set(2)
  *         }
  *     }
  * }
@@ -28,14 +28,14 @@ import javax.inject.Inject;
  */
 public abstract class ReleaseSpec {
 
-    private final DeprecationSpec deprecation;
+    private final PolicySpec policy;
 
     /**
-     * @param objects creates the nested deprecation policy
+     * @param objects creates the nested release policy
      */
     @Inject
     public ReleaseSpec(ObjectFactory objects) {
-        this.deprecation = objects.newInstance(DeprecationSpec.class);
+        this.policy = objects.newInstance(PolicySpec.class);
     }
 
     /**
@@ -58,17 +58,17 @@ public abstract class ReleaseSpec {
      */
     public abstract Property<String> getCheckVersion();
 
-    /** The deprecation policy a release is checked against. */
-    public DeprecationSpec getDeprecation() {
-        return deprecation;
+    /** The release policy a release is checked against. */
+    public PolicySpec getPolicy() {
+        return policy;
     }
 
     /**
-     * Configures the deprecation policy.
+     * Configures the release policy.
      *
      * @param action the configuration
      */
-    public void deprecation(Action<? super DeprecationSpec> action) {
-        action.execute(deprecation);
+    public void policy(Action<? super PolicySpec> action) {
+        action.execute(policy);
     }
 }

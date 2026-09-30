@@ -68,11 +68,11 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
         /** Whether the version's major must equal the contract's {@code apiMajor}. */
         Property<Boolean> getVersionTracksApiMajor();
 
-        /** The policy's {@code minReleases}. */
-        Property<Integer> getMinReleases();
+        /** The policy's {@code minDeprecatedReleases}. */
+        Property<Integer> getMinDeprecatedReleases();
 
-        /** The policy's {@code minMajors}. */
-        Property<Integer> getMinMajors();
+        /** The policy's {@code minApiMajorAdvance}. */
+        Property<Integer> getMinApiMajorAdvance();
 
         /** The policy's {@code failOnBreaking}. */
         Property<Boolean> getFailOnBreaking();
@@ -85,8 +85,8 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
                 "Set agentic { releaseVersion }, which defaults to the project version.");
         ReleasePolicy.Policy policy;
         try {
-            policy = new ReleasePolicy.Policy(parameters.getMinReleases().get(), parameters.getMinMajors().get(),
-                    parameters.getFailOnBreaking().get());
+            policy = new ReleasePolicy.Policy(parameters.getMinDeprecatedReleases().get(),
+                    parameters.getMinApiMajorAdvance().get(), parameters.getFailOnBreaking().get());
         } catch (IllegalArgumentException e) {
             throw new GradleException("[ai-atlas] " + e.getMessage() + ": check " + ReleasePolicy.CONFIGURATION + ".");
         }

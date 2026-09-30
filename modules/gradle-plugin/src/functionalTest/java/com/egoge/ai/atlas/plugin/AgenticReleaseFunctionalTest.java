@@ -118,7 +118,8 @@ class AgenticReleaseFunctionalTest {
                 """);
         String manifest = Files.readString(dir.resolve("release.json"));
         assertThat(manifest).startsWith("{\n  \"manifestVersion\": 1,\n  \"version\": \"1.0.0\",\n  \"apiMajor\": 1,\n")
-                .contains("\"previous\": null", "\"minReleases\": 1", "\"minMajors\": 1", "\"failOnBreaking\": true",
+                .contains("\"previous\": null", "\"minDeprecatedReleases\": 1", "\"minApiMajorAdvance\": 1",
+                        "\"failOnBreaking\": true",
                         "\"api.ir.json\": \"", "\"openapi-v1.json\": \"");
         assertThat(Files.readString(atlas("CHANGELOG.md"))).startsWith("# Contract changelog\n")
                 .contains("## 1.0.0 (API major 1)");
@@ -235,7 +236,7 @@ class AgenticReleaseFunctionalTest {
         assertThat(result.getOutput()).contains("Release 2.0.0 violates the release policy",
                 "field test.Order#legacy (removed): removed in API major 2, but never released as deprecated.",
                 "declare @AgenticField(deprecatedSinceVersion = N)",
-                "agentic { release { deprecation { minReleases; minMajors; failOnBreaking } } }");
+                "agentic { release { policy { minDeprecatedReleases; minApiMajorAdvance; failOnBreaking } } }");
         assertThat(releaseDir("2.0.0")).doesNotExist();
     }
 
@@ -273,9 +274,9 @@ class AgenticReleaseFunctionalTest {
         append("""
                 agentic {
                     release {
-                        deprecation {
-                            minReleases.set(0)
-                            minMajors.set(0)
+                        policy {
+                            minDeprecatedReleases.set(0)
+                            minApiMajorAdvance.set(0)
                         }
                     }
                 }
@@ -286,8 +287,8 @@ class AgenticReleaseFunctionalTest {
 
         release("1.1.0").build();
 
-        assertThat(Files.readString(releaseDir("1.1.0").resolve("release.json"))).contains("\"minReleases\": 0",
-                "\"minMajors\": 0");
+        assertThat(Files.readString(releaseDir("1.1.0").resolve("release.json")))
+                .contains("\"minDeprecatedReleases\": 0", "\"minApiMajorAdvance\": 0");
         assertThat(Files.readString(releaseDir("1.1.0").resolve("CHANGELOG.md")))
                 .contains("- `field test.Order#legacy` (output), never released as deprecated");
     }

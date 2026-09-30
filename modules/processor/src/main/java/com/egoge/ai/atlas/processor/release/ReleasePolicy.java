@@ -25,8 +25,8 @@ import java.util.Map;
  *       not, or a channel it is reachable on that it loses: the gate's breaking {@code removed},
  *       {@code channels.<channel>} (field) and {@code channels} (operation) differences. A
  *       module's whole contract disappearing removes each of its elements. A removal needs the
- *       element to have been released deprecated in at least {@link Policy#minReleases()}
- *       <strong>published</strong> releases, with at least {@link Policy#minMajors()} majors
+ *       element to have been released deprecated in at least {@link Policy#minDeprecatedReleases()}
+ *       <strong>published</strong> releases, with at least {@link Policy#minApiMajorAdvance()} majors
  *       between its deprecation major and the major of this release. Only a release with
  *       {@link Release#published()} counts as evidence. An entity's removal is the removal of its
  *       fields, which are checked one by one. A channel has no lifecycle of its own, so a channel
@@ -42,8 +42,8 @@ import java.util.Map;
 public final class ReleasePolicy {
 
     /** Where a Gradle build configures the policy, named in every remedy. */
-    public static final String CONFIGURATION = "agentic { release { deprecation { minReleases; minMajors;"
-            + " failOnBreaking } } }";
+    public static final String CONFIGURATION = "agentic { release { policy { minDeprecatedReleases;"
+            + " minApiMajorAdvance; failOnBreaking } } }";
 
     private static final String REMOVED = "removed";
     private static final String CHANNELS = "channels";
@@ -54,14 +54,14 @@ public final class ReleasePolicy {
     /**
      * The policy's settings.
      *
-     * @param minReleases    releases an element must have been published in while deprecated
-     *                       before a release may remove it
-     * @param minMajors      majors between an element's deprecation major and the major of the
-     *                       release that removes it
-     * @param failOnBreaking whether any other breaking difference fails a release with the same
-     *                       {@code apiMajor} as the previous one
+     * @param minDeprecatedReleases releases an element must have been published in while
+     *                              deprecated before a release may remove it
+     * @param minApiMajorAdvance    majors between an element's deprecation major and the major of
+     *                              the release that removes it
+     * @param failOnBreaking        whether any other breaking difference fails a release with the
+     *                              same {@code apiMajor} as the previous one
      */
-    public record Policy(int minReleases, int minMajors, boolean failOnBreaking) {
+    public record Policy(int minDeprecatedReleases, int minApiMajorAdvance, boolean failOnBreaking) {
 
         /** One release deprecated, one major, and breaking changes within a major refused. */
         public static final Policy DEFAULT = new Policy(1, 1, true);
@@ -70,9 +70,10 @@ public final class ReleasePolicy {
          * @throws IllegalArgumentException if a minimum is negative
          */
         public Policy {
-            if (minReleases < 0 || minMajors < 0) {
-                throw new IllegalArgumentException("The release deprecation policy's minReleases and minMajors must"
-                        + " be 0 or more, got " + minReleases + " and " + minMajors);
+            if (minDeprecatedReleases < 0 || minApiMajorAdvance < 0) {
+                throw new IllegalArgumentException("The release policy's minDeprecatedReleases and"
+                        + " minApiMajorAdvance must be 0 or more, got " + minDeprecatedReleases + " and "
+                        + minApiMajorAdvance);
             }
         }
     }
@@ -304,8 +305,9 @@ public final class ReleasePolicy {
     }
 
     private static boolean satisfied(Evidence found, int major, Policy policy) {
-        return found.deprecatedReleases() >= policy.minReleases()
-                && (policy.minMajors() == 0 || found.deprecated() && major - found.deprecatedSince() >= policy.minMajors());
+        return found.deprecatedReleases() >= policy.minDeprecatedReleases()
+                && (policy.minApiMajorAdvance() == 0 || found.deprecated()
+                && major - found.deprecatedSince() >= policy.minApiMajorAdvance());
     }
 
     private static String describe(Evidence found, ContractGate.Difference d, int major) {
@@ -324,8 +326,9 @@ public final class ReleasePolicy {
         String declaration = field ? "@AgenticField(deprecatedSinceVersion = N)" : "@AgenticExposed(apiDeprecatedSince = N)";
         String channel = REMOVED.equals(d.change()) ? "" : " A channel has no lifecycle of its own, so deprecate the"
                 + " whole " + (field ? "field" : "operation") + ".";
-        return "The policy needs it released deprecated in at least " + policy.minReleases() + " release(s), and"
-                + " removed at least " + policy.minMajors() + " major(s) after its deprecation major." + channel
+        return "The policy needs it released deprecated in at least " + policy.minDeprecatedReleases()
+                + " release(s), and removed at least " + policy.minApiMajorAdvance() + " major(s) after its"
+                + " deprecation major." + channel
                 + " Restore it, declare " + declaration + " and release that before removing it; or relax "
                 + CONFIGURATION;
     }

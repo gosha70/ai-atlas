@@ -65,11 +65,11 @@ public abstract class AgenticRelease extends DefaultTask {
 
     /** Releases an element must have been published in while deprecated before removal. */
     @Input
-    public abstract Property<Integer> getMinReleases();
+    public abstract Property<Integer> getMinDeprecatedReleases();
 
     /** Majors between an element's deprecation major and the major of the release removing it. */
     @Input
-    public abstract Property<Integer> getMinMajors();
+    public abstract Property<Integer> getMinApiMajorAdvance();
 
     /** Whether other breaking differences fail a release within the same {@code apiMajor}. */
     @Input
@@ -108,8 +108,8 @@ public abstract class AgenticRelease extends DefaultTask {
                     parameters.getChangelog().set(getChangelog());
                     parameters.getReleaseVersion().set(getReleaseVersion());
                     parameters.getVersionTracksApiMajor().set(getVersionTracksApiMajor());
-                    parameters.getMinReleases().set(getMinReleases());
-                    parameters.getMinMajors().set(getMinMajors());
+                    parameters.getMinDeprecatedReleases().set(getMinDeprecatedReleases());
+                    parameters.getMinApiMajorAdvance().set(getMinApiMajorAdvance());
                     parameters.getFailOnBreaking().set(getFailOnBreaking());
                 });
         AgenticPlugin.awaitProcessor(getWorkerExecutor(), getProcessorVersion());

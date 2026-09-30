@@ -104,9 +104,9 @@ public class AgenticPlugin implements Plugin<Project> {
         ReleaseSpec release = extension.getRelease();
         release.getDirectory().convention(project.getLayout().getProjectDirectory().dir(DEFAULT_RELEASES_DIR));
         release.getChangelog().convention(project.getLayout().getProjectDirectory().file(DEFAULT_RELEASE_CHANGELOG));
-        release.getDeprecation().getMinReleases().convention(1);
-        release.getDeprecation().getMinMajors().convention(1);
-        release.getDeprecation().getFailOnBreaking().convention(true);
+        release.getPolicy().getMinDeprecatedReleases().convention(1);
+        release.getPolicy().getMinApiMajorAdvance().convention(1);
+        release.getPolicy().getFailOnBreaking().convention(true);
 
         // Add dependencies and processor options after evaluation (so extension values are resolved)
         project.afterEvaluate(p -> {

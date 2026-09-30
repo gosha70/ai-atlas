@@ -29,8 +29,8 @@ class ReleaseManifestTest {
                   "irVersion": 3,
                   "previous": "1.0.0",
                   "policy": {
-                    "minReleases": 1,
-                    "minMajors": 1,
+                    "minDeprecatedReleases": 1,
+                    "minApiMajorAdvance": 1,
                     "failOnBreaking": true
                   },
                   "sha256": {

@@ -75,7 +75,7 @@ class ReleasePolicyTest {
     }
 
     @Test
-    void minReleasesCountsTheReleasesThatPublishedTheDeprecation() {
+    void minDeprecatedReleasesCountsTheReleasesThatPublishedTheDeprecation() {
         ReleasePolicy.Policy twoReleases = new ReleasePolicy.Policy(2, 1, true);
         ReleasePolicy.Release deprecated = release("1.0.0", ir(1, DEPRECATED));
 
@@ -92,7 +92,7 @@ class ReleasePolicyTest {
     }
 
     @Test
-    void minMajorsNeedsADeprecationMajorEvenWithoutMinReleases() {
+    void minApiMajorAdvanceNeedsADeprecationMajorEvenWithoutMinDeprecatedReleases() {
         ReleasePolicy.Policy majorOnly = new ReleasePolicy.Policy(0, 1, true);
 
         assertThat(check(majorOnly, release("1.0.0", ir(1, PLAIN)), release("2.0.0", ir(2, ""))).passed()).isFalse();
