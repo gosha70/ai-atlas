@@ -120,7 +120,9 @@ public class AgenticProcessor extends AbstractProcessor {
                 processingEnv);
         versionConfigValid &= collections != null;
         if (projections != null) {
-            contractIr = new IrBuilder(processingEnv, projections::channels, projections.enabled(),
+            // resourceRecorder, not the raw processingEnv parameter: the IR's digest must be recorded like
+            // every other reserved artifact, for contract-resources.json (D2.4) to list it (C4, ClassOutputResources).
+            contractIr = new IrBuilder(resourceRecorder, projections::channels, projections.enabled(),
                     collections != null ? collections::bound : operationId -> ContractIr.Bound.NONE);
         }
     }

@@ -53,6 +53,15 @@ class ContractResourcesProcessorTest {
     }
 
     @Test
+    void theIrIsAlwaysListed() {
+        Compilation compilation = compile(fixture().sources(), MAJOR + "1");
+
+        Manifest manifest = manifestOf(compilation);
+
+        assertThat(manifest.artifacts()).containsKey(ContractIr.RESOURCE_PATH);
+    }
+
+    @Test
     void constraintsOnListsMcpTools() {
         Compilation compilation = compile(fixture().sources(), MAJOR + "1", CONSTRAINTS);
 
