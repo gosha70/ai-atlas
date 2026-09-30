@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.CONTRACT_RESOURCES_JSON;
+import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.TAG_NAME;
 import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.LEGACY;
 import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.NOTE;
 import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.artifacts;
@@ -218,12 +219,12 @@ class ContractReleaseTest {
         byte[] emitted = irJson(1, NOTE).getBytes(StandardCharsets.UTF_8);
 
         assertThatThrownBy(() -> ContractRelease.release(releases, changelog, new ContractRelease.Request("1.0.0",
-                false, ReleasePolicy.Policy.DEFAULT, baseline, emitted, Map.of(), CONTRACT_RESOURCES_JSON)))
+                false, ReleasePolicy.Policy.DEFAULT, baseline, emitted, Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME)))
                 .hasMessageContaining("The contract the build emitted differs from the baseline " + baseline)
                 .hasMessageContaining("run atlasAccept, then release");
         Files.delete(baseline);
         assertThatThrownBy(() -> ContractRelease.release(releases, changelog, new ContractRelease.Request("1.0.0",
-                false, ReleasePolicy.Policy.DEFAULT, baseline, emitted, Map.of(), CONTRACT_RESOURCES_JSON)))
+                false, ReleasePolicy.Policy.DEFAULT, baseline, emitted, Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME)))
                 .hasMessageContaining("No contract baseline at " + baseline);
         assertThat(releases).doesNotExist();
     }
@@ -244,14 +245,14 @@ class ContractReleaseTest {
     void theVersionCanBeRequiredToTrackTheApiMajor() throws Exception {
         String ir = accept(irJson(2, ""));
         ContractRelease.Request request = new ContractRelease.Request("1.0.0", true, ReleasePolicy.Policy.DEFAULT,
-                baseline, ir.getBytes(StandardCharsets.UTF_8), Map.of(), CONTRACT_RESOURCES_JSON);
+                baseline, ir.getBytes(StandardCharsets.UTF_8), Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME);
 
         assertThatThrownBy(() -> ContractRelease.release(releases, changelog, request))
                 .hasMessageContaining("Version 1.0.0 has major 1, but the contract's apiMajor is 2")
                 .hasMessageContaining("releaseVersionTracksApiMajor");
         ContractRelease.release(releases, changelog, new ContractRelease.Request("2.0.0", true,
                 ReleasePolicy.Policy.DEFAULT, baseline, ir.getBytes(StandardCharsets.UTF_8), Map.of(),
-                CONTRACT_RESOURCES_JSON));
+                CONTRACT_RESOURCES_JSON, TAG_NAME));
         assertThat(releases.resolve("2.0.0")).isDirectory();
     }
 
@@ -354,7 +355,7 @@ class ContractReleaseTest {
                 .hasMessageContaining("operation test.OrderService#find(java.lang.Long) (removed)");
         ContractRelease.release(releases, changelog, new ContractRelease.Request("1.1.0", false,
                 new ReleasePolicy.Policy(0, 0, true), baseline, empty.getBytes(StandardCharsets.UTF_8), Map.of(),
-                CONTRACT_RESOURCES_JSON));
+                CONTRACT_RESOURCES_JSON, TAG_NAME));
         assertThat(Files.readString(releases.resolve("1.1.0/CHANGELOG.md"))).contains("### Removed",
                 "- `entity test.Order` (output)\n");
     }
@@ -374,7 +375,8 @@ class ContractReleaseTest {
 
     private ContractRelease.Request request(String version, String ir, String openApi, String mcpTools) {
         return new ContractRelease.Request(version, false, ReleasePolicy.Policy.DEFAULT, baseline,
-                ir.getBytes(StandardCharsets.UTF_8), artifacts(ir, openApi, mcpTools), CONTRACT_RESOURCES_JSON);
+                ir.getBytes(StandardCharsets.UTF_8), artifacts(ir, openApi, mcpTools), CONTRACT_RESOURCES_JSON,
+                TAG_NAME);
     }
 
     /** A release as an earlier ai-atlas wrote it: its IR, a changelog and a manifest recording both. */
@@ -383,7 +385,7 @@ class ContractReleaseTest {
         Files.writeString(dir.resolve("api.ir.json"), ir);
         Files.writeString(dir.resolve("CHANGELOG.md"), section);
         Files.writeString(dir.resolve("release.json"), new ReleaseManifest(version, 1,
-                ReleaseManifest.irVersionOf(ir), null, ReleasePolicy.Policy.DEFAULT, Map.of(
+                ReleaseManifest.irVersionOf(ir), null, TAG_NAME, ReleasePolicy.Policy.DEFAULT, Map.of(
                 "api.ir.json", ContractRelease.sha256(ir.getBytes(StandardCharsets.UTF_8)),
                 "CHANGELOG.md", ContractRelease.sha256(section.getBytes(StandardCharsets.UTF_8))),
                 Map.<String, Object>of("contract", "declared")).write());

@@ -69,6 +69,9 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
 
         /** The policy's {@code failOnBreaking}. */
         Property<Boolean> getFailOnBreaking();
+
+        /** The {@code agentic { release { tagName } } } template, such as {@value TagName#DEFAULT_TEMPLATE}. */
+        Property<String> getTagNameTemplate();
     }
 
     @Override
@@ -83,6 +86,8 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
         } catch (IllegalArgumentException e) {
             throw new GradleException("[ai-atlas] " + e.getMessage() + ": check " + ReleasePolicy.CONFIGURATION + ".");
         }
+        String resolvedTagName = TagName.parse(parameters.getTagNameTemplate().get())
+                .render(ReleaseVersion.parse(version));
         Path releases = parameters.getReleasesDir().get().getAsFile().toPath();
         try {
             ClassOutputResources.Result resources =
@@ -92,7 +97,7 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
                             parameters.getVersionTracksApiMajor().get(), policy,
                             parameters.getBaseline().get().getAsFile().toPath(),
                             resources.artifacts().get(ContractRelease.IR_FILE), resources.artifacts(),
-                            resources.contractResourcesJson()));
+                            resources.contractResourcesJson(), resolvedTagName));
             LOGGER.lifecycle("[ai-atlas] Released contract " + outcome.version() + " (API major " + outcome.apiMajor()
                     + ") to " + outcome.directory() + System.lineSeparator() + outcome.changelog());
         } catch (ContractRelease.ReleaseException e) {

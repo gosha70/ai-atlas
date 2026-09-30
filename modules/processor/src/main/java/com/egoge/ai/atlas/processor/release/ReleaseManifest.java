@@ -28,11 +28,14 @@ import java.util.regex.Pattern;
  * @param apiMajor          the contract's {@code apiMajor}
  * @param irVersion         the {@code irVersion} of the released {@code api.ir.json}, as written
  * @param previous          the previous release, or {@code null} for the first one
+ * @param tagName           the resolved git tag name this release is proved by, such as
+ *                          {@code "v1.4.0"} (F1). Later proofs use this recorded name, not
+ *                          whatever {@code agentic { release { tagName } } } currently is.
  * @param policy            the policy the release was checked against
  * @param digests           the lowercase hexadecimal SHA-256 of each other file, by file name, sorted
  * @param contractResources the released class output's contract-resources manifest, embedded verbatim
  */
-public record ReleaseManifest(String version, int apiMajor, int irVersion, String previous,
+public record ReleaseManifest(String version, int apiMajor, int irVersion, String previous, String tagName,
                               ReleasePolicy.Policy policy, Map<String, String> digests,
                               Map<String, Object> contractResources) {
 
@@ -48,6 +51,7 @@ public record ReleaseManifest(String version, int apiMajor, int irVersion, Strin
     private static final String K_API_MAJOR = "apiMajor";
     private static final String K_IR_VERSION = "irVersion";
     private static final String K_PREVIOUS = "previous";
+    private static final String K_TAG_NAME = "tagName";
     private static final String K_POLICY = "policy";
     private static final String K_MIN_DEPRECATED_RELEASES = "minDeprecatedReleases";
     private static final String K_MIN_API_MAJOR_ADVANCE = "minApiMajorAdvance";
@@ -68,6 +72,7 @@ public record ReleaseManifest(String version, int apiMajor, int irVersion, Strin
         doc.put(K_API_MAJOR, apiMajor);
         doc.put(K_IR_VERSION, irVersion);
         doc.put(K_PREVIOUS, previous);
+        doc.put(K_TAG_NAME, tagName);
         Map<String, Object> rules = new LinkedHashMap<>();
         rules.put(K_MIN_DEPRECATED_RELEASES, policy.minDeprecatedReleases());
         rules.put(K_MIN_API_MAJOR_ADVANCE, policy.minApiMajorAdvance());
@@ -109,6 +114,7 @@ public record ReleaseManifest(String version, int apiMajor, int irVersion, Strin
             throw new IllegalArgumentException("'" + K_PREVIOUS + "' must be a string or null");
         }
         JsonNode rules = object(root, K_POLICY);
+        String tagName = string(root, K_TAG_NAME);
         JsonNode failOnBreaking = rules.get(K_FAIL_ON_BREAKING);
         if (failOnBreaking == null || !failOnBreaking.isBoolean()) {
             throw new IllegalArgumentException("'" + K_POLICY + "." + K_FAIL_ON_BREAKING + "' must be a boolean");
@@ -124,7 +130,7 @@ public record ReleaseManifest(String version, int apiMajor, int irVersion, Strin
             digests.put(entry.getKey(), digest);
         }
         return new ReleaseManifest(string(root, K_VERSION), integer(root, K_API_MAJOR), integer(root, K_IR_VERSION),
-                previous.isNull() ? null : previous.asText(),
+                previous.isNull() ? null : previous.asText(), tagName,
                 new ReleasePolicy.Policy(integer(rules, K_MIN_DEPRECATED_RELEASES),
                         integer(rules, K_MIN_API_MAJOR_ADVANCE), failOnBreaking.asBoolean()), digests,
                 toMap(object(root, K_CONTRACT_RESOURCES)));

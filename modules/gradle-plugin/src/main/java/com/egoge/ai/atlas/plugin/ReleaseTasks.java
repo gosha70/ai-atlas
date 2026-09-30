@@ -36,6 +36,7 @@ final class ReleaseTasks {
                           Configuration processorPath, Provider<String> processorVersion) {
         TaskContainer tasks = project.getTasks();
         ReleaseSpec release = extension.getRelease();
+        release.getTagName().convention(TagName.DEFAULT_TEMPLATE);
         tasks.register(AgenticPlugin.RELEASE_TASK, AgenticRelease.class, task -> {
             task.setGroup(AgenticPlugin.TASK_GROUP);
             task.setDescription("Releases the accepted contract as an immutable snapshot, with its changelog.");
@@ -54,6 +55,7 @@ final class ReleaseTasks {
             task.getMinDeprecatedReleases().set(release.getPolicy().getMinDeprecatedReleases());
             task.getMinApiMajorAdvance().set(release.getPolicy().getMinApiMajorAdvance());
             task.getFailOnBreaking().set(release.getPolicy().getFailOnBreaking());
+            task.getTagNameTemplate().set(release.getTagName());
             task.getProcessorVersion().set(processorVersion);
         });
         TaskProvider<AgenticReleaseCheck> check = tasks.register(AgenticPlugin.RELEASE_CHECK_TASK,

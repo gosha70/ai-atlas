@@ -58,6 +58,13 @@ public abstract class ReleaseSpec {
      */
     public abstract Property<String> getCheckVersion();
 
+    /**
+     * The git tag name template a released version is proved by (F1), with exactly one
+     * {@code {version}} placeholder. Defaults to {@value TagName#DEFAULT_TEMPLATE}. The rendered
+     * name is recorded in each release's {@code release.json}.
+     */
+    public abstract Property<String> getTagName();
+
     /** The release policy a release is checked against. */
     public PolicySpec getPolicy() {
         return policy;

@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.CONTRACT_RESOURCES_JSON;
+import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.TAG_NAME;
 import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.NOTE;
 import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.irJson;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -141,7 +142,7 @@ class ContractReleaseEqualityTest {
 
         ContractRelease.Outcome outcome = ContractRelease.release(releases, changelog,
                 new ContractRelease.Request("1.0.0", false, ReleasePolicy.Policy.DEFAULT, baseline, emitted,
-                        Map.of(), CONTRACT_RESOURCES_JSON));
+                        Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME));
 
         assertThat(outcome.directory()).isEqualTo(releases.resolve("1.0.0"));
         assertThat(Files.readString(releases.resolve("1.0.0/api.ir.json")))
@@ -159,7 +160,7 @@ class ContractReleaseEqualityTest {
 
         assertThatThrownBy(() -> ContractRelease.release(releases, changelog,
                 new ContractRelease.Request("1.0.0", false, ReleasePolicy.Policy.DEFAULT, baseline, emitted,
-                        Map.of(), CONTRACT_RESOURCES_JSON)))
+                        Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME)))
                 .isInstanceOf(ContractRelease.ReleaseException.class)
                 .hasMessageContaining("The contract the build emitted differs from the baseline " + baseline)
                 .hasMessageContaining("run atlasAccept, then release");

@@ -80,9 +80,12 @@ public final class ContractRelease {
      *                              ContractResources.snapshotted}), keyed by snapshot file name, such as
      *                              {@code openapi-v2.json} or {@code mcp-tools.json}
      * @param contractResourcesJson the class output's contract-resources manifest, verbatim
+     * @param tagName               the resolved git tag name this release is proved by, such as
+     *                              {@code "v1.4.0"} (F1), recorded verbatim in {@code release.json}
      */
     public record Request(String version, boolean versionTracksApiMajor, ReleasePolicy.Policy policy, Path baseline,
-                          byte[] emittedIr, Map<String, byte[]> artifacts, String contractResourcesJson) {
+                          byte[] emittedIr, Map<String, byte[]> artifacts, String contractResourcesJson,
+                          String tagName) {
     }
 
     /**
@@ -122,6 +125,10 @@ public final class ContractRelease {
      */
     public static Outcome release(Path releases, Path changelog, Request request) throws ReleaseException, IOException {
         ReleaseVersion version = version(request.version());
+        if (request.tagName() == null || request.tagName().isBlank()) {
+            throw new ReleaseException("No tag name was resolved for version " + version + ". Set"
+                    + " agentic { release { tagName } }, which defaults to v{version}.");
+        }
         Path target = releases.resolve(version.toString());
         if (Files.exists(target)) {
             throw new ReleaseException("Version " + version + " is already released at " + target + "."
@@ -177,7 +184,8 @@ public final class ContractRelease {
         files.forEach((name, bytes) -> digests.put(name, sha256(bytes)));
         ReleaseManifest manifest = new ReleaseManifest(version.toString(), current.apiMajor(),
                 ReleaseManifest.irVersionOf(acceptedJson), previous != null ? previous.version().toString() : null,
-                request.policy(), digests, ReleaseManifest.contractResourcesOf(request.contractResourcesJson()));
+                request.tagName(), request.policy(), digests,
+                ReleaseManifest.contractResourcesOf(request.contractResourcesJson()));
         files.put(MANIFEST_FILE, manifest.write().getBytes(StandardCharsets.UTF_8));
 
         Files.createDirectories(releases);

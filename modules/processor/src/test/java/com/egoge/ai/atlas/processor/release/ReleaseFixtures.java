@@ -42,6 +42,8 @@ final class ReleaseFixtures {
             """;
     /** A minimal, valid contract-resources manifest, for tests that do not exercise it directly. */
     static final String CONTRACT_RESOURCES_JSON = "{\"contract\": \"declared\"}\n";
+    /** A resolved tag name, for tests that do not exercise F1's tag-name resolution directly. */
+    static final String TAG_NAME = "v0.0.0-test";
 
     private static final String ORDER = """
             package test;

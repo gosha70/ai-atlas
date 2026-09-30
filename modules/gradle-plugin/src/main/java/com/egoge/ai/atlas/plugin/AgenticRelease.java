@@ -74,6 +74,10 @@ public abstract class AgenticRelease extends DefaultTask {
     @Input
     public abstract Property<Boolean> getFailOnBreaking();
 
+    /** The {@code agentic { release { tagName } } } template this release's tag is rendered from. */
+    @Input
+    public abstract Property<String> getTagNameTemplate();
+
     /** The processor on the {@code annotationProcessor} classpath, named when this plugin cannot run it. */
     @Internal
     public abstract Property<String> getProcessorVersion();
@@ -94,6 +98,7 @@ public abstract class AgenticRelease extends DefaultTask {
                     parameters.getMinDeprecatedReleases().set(getMinDeprecatedReleases());
                     parameters.getMinApiMajorAdvance().set(getMinApiMajorAdvance());
                     parameters.getFailOnBreaking().set(getFailOnBreaking());
+                    parameters.getTagNameTemplate().set(getTagNameTemplate());
                 });
         AgenticPlugin.awaitProcessor(getWorkerExecutor(), getProcessorVersion());
     }
