@@ -365,6 +365,34 @@ digest the manifest records (OQ-2, decided).
   - The spike's acceptance: a second build leaves `compileJava` UP-TO-DATE, and
     `--configuration-cache` passes.
 
+**C3a decision (2026-09-29, spike run against `:demo:compileJava` with a throwaway `buildSrc`
+plugin, discarded, not committed):** the preferred option holds — the writer runs from
+`compileJava.doLast`, submitted through an injected `WorkerExecutor`, writing into
+`destinationDirectory`. Evidence:
+- A second build with no source change left `compileJava` `UP-TO-DATE`: the file written in
+  `doLast` becomes part of the output-directory snapshot Gradle records after the task's actions
+  finish, so it does not itself invalidate a later up-to-date check.
+- `--configuration-cache` stored and then reused cleanly, *provided* the `doLast` action is a
+  plain compiled class (a `WorkAction` plus an `Action<Task>`/`Plugin` obtaining `WorkerExecutor`
+  through constructor or method injection), not a lambda written inline in a `.gradle.kts` script:
+  a script-inline lambda closes over an implicit script-object reference (`this$0` on a
+  Kotlin-DSL-generated closure class) that the configuration cache rejects regardless of what the
+  lambda actually touches. This is not a new constraint on the real design: `EmptyContractAction`,
+  `AgenticRelease`, `AtlasContractCheck` and every other task/worker in `plug/` are already plain
+  compiled classes, never script-inline lambdas, so `EmptyContractResourcesAction` follows the
+  same shape and is unaffected.
+- **Owner correction (2026-09-29), folded into the writer's authorization rule:** the
+  `compileJava.doLast` writer may replace stale reserved output (a leftover non-empty `api.ir.json`
+  from an earlier compilation) only *after* confirming, via `ContractDeclarations`, that the class
+  output declares no `@AgenticEntity`/`@AgenticExposed` at all. That confirmation — not the
+  replacement log line — is what makes the regeneration valid; logging remains a courtesy. The
+  release path (`agenticRelease`, `ClassOutputResources`) never runs this writer, directly or via a
+  task dependency, and never repairs, regenerates or otherwise writes into the class output it
+  validates: it only reads and fails, naming the path. Because `agenticRelease` already
+  `dependsOn(classes)` and not `atlasContractCheck` (see `ReleaseTasks.configure`), wiring the
+  writer into `compileJava.doLast` keeps this separation for free — release validation runs after
+  compilation without ever invoking the writer itself.
+
 **Plugin, release-side validation: new `plug/ClassOutputResources.java`**, running in the worker:
 1. Pick the class output. If it declares a contract (`ContractDeclarations.declaringOutput`), the
    manifest must exist, or the release fails. Otherwise the empty manifest must exist.
