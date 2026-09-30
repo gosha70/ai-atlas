@@ -121,6 +121,30 @@ class GitRepositoryTest {
     }
 
     @Test
+    void releasesPrefixIsRelativeToTheRepositoryRoot() throws IOException, InterruptedException {
+        commit("first");
+        Path nested = Files.createDirectories(dir.resolve("sub/.atlas/releases"));
+
+        assertThat(new GitRepository(dir).releasesPrefix(dir)).isEmpty();
+        assertThat(new GitRepository(dir).releasesPrefix(dir.resolve(".atlas/releases")))
+                .isEqualTo(".atlas/releases/");
+        assertThat(new GitRepository(dir).releasesPrefix(nested)).isEqualTo("sub/.atlas/releases/");
+        // The releases directory itself need not exist yet: GitRepository is anchored at its
+        // nearest existing ancestor.
+        Path notYetCreated = dir.resolve("sub/.atlas/releases/does-not-exist-yet");
+        GitRepository anchored = new GitRepository(GitRepository.nearestExistingAncestor(notYetCreated));
+        assertThat(anchored.releasesPrefix(notYetCreated)).isEqualTo("sub/.atlas/releases/does-not-exist-yet/");
+    }
+
+    @Test
+    void nearestExistingAncestorWalksUpToWhatExists() throws IOException {
+        Path missing = dir.resolve("a/b/c");
+
+        assertThat(GitRepository.nearestExistingAncestor(missing)).isEqualTo(dir.toAbsolutePath().normalize());
+        assertThat(GitRepository.nearestExistingAncestor(dir)).isEqualTo(dir.toAbsolutePath().normalize());
+    }
+
+    @Test
     void aSlowCommandTimesOut() throws IOException {
         Path script = dir.resolveSibling("slow-git.sh");
         Files.writeString(script, "#!/bin/sh\nsleep 5\necho true\n", StandardCharsets.UTF_8);

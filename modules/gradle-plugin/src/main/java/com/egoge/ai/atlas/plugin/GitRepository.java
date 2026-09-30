@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
  * "no git repository", not a failure of this class: {@link #isInsideWorkTree()} simply answers
  * {@code false}. A bounded timeout fails the caller: a hang is never silently ignored.
  */
-final class GitRepository {
+final class GitRepository implements GitQuery {
 
     private static final String PREFIX = "[ai-atlas] ";
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
@@ -66,7 +66,8 @@ final class GitRepository {
      *
      * @return whether a git repository was found
      */
-    boolean isInsideWorkTree() {
+    @Override
+    public boolean isInsideWorkTree() {
         return run("rev-parse", "--is-inside-work-tree").filter(r -> r.exitCode() == 0)
                 .map(r -> "true".equals(r.text())).orElse(false);
     }
@@ -77,7 +78,8 @@ final class GitRepository {
      *
      * @return whether {@code git rev-parse --is-shallow-repository} answers {@code true}
      */
-    boolean isShallow() {
+    @Override
+    public boolean isShallow() {
         return run("rev-parse", "--is-shallow-repository").filter(r -> r.exitCode() == 0)
                 .map(r -> "true".equals(r.text())).orElse(false);
     }
@@ -87,7 +89,8 @@ final class GitRepository {
      *
      * @return the tags' short names, such as {@code "v1.0.0"}, in no particular order
      */
-    List<String> tags() {
+    @Override
+    public List<String> tags() {
         Optional<Result> result = run("for-each-ref", "--format=%(refname:strip=2)", "refs/tags");
         if (result.isEmpty() || result.get().exitCode() != 0) {
             return List.of();
@@ -110,7 +113,8 @@ final class GitRepository {
      * @return the commit's full SHA, or empty when {@code tag} does not exist or does not peel to a
      *     commit
      */
-    Optional<String> peelToCommit(String tag) {
+    @Override
+    public Optional<String> peelToCommit(String tag) {
         Optional<Result> result = run("rev-parse", "--verify", "--quiet", "refs/tags/" + tag + "^{commit}");
         if (result.isEmpty() || result.get().exitCode() != 0) {
             return Optional.empty();
@@ -127,7 +131,8 @@ final class GitRepository {
      * @throws GradleException if the check itself fails, for a reason other than "not an ancestor"
      *                         (exit code 1)
      */
-    boolean isAncestorOfHead(String commit) {
+    @Override
+    public boolean isAncestorOfHead(String commit) {
         Optional<Result> result = run("merge-base", "--is-ancestor", commit, "HEAD");
         if (result.isEmpty()) {
             return false;
@@ -152,13 +157,56 @@ final class GitRepository {
      * @param path   the path, relative to the repository root
      * @return the blob's bytes, or an empty array when {@code path} does not exist at {@code commit}
      */
-    byte[] blobBytes(String commit, String path) {
+    @Override
+    public byte[] blobBytes(String commit, String path) {
         Optional<Result> exists = run("cat-file", "-e", commit + ":" + path);
         if (exists.isEmpty() || exists.get().exitCode() != 0) {
             return new byte[0];
         }
         Optional<Result> content = run("cat-file", "--filters", commit + ":" + path);
         return content.filter(r -> r.exitCode() == 0).map(Result::stdout).orElse(new byte[0]);
+    }
+
+    /**
+     * {@code releasesDir}'s path, relative to the repository root, forward-slashed and terminated
+     * with {@code /} when non-empty. Works even when {@code releasesDir} itself does not exist yet
+     * (no release has ever been made): this repository must have been constructed at, or above, an
+     * existing ancestor of it.
+     *
+     * @param releasesDir the directory of releases
+     * @return the prefix to combine with {@code <version>/release.json}, etc.
+     */
+    String releasesPrefix(Path releasesDir) {
+        String showPrefix = run("rev-parse", "--show-prefix").filter(r -> r.exitCode() == 0).map(Result::text)
+                .orElse("");
+        String fromAnchor = directory.toAbsolutePath().normalize()
+                .relativize(releasesDir.toAbsolutePath().normalize()).toString().replace(java.io.File.separatorChar,
+                        '/');
+        StringBuilder prefix = new StringBuilder(showPrefix);
+        if (!fromAnchor.isEmpty() && !".".equals(fromAnchor)) {
+            if (prefix.length() > 0 && prefix.charAt(prefix.length() - 1) != '/') {
+                prefix.append('/');
+            }
+            prefix.append(fromAnchor).append('/');
+        }
+        return prefix.toString();
+    }
+
+    /**
+     * The nearest ancestor of {@code path} (possibly {@code path} itself) that exists, for
+     * constructing a {@link GitRepository} to read a directory of releases that may not have been
+     * created yet.
+     *
+     * @param path a directory, which may not exist
+     * @return the nearest existing ancestor, or the filesystem root if none of {@code path}'s
+     *     ancestors exist either
+     */
+    static Path nearestExistingAncestor(Path path) {
+        Path candidate = path.toAbsolutePath().normalize();
+        while (candidate != null && !java.nio.file.Files.isDirectory(candidate)) {
+            candidate = candidate.getParent();
+        }
+        return candidate != null ? candidate : path.getRoot();
     }
 
     // ---------------------------------------------------------------- process
