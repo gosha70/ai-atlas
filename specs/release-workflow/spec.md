@@ -41,8 +41,22 @@ In addition to the decisions the draft records:
   (`agenticRelease`, `agenticReleaseVerify`). The git-free `agenticReleaseHistoryCheck` stays
   usable.
 
-The plan's other open questions (OQ-2, OQ-4, OQ-5, OQ-7 to OQ-10) carry recommended defaults that
-the owner has not yet confirmed; see `plan.md` §7.
+Second round, the same day, settling the plan's remaining open questions (`plan.md` §7):
+
+- **Empty contract (OQ-2, the plan's default reversed):** an empty contract produces a fresh,
+  canonical empty `api.ir.json` and a `contract-resources.json` recording `"contract": "empty"`.
+  When javac does not invoke the processor, the plugin produces both. Reserved resources already
+  in the class output are detected before anything is written: an old non-empty IR is never kept,
+  digested or treated as fresh. The release snapshot holds the accepted empty IR.
+- **Reserved set (OQ-5):** the enumerated ai-atlas paths only, including the versioned OpenAPI
+  files of every major (`openapi-v<N>.json`, any N ≥ 1). Unrelated files are ignored.
+- **Tag name (OQ-8):** `release.json` records the resolved tag name, and later proofs use it.
+- **Snapshot equals the build (OQ-4):** the IR compared canonically, generated artifacts byte for
+  byte, the effective configuration structurally, including which artifacts are present or absent.
+- **Multi-module (OQ-7):** documented: each module uses a unique tag pattern and keeps an
+  independent release history.
+- **OQ-9, OQ-10:** the plan's defaults (`failOnBreaking` inside `policy { }`, the aggregate
+  changelog header kept; no new property putting verify under `check`).
 
 ## Acceptance criteria
 

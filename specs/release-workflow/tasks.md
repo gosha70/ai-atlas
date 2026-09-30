@@ -198,9 +198,14 @@ The 500-line cap applies to every file, tests included. Each phase ends with a f
   - `EffectiveCompilerArgumentsTest.java` (new).
 - **Accept:**
   - Unit test: last value wins over `compilerArgs` plus the providers' arguments.
-  - TestKit (in C6): a module with no annotations gets `contract-resources.json` with
-    `"contract": "empty"`, the effective configuration including a manual `-A`, and only the
-    `api.ir.json` artifact, whose digest is `EmptyContract.json`'s.
+  - TestKit (in C6): a module with no annotations gets a real `api.ir.json` holding
+    `EmptyContract.json` and `contract-resources.json` with `"contract": "empty"`, the effective
+    configuration including a manual `-A`, and only the `api.ir.json` artifact, whose digest is
+    that of the bytes written (OQ-2).
+  - TestKit (in C6): removing every annotation without `clean` replaces the stale non-empty
+    `api.ir.json` with the fresh empty one and logs the replacement; its digest is never recorded;
+    a leftover `openapi-v1.json` is kept and fails the release, naming it; the build still passes
+    once the empty contract is accepted.
 - **Depends:** C3a.
 
 ### C4. The release consumes the manifest (F2, D2.1, D2.3, D2.6, D2.8, AC2, AC4)
@@ -374,7 +379,8 @@ The 500-line cap applies to every file, tests included. Each phase ends with a f
   - `plug/ReleaseVerifyAction.java` (new);
   - `plug/ReleaseTasks.java`, registration outside `check`;
   - `proc/release/ReleaseHistory.java` or `ContractRelease.java`: `verifyBuild` compares the
-    snapshot with the build (canonical IR, snapshotted bytes, configuration).
+    snapshot with the build (OQ-4: the IR canonically, generated artifacts byte for byte, the
+    effective configuration structurally, and which artifacts are present or absent).
 - **Accept:**
   - Covered by the E3 tests.
   - It writes no file.
@@ -418,7 +424,8 @@ The 500-line cap applies to every file, tests included. Each phase ends with a f
     policy block, publication/tags/pending/history table, validation boundary, accept-then-release
     and CI recipe sections. The recipe uses `fetch-depth: 0`, `fetch-tags: true`, `agenticRelease`
     in the release PR, the tag, and `agenticReleaseVerify` in the release job.
-  - Also document `.gitattributes` `-text` and the per-module `tagName` (OQ-7).
+  - Also document `.gitattributes` `-text`, and for multi-module repositories a unique tag pattern
+    per module (`tagName`) with an independent release history each (OQ-7).
   - `docs/contract-governance.md`: its cross-references.
   - `docs/processor-internals.md`: the reserved paths and the manifest.
   - `CHANGELOG.md`: the Unreleased entries at lines 9-17.

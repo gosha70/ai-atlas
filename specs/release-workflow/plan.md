@@ -335,8 +335,8 @@ place":
 ```
 
 The empty-contract variant has `"contract": "empty"`. Its only artifact is
-`META-INF/ai-atlas/api.ir.json`, whose digest is that of
-`EmptyContract.json(basePath, major)`. See OQ-2 for whether that file is physically present.
+`META-INF/ai-atlas/api.ir.json`, a real file holding `EmptyContract.json(basePath, major)`, whose
+digest the manifest records (OQ-2, decided).
 
 **Plugin, empty contract (C3):**
 - **Arguments:** new `plug/EffectiveCompilerArguments.java` reads `compileJava`'s
@@ -345,8 +345,18 @@ The empty-contract variant has `"contract": "empty"`. Its only artifact is
   map to the worker. The worker calls `EffectiveOptions.fromArguments`. `getAllCompilerArgs()`
   returns `compilerArgs` followed by the argument providers, which matches javac's order.
 - **Writer:** new `plug/EmptyContractResourcesAction.java`, a worker in the processor's class
-  loader. It builds `EmptyContract.json`, computes its digest, and writes the empty manifest into
-  **`compileJava`'s destination directory**.
+  loader, writing into **`compileJava`'s destination directory** (OQ-2, decided):
+  1. First, it lists the reserved files already present. It never reads, keeps or digests an
+     existing `api.ir.json`: that file is from an earlier compilation, so treating it as this
+     compilation's would be the silent-overwrite error the owner ruled out.
+  2. It writes a freshly built canonical `EmptyContract.json` to `api.ir.json`, digests the bytes
+     it wrote, and writes the manifest. When step 1 found an `api.ir.json` with other bytes, it
+     logs one line naming the replaced stale file.
+  3. Any other reserved file found in step 1 (for example a leftover `openapi-v1.json` or
+     `mcp-tools.json`) is left in place. It is not in the empty manifest, so the release fails on
+     it as an unlisted reserved file, naming it and `clean`. The build itself, including
+     `atlasContractCheck`, is unaffected, so removing every annotation without `clean` still
+     builds once accepted.
 - **Where the writer runs** is settled by a time-boxed spike, C3a. Two options:
   - **Preferred:** a `compileJava.doLast` action that submits through `WorkerExecutor`. The file is
     then part of `compileJava`'s tracked output, cached and up to date.
@@ -360,7 +370,7 @@ The empty-contract variant has `"contract": "empty"`. Its only artifact is
    manifest must exist, or the release fails. Otherwise the empty manifest must exist.
 2. Walk the class output, keeping only paths where `ContractResources.isReserved`.
 3. Fail, naming each path, when:
-   - a listed artifact is missing, except the virtual empty `api.ir.json` (OQ-2);
+   - a listed artifact is missing (the empty contract's `api.ir.json` included, OQ-2);
    - a digest does not match;
    - a reserved file is not listed (stale);
    - a `required(...)` artifact is not listed (a processor bug, fail loudly).
@@ -552,6 +562,10 @@ can run in parallel. They own disjoint files.
 None blocks Phases A-E. Each has a recommended default that the plan follows unless the owner
 overrides it.
 
+**Second round, 2026-09-29:** OQ-2 decided against the default (see `spec.md`); OQ-4, OQ-5,
+OQ-7 and OQ-8 approved with the refinements recorded in `spec.md`; OQ-9 and OQ-10 keep their
+defaults. No question remains open.
+
 **Owner decisions, 2026-09-29:** OQ-0 decided (shell out to `git`); OQ-1 decided (Phase F is
 required); OQ-3 decided (verify requires the tag at `HEAD`); OQ-6 decided (a shallow clone fails
 git-aware validation; the git-free history check stays usable). The other questions keep their
@@ -564,7 +578,8 @@ defaults, not yet confirmed by the owner.
   PR #62 keeps them in the processor's `ContractRelease` for later CLI reuse.
   - Default: move them (Phase F, about 2-3 hours, mechanical).
   - Alternative: keep them and record the divergence in the PR and docs.
-- **OQ-2: the empty contract's `api.ir.json`.** The draft lists it as "the only expected
+- **OQ-2 — decided, default reversed: see `spec.md` and §3.3 (a real, freshly written file).**
+  The original question: **the empty contract's `api.ir.json`.** The draft lists it as "the only expected
   artifact", but also says "any other file in the reserved set present fails".
   - Default: it is **virtual**. The manifest records the `EmptyContract` digest, and the file is
     not expected in the class output.
