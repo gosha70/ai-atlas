@@ -171,13 +171,15 @@ class ContractReleaseTest {
     }
 
     @Test
-    void checkReleasedComparesTheBuildsIrCanonically() throws Exception {
+    void verifyBuildComparesTheBuildsIrCanonically() throws Exception {
         String ir = accept(irJson(1, ""));
         ContractRelease.release(releases, changelog, request("1.0.0", ir, null, null));
 
-        ContractRelease.checkReleased(releases, "1.0.0", (ir + "\n").getBytes(StandardCharsets.UTF_8));
-        assertThatThrownBy(() -> ContractRelease.checkReleased(releases, "1.0.0",
-                irJson(1, NOTE).getBytes(StandardCharsets.UTF_8))).hasMessageContaining("differs from the released");
+        ContractRelease.verifyBuild(releases, changelog, "1.0.0", (ir + "\n").getBytes(StandardCharsets.UTF_8),
+                artifacts(ir, null, null), CONTRACT_RESOURCES_JSON);
+        assertThatThrownBy(() -> ContractRelease.verifyBuild(releases, changelog, "1.0.0",
+                irJson(1, NOTE).getBytes(StandardCharsets.UTF_8), artifacts(irJson(1, NOTE), null, null),
+                CONTRACT_RESOURCES_JSON)).hasMessageContaining("differs from the released");
     }
 
     @Test
@@ -330,19 +332,44 @@ class ContractReleaseTest {
     }
 
     @Test
-    void checkReleasedMatchesTheBuildsContractWithTheReleasedOne() throws Exception {
+    void verifyBuildMatchesTheBuildsContractWithTheReleasedOne() throws Exception {
         String ir = accept(irJson(1, ""));
         ContractRelease.release(releases, changelog, request("1.0.0", ir, null, null));
 
-        ContractRelease.checkReleased(releases, "1.0.0", ir.getBytes(StandardCharsets.UTF_8));
-        assertThatThrownBy(() -> ContractRelease.checkReleased(releases, "1.0.0",
-                irJson(1, NOTE).getBytes(StandardCharsets.UTF_8)))
+        ContractRelease.verifyBuild(releases, changelog, "1.0.0", ir.getBytes(StandardCharsets.UTF_8),
+                artifacts(ir, null, null), CONTRACT_RESOURCES_JSON);
+        assertThatThrownBy(() -> ContractRelease.verifyBuild(releases, changelog, "1.0.0",
+                irJson(1, NOTE).getBytes(StandardCharsets.UTF_8), artifacts(irJson(1, NOTE), null, null),
+                CONTRACT_RESOURCES_JSON))
                 .hasMessageContaining("The contract the build emitted differs from the released contract "
                         + releases.resolve("1.0.0/api.ir.json"));
-        assertThatThrownBy(() -> ContractRelease.checkReleased(releases, "1.1.0", ir.getBytes(StandardCharsets.UTF_8)))
+        assertThatThrownBy(() -> ContractRelease.verifyBuild(releases, changelog, "1.1.0",
+                ir.getBytes(StandardCharsets.UTF_8), artifacts(ir, null, null), CONTRACT_RESOURCES_JSON))
                 .hasMessageContaining("Version 1.1.0 is not released");
-        assertThatThrownBy(() -> ContractRelease.checkReleased(releases, "1.1.0-SNAPSHOT",
-                ir.getBytes(StandardCharsets.UTF_8))).hasMessageContaining("is a SNAPSHOT");
+        assertThatThrownBy(() -> ContractRelease.verifyBuild(releases, changelog, "1.1.0-SNAPSHOT",
+                ir.getBytes(StandardCharsets.UTF_8), artifacts(ir, null, null), CONTRACT_RESOURCES_JSON))
+                .hasMessageContaining("is a SNAPSHOT");
+    }
+
+    @Test
+    void verifyBuildFailsWhenTheBuildProducesAnArtifactTheReleaseDoesNotHave() throws Exception {
+        String ir = accept(irJson(1, ""));
+        ContractRelease.release(releases, changelog, request("1.0.0", ir, null, null));
+
+        Map<String, byte[]> withMcpTools = artifacts(ir, null, "{\"tools\": []}\n");
+        assertThatThrownBy(() -> ContractRelease.verifyBuild(releases, changelog, "1.0.0",
+                ir.getBytes(StandardCharsets.UTF_8), withMcpTools, CONTRACT_RESOURCES_JSON))
+                .hasMessageContaining("[mcp-tools.json]").hasMessageContaining("does not");
+    }
+
+    @Test
+    void verifyBuildFailsWhenTheReleaseHasAnArtifactTheBuildDoesNotProduce() throws Exception {
+        String ir = accept(irJson(1, ""));
+        ContractRelease.release(releases, changelog, request("1.0.0", ir, null, "{\"tools\": []}\n"));
+
+        assertThatThrownBy(() -> ContractRelease.verifyBuild(releases, changelog, "1.0.0",
+                ir.getBytes(StandardCharsets.UTF_8), artifacts(ir, null, null), CONTRACT_RESOURCES_JSON))
+                .hasMessageContaining("[mcp-tools.json]").hasMessageContaining("the build does not produce");
     }
 
     @Test

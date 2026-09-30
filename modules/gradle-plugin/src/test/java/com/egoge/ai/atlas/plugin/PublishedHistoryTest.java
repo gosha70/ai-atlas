@@ -273,5 +273,17 @@ class PublishedHistoryTest {
         public byte[] blobBytes(String commit, String path) {
             return blobs.getOrDefault(commit + ":" + path, new byte[0]);
         }
+
+        @Override
+        public Optional<String> headCommit() {
+            return Optional.ofNullable(head);
+        }
+
+        FakeGit withHead(String commit) {
+            this.head = commit;
+            return this;
+        }
+
+        private String head;
     }
 }

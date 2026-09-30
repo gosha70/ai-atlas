@@ -71,5 +71,24 @@ final class ReleaseTasks {
             task.getProcessorVersion().set(processorVersion);
         });
         tasks.named(LifecycleBasePlugin.CHECK_TASK_NAME).configure(task -> task.dependsOn(historyCheck));
+
+        tasks.register(AgenticPlugin.RELEASE_VERIFY_TASK, AgenticReleaseVerify.class, task -> {
+            task.setGroup(AgenticPlugin.TASK_GROUP);
+            task.setDescription("Verifies the build against the tagged release named by agentic { releaseVersion },"
+                    + " which CI sets with -Pversion. Not part of check.");
+            // Never a task dependency, like agenticRelease (D8.2, spec fourth round): a plain
+            // provider carries no dependency on the compilation this verifies. Requested together,
+            // as in `classes agenticReleaseVerify`, the compilation still runs first; requested
+            // alone with no class output, this task fails naming the command to run.
+            task.getClassesDirs().from(project.provider(
+                    () -> compileJava.get().getDestinationDirectory().get().getAsFile()));
+            task.mustRunAfter(tasks.named(JavaPlugin.CLASSES_TASK_NAME));
+            task.getProcessorClasspath().from(processorPath);
+            task.getReleasesDir().set(release.getDirectory());
+            task.getChangelog().set(release.getChangelog());
+            task.getReleaseVersion().set(extension.getReleaseVersion());
+            task.getTagNameTemplate().set(release.getTagName());
+            task.getProcessorVersion().set(processorVersion);
+        });
     }
 }

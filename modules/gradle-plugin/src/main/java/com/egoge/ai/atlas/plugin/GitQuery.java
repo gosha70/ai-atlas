@@ -31,4 +31,12 @@ interface GitQuery {
 
     /** The bytes of {@code path} as {@code commit}'s tree has it, or empty when it does not exist. */
     byte[] blobBytes(String commit, String path);
+
+    /**
+     * {@code HEAD}'s full commit SHA, for {@code agenticReleaseVerify}'s stricter proof (E2, OQ-3)
+     * that a release's tag resolves to exactly {@code HEAD}, not merely an ancestor of it.
+     *
+     * @return the SHA, or empty on an unborn branch with no commit yet
+     */
+    Optional<String> headCommit();
 }

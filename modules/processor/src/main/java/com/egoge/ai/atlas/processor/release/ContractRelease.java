@@ -16,11 +16,14 @@ import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -216,31 +219,104 @@ public final class ContractRelease {
     }
 
     /**
-     * Verifies every release, and that {@code version} is released with the build's IR, canonically
-     * equal as a release compares it with the baseline, as CI checks the version it tags.
+     * Verifies the release history's internal consistency, and that {@code version}'s release is
+     * exactly what the build produced (E2, D8.2, plan §3.5 step 6, OQ-4): the IR canonically equal,
+     * every snapshotted artifact byte for byte, the same set of snapshotted files present in both
+     * (naming an artifact the build produces the release does not, or the reverse), and the
+     * released {@code contractResources.configuration} structurally equal to the build's effective
+     * configuration. Reads no git; {@code agenticReleaseVerify} proves the tag and {@code HEAD}
+     * separately, in the plugin.
      *
-     * @param releases  the directory of releases
-     * @param version   the version the build claims to be, {@code MAJOR.MINOR.PATCH}
-     * @param emittedIr the IR the build emitted, or the empty document when it declares nothing
-     * @throws ReleaseException if a release fails verification, the version is not released, or its
-     *                          released IR differs from the build's
+     * @param releases              the directory of releases
+     * @param changelog             the aggregate changelog, checked by {@link
+     *                              ReleaseHistory#checkConsistency}
+     * @param version               the version the build claims to be, {@code MAJOR.MINOR.PATCH}
+     * @param emittedIr             the IR the build emitted, or the empty document when it declares
+     *                              nothing
+     * @param artifacts             the build's snapshotted artifacts ({@code
+     *                              ContractResources.snapshotted}), keyed by snapshot file name, the
+     *                              IR included under {@value #IR_FILE}
+     * @param contractResourcesJson the build's class output's contract-resources manifest, verbatim
+     * @throws ReleaseException if the history is inconsistent, the version is not released, or the
+     *                          build differs from its release, each naming the difference
      * @throws IOException      if a file cannot be read
      */
-    public static void checkReleased(Path releases, String version, byte[] emittedIr)
+    public static void verifyBuild(Path releases, Path changelog, String version, byte[] emittedIr,
+                                   Map<String, byte[]> artifacts, String contractResourcesJson)
             throws ReleaseException, IOException {
         ReleaseVersion parsed = version(version);
-        ReleaseHistory.history(releases);
-        Path ir = releases.resolve(parsed.toString()).resolve(IR_FILE);
-        if (!Files.isRegularFile(ir)) {
-            throw new ReleaseException("Version " + parsed + " is not released: there is no " + ir + ". Run"
+        ReleaseHistory.checkConsistency(releases, changelog);
+        Path dir = releases.resolve(parsed.toString());
+        if (!Files.isDirectory(dir)) {
+            throw new ReleaseException("Version " + parsed + " is not released: there is no " + dir + ". Run"
                     + " agenticRelease for it and commit the release, then build the tag.");
         }
+        Path ir = dir.resolve(IR_FILE);
         ContractIr released = parse(Files.readString(ir, StandardCharsets.UTF_8), ir.toString());
-        if (!released.equals(parse(new String(emittedIr, StandardCharsets.UTF_8), "the build's emitted contract"))) {
+        ContractIr built = parse(new String(emittedIr, StandardCharsets.UTF_8), "the build's emitted contract");
+        if (!released.equals(built)) {
             throw new ReleaseException("The contract the build emitted differs from the released contract " + ir
                     + ". The build does not publish the contract version " + parsed + " released: build the"
                     + " sources that were released, or release a new version.");
         }
+        Set<String> releasedArtifacts = snapshottedFiles(dir);
+        Set<String> builtArtifacts = new LinkedHashSet<>(artifacts.keySet());
+        builtArtifacts.remove(IR_FILE);
+        Set<String> extra = new LinkedHashSet<>(builtArtifacts);
+        extra.removeAll(releasedArtifacts);
+        if (!extra.isEmpty()) {
+            throw new ReleaseException("The build produces " + extra + ", which release " + parsed + " in " + dir
+                    + " does not: the build's effective configuration differs from the one " + parsed + " was"
+                    + " released with.");
+        }
+        Set<String> missing = new LinkedHashSet<>(releasedArtifacts);
+        missing.removeAll(builtArtifacts);
+        if (!missing.isEmpty()) {
+            throw new ReleaseException("Release " + parsed + " in " + dir + " holds " + missing + ", which the build"
+                    + " does not produce: the build's effective configuration differs from the one " + parsed
+                    + " was released with.");
+        }
+        for (String name : releasedArtifacts) {
+            byte[] releasedBytes = Files.readAllBytes(dir.resolve(name));
+            if (!Arrays.equals(releasedBytes, artifacts.get(name))) {
+                throw new ReleaseException("The build's " + name + " differs from release " + parsed + "'s " + dir
+                        + "/" + name + ": the build no longer produces byte-identical output for the sources"
+                        + " released.");
+            }
+        }
+        ReleaseManifest manifest;
+        try {
+            manifest = ReleaseManifest.read(Files.readString(dir.resolve(MANIFEST_FILE), StandardCharsets.UTF_8));
+        } catch (IllegalArgumentException e) {
+            throw new ReleaseException(dir.resolve(MANIFEST_FILE) + " cannot be read: " + e.getMessage());
+        }
+        Object releasedConfiguration = manifest.contractResources().get("configuration");
+        Object builtConfiguration;
+        try {
+            builtConfiguration = ReleaseManifest.contractResourcesOf(contractResourcesJson).get("configuration");
+        } catch (IllegalArgumentException e) {
+            throw new ReleaseException("The build's contract-resources manifest cannot be read: " + e.getMessage());
+        }
+        if (!Objects.equals(releasedConfiguration, builtConfiguration)) {
+            throw new ReleaseException("The build's effective ai.atlas.* configuration " + builtConfiguration
+                    + " differs from release " + parsed + "'s recorded configuration " + releasedConfiguration
+                    + " in " + dir.resolve(MANIFEST_FILE) + ".");
+        }
+    }
+
+    /** The release directory's own files that a release snapshot keeps as artifacts, by file name. */
+    private static Set<String> snapshottedFiles(Path dir) throws IOException {
+        Set<String> result = new LinkedHashSet<>();
+        try (Stream<Path> files = Files.list(dir)) {
+            for (Path file : files.filter(Files::isRegularFile).toList()) {
+                String name = file.getFileName().toString();
+                if (!name.equals(IR_FILE) && !name.equals(MANIFEST_FILE) && !name.equals(DIFF_FILE)
+                        && !name.equals(CHANGELOG_FILE)) {
+                    result.add(name);
+                }
+            }
+        }
+        return result;
     }
 
     /**

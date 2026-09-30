@@ -203,6 +203,22 @@ final class GitRepository implements GitQuery {
     }
 
     /**
+     * {@code HEAD}'s full commit SHA.
+     *
+     * @return the SHA, or empty when there is no commit yet (an unborn branch)
+     */
+    @Override
+    public Optional<String> headCommit() {
+        String[] args = {"rev-parse", "--verify", "--quiet", "HEAD"};
+        Optional<Result> result = run(args);
+        if (result.isEmpty() || result.get().exitCode() != 0) {
+            return Optional.empty();
+        }
+        String sha = result.get().text();
+        return sha.isEmpty() ? Optional.empty() : Optional.of(sha);
+    }
+
+    /**
      * {@code releasesDir}'s path, relative to the repository root, forward-slashed and terminated
      * with {@code /} when non-empty. Works even when {@code releasesDir} itself does not exist yet
      * (no release has ever been made): this repository must have been constructed at, or above, an
