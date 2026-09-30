@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -149,9 +150,10 @@ final class GitRepository implements GitQuery {
     }
 
     /**
-     * The bytes of {@code path} as {@code commit}'s tree has it, with the same eol and smudge filters
-     * a checkout on this machine would apply, so "byte-identical to the working copy" is judged the
-     * same way a checkout would be.
+     * The bytes of {@code path} as {@code commit}'s tree stores them, raw: no eol conversion or
+     * smudge filter, so a machine's {@code core.autocrlf} or attributes cannot change what a proof
+     * compares. Released snapshots are marked binary in {@code .gitattributes} so that a checkout
+     * leaves the working copy byte-identical to them.
      *
      * @param commit the commit
      * @param path   the path, relative to the repository root
@@ -163,7 +165,7 @@ final class GitRepository implements GitQuery {
         if (exists.isEmpty() || exists.get().exitCode() != 0) {
             return new byte[0];
         }
-        Optional<Result> content = run("cat-file", "--filters", commit + ":" + path);
+        Optional<Result> content = run("cat-file", "blob", commit + ":" + path);
         return content.filter(r -> r.exitCode() == 0).map(Result::stdout).orElse(new byte[0]);
     }
 
@@ -223,7 +225,7 @@ final class GitRepository implements GitQuery {
         command.add(directory.toString());
         command.addAll(List.of(args));
         ProcessBuilder builder = new ProcessBuilder(command);
-        builder.environment().put("GIT_TERMINAL_PROMPT", "0");
+        isolate(builder.environment());
         builder.redirectErrorStream(false);
         Process process;
         try {
@@ -253,6 +255,20 @@ final class GitRepository implements GitQuery {
             throw new GradleException(PREFIX + "git " + String.join(" ", args) + " in " + directory
                     + " was interrupted.", e);
         }
+    }
+
+    /**
+     * Makes a git environment independent of the caller's: every inherited {@code GIT_*} variable is
+     * removed ({@code GIT_DIR}, {@code GIT_WORK_TREE}, {@code GIT_INDEX_FILE},
+     * {@code GIT_CONFIG_PARAMETERS} and the rest), so only {@code -C} selects the repository; no
+     * prompt; no optional locks, so no command writes even an index refresh; and the C locale for
+     * the output that is parsed.
+     */
+    static void isolate(Map<String, String> environment) {
+        environment.keySet().removeIf(name -> name.startsWith("GIT_"));
+        environment.put("GIT_TERMINAL_PROMPT", "0");
+        environment.put("GIT_OPTIONAL_LOCKS", "0");
+        environment.put("LC_ALL", "C");
     }
 
     /** Drains a process stream on its own thread, so reading it never blocks the caller's timeout. */

@@ -15,7 +15,9 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -88,8 +90,11 @@ class GitRepositoryTest {
         GitRepository repo = new GitRepository(dir);
         assertThat(repo.tags()).containsExactlyInAnyOrder("v1.0.0", "v1.1.0");
         assertThat(repo.peelToCommit("v1.0.0")).contains(first);
-        // An annotated tag peels to the commit it points at, not its own tag object.
+        // An annotated tag peels to the commit it points at, not its own tag object, and that commit
+        // is what the ancestor check receives
         assertThat(repo.peelToCommit("v1.1.0")).contains(second);
+        assertThat(repo.isAncestorOfHead(repo.peelToCommit("v1.1.0").orElseThrow())).isTrue();
+        assertThat(git(dir, "rev-parse", "v1.1.0")).isNotEqualTo(second);
         assertThat(repo.peelToCommit("v9.9.9")).isEmpty();
     }
 
@@ -110,14 +115,28 @@ class GitRepositoryTest {
     }
 
     @Test
-    void blobBytesAreReadWithFiltersAndAMissingPathIsEmpty() throws IOException, InterruptedException {
+    void blobBytesAreRawWhateverTheEolSettingsAndAMissingPathIsEmpty() throws IOException, InterruptedException {
         Files.writeString(dir.resolve("api.ir.json"), "{\"a\":1}\n", StandardCharsets.UTF_8);
         git(dir, "add", "api.ir.json");
         String commit = commit("first");
+        // A checkout here would write CRLF; a proof must still see the stored bytes
+        git(dir, "config", "core.autocrlf", "true");
 
         GitRepository repo = new GitRepository(dir);
         assertThat(repo.blobBytes(commit, "api.ir.json")).isEqualTo("{\"a\":1}\n".getBytes(StandardCharsets.UTF_8));
         assertThat(repo.blobBytes(commit, "does-not-exist.json")).isEmpty();
+    }
+
+    @Test
+    void theCallersGitEnvironmentIsRemoved() {
+        Map<String, String> environment = new HashMap<>(Map.of("PATH", "/usr/bin", "GIT_DIR", "/elsewhere/.git",
+                "GIT_WORK_TREE", "/elsewhere", "GIT_INDEX_FILE", "/elsewhere/index",
+                "GIT_CONFIG_PARAMETERS", "'core.bare'='true'", "GIT_OPTIONAL_LOCKS", "1"));
+
+        GitRepository.isolate(environment);
+
+        assertThat(environment).containsOnlyKeys("PATH", "GIT_TERMINAL_PROMPT", "GIT_OPTIONAL_LOCKS", "LC_ALL")
+                .containsEntry("GIT_OPTIONAL_LOCKS", "0").containsEntry("LC_ALL", "C");
     }
 
     @Test
