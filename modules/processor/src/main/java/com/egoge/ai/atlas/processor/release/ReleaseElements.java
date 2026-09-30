@@ -34,18 +34,33 @@ final class ReleaseElements {
 
     /** The field a field path names, or {@code null} when the document has none. */
     static ContractIr.Field field(ContractIr ir, String path) {
-        String target = path.substring(ContractGate.FIELD_PATH.length());
-        int hash = target.indexOf('#');
-        String className = target.substring(0, hash);
-        String name = target.substring(hash + 1);
+        String className = fieldClass(path);
+        String name = fieldName(path);
         return ir.entities().stream().filter(e -> e.className().equals(className))
                 .flatMap(e -> e.fields().stream()).filter(f -> f.name().equals(name)).findFirst().orElse(null);
     }
 
     /** The operation an operation path names, or {@code null} when the document has none. */
     static ContractIr.Operation operation(ContractIr ir, String path) {
-        String id = path.substring(ContractGate.OPERATION_PATH.length());
+        String id = operationId(path);
         return ir.operations().stream().filter(op -> op.id().equals(id)).findFirst().orElse(null);
+    }
+
+    /** The entity class name a field path names. */
+    static String fieldClass(String path) {
+        String target = path.substring(ContractGate.FIELD_PATH.length());
+        return target.substring(0, target.indexOf('#'));
+    }
+
+    /** The field name a field path names. */
+    static String fieldName(String path) {
+        String target = path.substring(ContractGate.FIELD_PATH.length());
+        return target.substring(target.indexOf('#') + 1);
+    }
+
+    /** The operation id an operation path names. */
+    static String operationId(String path) {
+        return path.substring(ContractGate.OPERATION_PATH.length());
     }
 
     /**

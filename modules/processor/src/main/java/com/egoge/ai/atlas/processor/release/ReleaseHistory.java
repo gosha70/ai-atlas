@@ -53,7 +53,9 @@ public final class ReleaseHistory {
                         + " records apiMajor " + manifest.apiMajor() + ", but its " + ContractRelease.IR_FILE
                         + " has apiMajor " + ir.apiMajor() + "." + RESTORE);
             }
-            result.add(new ReleasePolicy.Release(version, ir));
+            // Transitional: every committed snapshot counts as published until D4 wires the tag-proved
+            // publication verdict in (D10.1).
+            result.add(new ReleasePolicy.Release(version, ir, true));
         }
         return result;
     }

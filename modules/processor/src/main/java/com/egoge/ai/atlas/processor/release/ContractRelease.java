@@ -150,7 +150,8 @@ public final class ContractRelease {
         ContractIr before = previous != null ? previous.ir()
                 : EmptyContract.document(current.apiBasePath(), current.apiMajor());
         List<ContractGate.Difference> differences = compare(before, current);
-        history.add(new ReleasePolicy.Release(version, current));
+        // Transitional: published = true until D4 wires the tag-proved publication verdict in (D10.1).
+        history.add(new ReleasePolicy.Release(version, current, true));
         ReleasePolicy.Result verdict = ReleasePolicy.check(history, differences, request.policy());
         if (!verdict.passed()) {
             ReleasePolicy.Policy policy = request.policy();

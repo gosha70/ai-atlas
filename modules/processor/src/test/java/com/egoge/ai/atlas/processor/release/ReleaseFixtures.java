@@ -105,7 +105,13 @@ final class ReleaseFixtures {
         }
     }
 
+    /** A published release: it earns deprecation credit. */
     static ReleasePolicy.Release release(String version, ContractIr ir) {
-        return new ReleasePolicy.Release(ReleaseVersion.parse(version), ir);
+        return new ReleasePolicy.Release(ReleaseVersion.parse(version), ir, true);
+    }
+
+    /** An unpublished (pending) release: part of the history chain, but earns no credit. */
+    static ReleasePolicy.Release pending(String version, ContractIr ir) {
+        return new ReleasePolicy.Release(ReleaseVersion.parse(version), ir, false);
     }
 }

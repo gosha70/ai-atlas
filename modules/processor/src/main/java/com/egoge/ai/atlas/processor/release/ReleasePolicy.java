@@ -3,6 +3,7 @@
  */
 package com.egoge.ai.atlas.processor.release;
 
+import com.egoge.ai.atlas.processor.contract.ChannelReachability;
 import com.egoge.ai.atlas.processor.contract.ContractGate;
 import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.contract.ReleaseComparison;
@@ -25,10 +26,14 @@ import java.util.Map;
  *       {@code channels.<channel>} (field) and {@code channels} (operation) differences. A
  *       module's whole contract disappearing removes each of its elements. A removal needs the
  *       element to have been released deprecated in at least {@link Policy#minReleases()}
- *       releases, with at least {@link Policy#minMajors()} majors between its deprecation major
- *       and the major of this release. An entity's removal is the removal of its fields, which are
- *       checked one by one. A channel has no lifecycle of its own, so a channel removal is
- *       satisfied only by the deprecation of the whole field or operation.</li>
+ *       <strong>published</strong> releases, with at least {@link Policy#minMajors()} majors
+ *       between its deprecation major and the major of this release. Only a release with
+ *       {@link Release#published()} counts as evidence. An entity's removal is the removal of its
+ *       fields, which are checked one by one. A channel has no lifecycle of its own, so a channel
+ *       removal is satisfied only by published releases where the field or operation was, at that
+ *       release's own major, active, deprecated <strong>and visible on the lost channel</strong>,
+ *       using {@link ChannelReachability}. A release where the element was deprecated but not
+ *       visible on that channel earns no credit for removing it.</li>
  *   <li>Any other breaking difference fails under {@link Policy#failOnBreaking()} when this release
  *       has the same {@code apiMajor} as the previous one. Across a major it is expected, and only
  *       listed in the changelog.</li>
@@ -75,10 +80,13 @@ public final class ReleasePolicy {
     /**
      * A release: its version and the IR it published.
      *
-     * @param version the version
-     * @param ir      the IR, migrated in memory to the current {@code irVersion}
+     * @param version   the version
+     * @param ir        the IR, migrated in memory to the current {@code irVersion}
+     * @param published whether the release is backed by a proved tag; only a published release
+     *                  earns deprecation credit (D10.1). Transitional: every release is published
+     *                  until D4 wires the real publication verdict in.
      */
-    public record Release(ReleaseVersion version, ContractIr ir) {
+    public record Release(ReleaseVersion version, ContractIr ir, boolean published) {
     }
 
     /**
@@ -175,11 +183,15 @@ public final class ReleasePolicy {
                 if (ReleaseElements.isEntity(d.path())) {
                     continue; // its fields are removed too, each checked with its own evidence
                 }
-                Evidence found = evidence(d.path(), earlier);
-                evidence.put(d.path(), found);
-                if (!satisfied(found, major, policy)) {
-                    violations.add(new Violation(d.path(), d.change(), describe(found, d, major),
-                            removalRemedy(d, policy)));
+                if (REMOVED.equals(d.change())) {
+                    Evidence found = evidence(d.path(), earlier);
+                    evidence.put(d.path(), found);
+                    if (!satisfied(found, major, policy)) {
+                        violations.add(new Violation(d.path(), d.change(), describe(found, d, major),
+                                removalRemedy(d, policy)));
+                    }
+                } else {
+                    channelViolation(d, earlier, major, policy, violations, evidence);
                 }
             } else if (d.breaking() && sameMajor && policy.failOnBreaking()) {
                 violations.add(new Violation(d.path(), d.change(), "breaking within API major " + major + ", "
@@ -192,12 +204,15 @@ public final class ReleasePolicy {
         return new Result(violations, evidence);
     }
 
-    /** The earlier releases that published the element deprecated. */
+    /** The earlier published releases that published the element deprecated. */
     private static Evidence evidence(String path, List<Release> earlier) {
         int count = 0;
         int since = 0;
         ReleaseVersion first = null;
         for (Release release : earlier) {
+            if (!release.published()) {
+                continue;
+            }
             int deprecation = ReleaseElements.publishedDeprecation(release.ir(), path);
             if (deprecation > 0) {
                 count++;
@@ -206,6 +221,86 @@ public final class ReleasePolicy {
             }
         }
         return new Evidence(count, since, first);
+    }
+
+    /**
+     * Checks a field or operation losing one or more channels: a difference with change
+     * {@code channels.<C>} (field, exactly one channel) or {@code channels} (operation, possibly
+     * several). Credit for each lost channel counts only the earlier published releases where the
+     * element was active, deprecated, and visible on that channel (D4.7, D4.9). The difference
+     * passes only when every lost channel does; the first channel that does not names the
+     * violation.
+     */
+    private static void channelViolation(ContractGate.Difference d, List<Release> earlier, int major, Policy policy,
+                                         List<Violation> violations, Map<String, Evidence> evidence) {
+        String failingChannel = null;
+        Evidence reported = null;
+        for (String channel : lostChannels(d)) {
+            Evidence found = channelEvidence(d.path(), channel, earlier);
+            reported = found;
+            failingChannel = channel;
+            if (!satisfied(found, major, policy)) {
+                break;
+            }
+            failingChannel = null;
+        }
+        if (reported == null) {
+            return;
+        }
+        evidence.put(d.path(), reported);
+        if (failingChannel != null) {
+            String change = ReleaseElements.isField(d.path()) ? d.change() : CHANNELS + "." + failingChannel;
+            violations.add(new Violation(d.path(), change, describe(reported, d, major), removalRemedy(d, policy)));
+        }
+    }
+
+    /** The earlier published releases where the element was active, deprecated and visible on {@code channel}. */
+    private static Evidence channelEvidence(String path, String channel, List<Release> earlier) {
+        boolean field = ReleaseElements.isField(path);
+        String entityClass = field ? ReleaseElements.fieldClass(path) : null;
+        String member = field ? ReleaseElements.fieldName(path) : ReleaseElements.operationId(path);
+        int count = 0;
+        int since = 0;
+        ReleaseVersion first = null;
+        for (Release release : earlier) {
+            if (!release.published()) {
+                continue;
+            }
+            int deprecation = ReleaseElements.publishedDeprecation(release.ir(), path);
+            if (deprecation <= 0) {
+                continue;
+            }
+            int ownMajor = release.ir().apiMajor();
+            boolean visible = field
+                    ? ChannelReachability.fieldVisible(release.ir(), ownMajor, entityClass, member, channel)
+                    : ChannelReachability.operationListed(release.ir(), ownMajor, member, channel);
+            if (visible) {
+                count++;
+                since = since == 0 ? deprecation : Math.min(since, deprecation);
+                first = first == null ? release.version() : first;
+            }
+        }
+        return new Evidence(count, since, first);
+    }
+
+    /** The channels {@code d} loses: the one named in a field's {@code channels.<C>}, or an operation's set. */
+    private static List<String> lostChannels(ContractGate.Difference d) {
+        if (ReleaseElements.isField(d.path())) {
+            return List.of(d.change().substring((CHANNELS + ".").length()));
+        }
+        List<String> before = channelList(d.before());
+        List<String> after = channelList(d.after());
+        return before.stream().filter(c -> !after.contains(c)).toList();
+    }
+
+    /** Parses a rendered channel list such as {@code [AI, API]} back into its channel names. */
+    private static List<String> channelList(String rendered) {
+        if (rendered == null || rendered.strip().length() < 2) {
+            return List.of();
+        }
+        String inner = rendered.strip();
+        inner = inner.substring(1, inner.length() - 1).strip();
+        return inner.isEmpty() ? List.of() : List.of(inner.split(",\\s*"));
     }
 
     private static boolean satisfied(Evidence found, int major, Policy policy) {
