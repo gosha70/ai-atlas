@@ -15,7 +15,9 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static com.google.testing.compile.Compiler.javac;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,6 +40,8 @@ final class ReleaseFixtures {
             @AgenticField(description = "A note") private String note;
             public String getNote() { return note; }
             """;
+    /** A minimal, valid contract-resources manifest, for tests that do not exercise it directly. */
+    static final String CONTRACT_RESOURCES_JSON = "{\"contract\": \"declared\"}\n";
 
     private static final String ORDER = """
             package test;
@@ -113,5 +117,21 @@ final class ReleaseFixtures {
     /** An unpublished (pending) release: part of the history chain, but earns no credit. */
     static ReleasePolicy.Release pending(String version, ContractIr ir) {
         return new ReleasePolicy.Release(ReleaseVersion.parse(version), ir, false);
+    }
+
+    /**
+     * A {@link ContractRelease.Request#artifacts()} map for {@code ContractRelease.release}: the
+     * OpenAPI document of {@code ir}'s {@code apiMajor}, and/or the MCP tool specifications, each
+     * only when its text is not {@code null}.
+     */
+    static Map<String, byte[]> artifacts(String ir, String openApi, String mcpTools) {
+        Map<String, byte[]> artifacts = new LinkedHashMap<>();
+        if (openApi != null) {
+            artifacts.put(ContractRelease.openApiFile(parse(ir).apiMajor()), openApi.getBytes(StandardCharsets.UTF_8));
+        }
+        if (mcpTools != null) {
+            artifacts.put(ContractRelease.MCP_TOOLS_FILE, mcpTools.getBytes(StandardCharsets.UTF_8));
+        }
+        return artifacts;
     }
 }

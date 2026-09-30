@@ -8,6 +8,7 @@ import com.egoge.ai.atlas.processor.release.ContractRelease;
 import com.egoge.ai.atlas.processor.release.ReleasePolicy;
 import com.egoge.ai.atlas.processor.release.ReleaseVersion;
 import org.gradle.api.GradleException;
+import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.logging.Logger;
@@ -50,11 +51,8 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
     /** The release step's inputs. */
     public interface Parameters extends ContractParameters {
 
-        /** The OpenAPI document of the configured major, or unset when not generated. */
-        RegularFileProperty getOpenApi();
-
-        /** The MCP tool specifications, or unset when not generated. */
-        RegularFileProperty getMcpTools();
+        /** The main compilation's class output(s), for {@link ClassOutputResources#validate}. */
+        ConfigurableFileCollection getClassesDirs();
 
         /** The accepted baseline. */
         RegularFileProperty getBaseline();
@@ -92,11 +90,14 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
         }
         Path releases = parameters.getReleasesDir().get().getAsFile().toPath();
         try {
+            ClassOutputResources.Result resources =
+                    ClassOutputResources.validate(parameters.getClassesDirs().getFiles());
             ContractRelease.Outcome outcome = ContractRelease.release(releases,
                     parameters.getChangelog().get().getAsFile().toPath(), new ContractRelease.Request(version,
                             parameters.getVersionTracksApiMajor().get(), policy,
-                            parameters.getBaseline().get().getAsFile().toPath(), emitted(parameters),
-                            read(parameters.getOpenApi()), read(parameters.getMcpTools())));
+                            parameters.getBaseline().get().getAsFile().toPath(),
+                            resources.artifacts().get(ContractRelease.IR_FILE), resources.artifacts(),
+                            resources.contractResourcesJson()));
             LOGGER.lifecycle("[ai-atlas] Released contract " + outcome.version() + " (API major " + outcome.apiMajor()
                     + ") to " + outcome.directory() + System.lineSeparator() + outcome.changelog());
         } catch (ContractRelease.ReleaseException e) {
@@ -104,10 +105,6 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
         } catch (IOException e) {
             throw new GradleException("[ai-atlas] agenticRelease failed: " + e.getMessage(), e);
         }
-    }
-
-    private static byte[] read(RegularFileProperty file) throws IOException {
-        return file.isPresent() ? Files.readAllBytes(file.get().getAsFile().toPath()) : null;
     }
 
     /** The version, checked to be a release version, or a failure ending with {@code remedy}. */

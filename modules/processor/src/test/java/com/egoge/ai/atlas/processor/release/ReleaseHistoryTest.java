@@ -12,6 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.CONTRACT_RESOURCES_JSON;
+import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.artifacts;
 import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.irJson;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -78,10 +80,6 @@ class ReleaseHistoryTest {
 
     private ContractRelease.Request request(String version, String ir, String openApi, String mcpTools) {
         return new ContractRelease.Request(version, false, ReleasePolicy.Policy.DEFAULT, baseline,
-                ir.getBytes(StandardCharsets.UTF_8), bytes(openApi), bytes(mcpTools));
-    }
-
-    private static byte[] bytes(String text) {
-        return text == null ? null : text.getBytes(StandardCharsets.UTF_8);
+                ir.getBytes(StandardCharsets.UTF_8), artifacts(ir, openApi, mcpTools), CONTRACT_RESOURCES_JSON);
     }
 }

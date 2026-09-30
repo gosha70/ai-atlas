@@ -19,7 +19,6 @@ import org.gradle.work.DisableCachingByDefault;
 import org.gradle.workers.WorkerExecutor;
 
 import javax.inject.Inject;
-import java.io.File;
 
 /**
  * {@code agenticRelease}: snapshots the accepted contract of the main compilation as the immutable
@@ -92,15 +91,9 @@ public abstract class AgenticRelease extends DefaultTask {
 
     @TaskAction
     void release() {
-        File classes = ContractDeclarations.declaringOutput(getClassesDirs().getFiles());
         getWorkerExecutor().classLoaderIsolation(spec -> spec.getClasspath().from(getProcessorClasspath()))
                 .submit(ReleaseAction.class, parameters -> {
-                    if (classes != null) {
-                        parameters.getEmittedIr().set(new File(classes, ContractDeclarations.IR_PATH));
-                        setIfFile(parameters.getOpenApi(), new File(classes,
-                                ContractDeclarations.OPENAPI_PATH.formatted(getApiMajor().get())));
-                        setIfFile(parameters.getMcpTools(), new File(classes, ContractDeclarations.MCP_TOOLS_PATH));
-                    }
+                    parameters.getClassesDirs().from(getClassesDirs());
                     parameters.getApiBasePath().set(getApiBasePath());
                     parameters.getApiMajor().set(getApiMajor());
                     parameters.getBaseline().set(getBaseline());
@@ -113,11 +106,5 @@ public abstract class AgenticRelease extends DefaultTask {
                     parameters.getFailOnBreaking().set(getFailOnBreaking());
                 });
         AgenticPlugin.awaitProcessor(getWorkerExecutor(), getProcessorVersion());
-    }
-
-    private static void setIfFile(RegularFileProperty property, File file) {
-        if (file.isFile()) {
-            property.set(file);
-        }
     }
 }

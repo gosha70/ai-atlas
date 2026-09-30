@@ -16,10 +16,12 @@ class ReleaseManifestTest {
     private static final String A = "a".repeat(64);
     private static final String B = "b".repeat(64);
 
+    private static final Map<String, Object> CONTRACT_RESOURCES = Map.of("contract", "empty");
+
     @Test
     void writesTheCanonicalFormWithSortedDigests() {
         ReleaseManifest manifest = new ReleaseManifest("1.1.0", 1, 3, "1.0.0", ReleasePolicy.Policy.DEFAULT,
-                Map.of("api.ir.json", A, "CHANGELOG.md", B));
+                Map.of("api.ir.json", A, "CHANGELOG.md", B), CONTRACT_RESOURCES);
 
         assertThat(manifest.write()).isEqualTo("""
                 {
@@ -36,6 +38,9 @@ class ReleaseManifestTest {
                   "sha256": {
                     "CHANGELOG.md": "%s",
                     "api.ir.json": "%s"
+                  },
+                  "contractResources": {
+                    "contract": "empty"
                   }
                 }
                 """.formatted(B, A));
@@ -44,15 +49,15 @@ class ReleaseManifestTest {
     @Test
     void readsWhatItWrites() {
         ReleaseManifest manifest = new ReleaseManifest("2.0.0", 2, 1, null, new ReleasePolicy.Policy(2, 0, false),
-                Map.of("api.ir.json", A));
+                Map.of("api.ir.json", A), CONTRACT_RESOURCES);
 
         assertThat(ReleaseManifest.read(manifest.write())).isEqualTo(manifest);
     }
 
     @Test
     void refusesANewerManifestVersion() {
-        String newer = new ReleaseManifest("1.0.0", 1, 3, null, ReleasePolicy.Policy.DEFAULT, Map.of("api.ir.json", A))
-                .write().replace("\"manifestVersion\": 1", "\"manifestVersion\": 2");
+        String newer = new ReleaseManifest("1.0.0", 1, 3, null, ReleasePolicy.Policy.DEFAULT, Map.of("api.ir.json", A),
+                CONTRACT_RESOURCES).write().replace("\"manifestVersion\": 1", "\"manifestVersion\": 2");
 
         assertThatThrownBy(() -> ReleaseManifest.read(newer)).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("written by a newer ai-atlas");
@@ -60,8 +65,8 @@ class ReleaseManifestTest {
 
     @Test
     void refusesMalformedDigestsAndDocuments() {
-        String upper = new ReleaseManifest("1.0.0", 1, 3, null, ReleasePolicy.Policy.DEFAULT, Map.of("api.ir.json", A))
-                .write().replace(A, A.toUpperCase());
+        String upper = new ReleaseManifest("1.0.0", 1, 3, null, ReleasePolicy.Policy.DEFAULT, Map.of("api.ir.json", A),
+                CONTRACT_RESOURCES).write().replace(A, A.toUpperCase());
 
         assertThatThrownBy(() -> ReleaseManifest.read(upper)).hasMessageContaining("lowercase SHA-256");
         assertThatThrownBy(() -> ReleaseManifest.read("[]")).hasMessageContaining("not a JSON object");

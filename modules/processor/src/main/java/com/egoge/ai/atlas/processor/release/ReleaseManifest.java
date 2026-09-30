@@ -24,15 +24,17 @@ import java.util.regex.Pattern;
  * timestamp, host or path, so the same release gives the same bytes. Its own format is versioned
  * by {@code manifestVersion}, independent of the IR's {@code irVersion}.
  *
- * @param version        the released version
- * @param apiMajor       the contract's {@code apiMajor}
- * @param irVersion      the {@code irVersion} of the released {@code api.ir.json}, as written
- * @param previous       the previous release, or {@code null} for the first one
- * @param policy         the policy the release was checked against
- * @param digests        the lowercase hexadecimal SHA-256 of each other file, by file name, sorted
+ * @param version           the released version
+ * @param apiMajor          the contract's {@code apiMajor}
+ * @param irVersion         the {@code irVersion} of the released {@code api.ir.json}, as written
+ * @param previous          the previous release, or {@code null} for the first one
+ * @param policy            the policy the release was checked against
+ * @param digests           the lowercase hexadecimal SHA-256 of each other file, by file name, sorted
+ * @param contractResources the released class output's contract-resources manifest, embedded verbatim
  */
 public record ReleaseManifest(String version, int apiMajor, int irVersion, String previous,
-                              ReleasePolicy.Policy policy, Map<String, String> digests) {
+                              ReleasePolicy.Policy policy, Map<String, String> digests,
+                              Map<String, Object> contractResources) {
 
     /** The {@code manifestVersion} this ai-atlas writes and the highest it reads. */
     public static final int MANIFEST_VERSION = 1;
@@ -51,9 +53,11 @@ public record ReleaseManifest(String version, int apiMajor, int irVersion, Strin
     private static final String K_MIN_API_MAJOR_ADVANCE = "minApiMajorAdvance";
     private static final String K_FAIL_ON_BREAKING = "failOnBreaking";
     private static final String K_SHA256 = "sha256";
+    private static final String K_CONTRACT_RESOURCES = "contractResources";
 
     public ReleaseManifest {
         digests = Collections.unmodifiableMap(new TreeMap<>(digests));
+        contractResources = Collections.unmodifiableMap(new LinkedHashMap<>(contractResources));
     }
 
     /** The manifest's canonical JSON text. */
@@ -70,6 +74,7 @@ public record ReleaseManifest(String version, int apiMajor, int irVersion, Strin
         rules.put(K_FAIL_ON_BREAKING, policy.failOnBreaking());
         doc.put(K_POLICY, rules);
         doc.put(K_SHA256, new LinkedHashMap<String, Object>(digests));
+        doc.put(K_CONTRACT_RESOURCES, contractResources);
         return IrJson.writeCanonical(doc);
     }
 
@@ -121,7 +126,29 @@ public record ReleaseManifest(String version, int apiMajor, int irVersion, Strin
         return new ReleaseManifest(string(root, K_VERSION), integer(root, K_API_MAJOR), integer(root, K_IR_VERSION),
                 previous.isNull() ? null : previous.asText(),
                 new ReleasePolicy.Policy(integer(rules, K_MIN_DEPRECATED_RELEASES),
-                        integer(rules, K_MIN_API_MAJOR_ADVANCE), failOnBreaking.asBoolean()), digests);
+                        integer(rules, K_MIN_API_MAJOR_ADVANCE), failOnBreaking.asBoolean()), digests,
+                toMap(object(root, K_CONTRACT_RESOURCES)));
+    }
+
+    /**
+     * Parses a contract-resources manifest's raw JSON text into the object tree {@link #write}
+     * embeds verbatim under {@value #K_CONTRACT_RESOURCES}.
+     *
+     * @param json the manifest's text, such as {@code ContractResources.Manifest.write()}'s output
+     * @return the parsed object tree
+     * @throws IllegalArgumentException if the text is not valid JSON
+     */
+    static Map<String, Object> contractResourcesOf(String json) {
+        try {
+            return toMap(READER.readTree(json));
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException(e.getOriginalMessage(), e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> toMap(JsonNode node) {
+        return READER.convertValue(node, Map.class);
     }
 
     /**

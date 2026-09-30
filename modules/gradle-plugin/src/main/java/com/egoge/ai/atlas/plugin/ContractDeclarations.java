@@ -52,10 +52,6 @@ final class ContractDeclarations {
 
     /** Class-output-relative path of the IR the processor emits; a constant, inlined by javac. */
     static final String IR_PATH = ContractIr.RESOURCE_PATH;
-    /** Class-output-relative path of a major's OpenAPI document, for {@code String.formatted(major)}. */
-    static final String OPENAPI_PATH = "META-INF/openapi/openapi-v%d.json";
-    /** Class-output-relative path of the MCP tool specifications, generated with {@code constraints} on. */
-    static final String MCP_TOOLS_PATH = "META-INF/ai-atlas/mcp-tools.json";
 
     private static final String CLASS_SUFFIX = ".class";
     private static final int CLASS_MAGIC = 0xCAFEBABE;

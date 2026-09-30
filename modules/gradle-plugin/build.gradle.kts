@@ -74,6 +74,11 @@ dependencies {
     // in an isolated class loader, so the check runs the processor version that compiled.
     compileOnly(project(":modules:processor"))
 
+    // ClassOutputResourcesTest calls processor classes (ContractResources, ContractRelease) directly,
+    // as a plain unit test, not through the isolated worker classpath: unlike compileOnly, this makes
+    // them available at test run time too.
+    testImplementation(project(":modules:processor"))
+
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)

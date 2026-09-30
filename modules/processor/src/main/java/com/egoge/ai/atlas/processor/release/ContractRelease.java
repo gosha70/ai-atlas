@@ -77,11 +77,13 @@ public final class ContractRelease {
      * @param policy                the release policy
      * @param baseline              the accepted baseline
      * @param emittedIr             the IR the build emitted, or the empty document when it declares nothing
-     * @param openApi               the OpenAPI document of the build's major, or {@code null} when not generated
-     * @param mcpTools              the MCP tool specifications, or {@code null} when not generated
+     * @param artifacts             the class output's snapshotted artifacts ({@code
+     *                              ContractResources.snapshotted}), keyed by snapshot file name, such as
+     *                              {@code openapi-v2.json} or {@code mcp-tools.json}
+     * @param contractResourcesJson the class output's contract-resources manifest, verbatim
      */
     public record Request(String version, boolean versionTracksApiMajor, ReleasePolicy.Policy policy, Path baseline,
-                          byte[] emittedIr, byte[] openApi, byte[] mcpTools) {
+                          byte[] emittedIr, Map<String, byte[]> artifacts, String contractResourcesJson) {
     }
 
     /**
@@ -167,12 +169,7 @@ public final class ContractRelease {
         String section = ReleaseChangelog.render(version, current, previous, differences, verdict.evidence());
         Map<String, byte[]> files = new LinkedHashMap<>();
         files.put(IR_FILE, accepted);
-        if (request.openApi() != null) {
-            files.put(openApiFile(current.apiMajor()), request.openApi());
-        }
-        if (request.mcpTools() != null) {
-            files.put(MCP_TOOLS_FILE, request.mcpTools());
-        }
+        files.putAll(request.artifacts());
         files.put(DIFF_FILE, ContractGate.diffJson(previous != null ? previous.ir().apiMajor() : 0, differences)
                 .getBytes(StandardCharsets.UTF_8));
         files.put(CHANGELOG_FILE, section.getBytes(StandardCharsets.UTF_8));
@@ -180,7 +177,7 @@ public final class ContractRelease {
         files.forEach((name, bytes) -> digests.put(name, sha256(bytes)));
         ReleaseManifest manifest = new ReleaseManifest(version.toString(), current.apiMajor(),
                 ReleaseManifest.irVersionOf(acceptedJson), previous != null ? previous.version().toString() : null,
-                request.policy(), digests);
+                request.policy(), digests, ReleaseManifest.contractResourcesOf(request.contractResourcesJson()));
         files.put(MANIFEST_FILE, manifest.write().getBytes(StandardCharsets.UTF_8));
 
         Files.createDirectories(releases);
