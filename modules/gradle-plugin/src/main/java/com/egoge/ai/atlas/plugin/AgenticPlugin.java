@@ -28,6 +28,7 @@ import org.gradle.process.CommandLineArgumentProvider;
 import org.gradle.workers.WorkerExecutionException;
 import org.gradle.workers.WorkerExecutor;
 
+import javax.inject.Inject;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -73,6 +74,13 @@ public class AgenticPlugin implements Plugin<Project> {
     private static final String CONTRACT_OPTION_PREFIX = "-Aai.atlas.contract.";
     private static final String PROCESSOR_MODULE = "ai-atlas-processor";
     private static final Pattern PROCESSOR_JAR = Pattern.compile(PROCESSOR_MODULE + "-(.+)\\.jar");
+
+    private final WorkerExecutor workerExecutor;
+
+    @Inject
+    public AgenticPlugin(WorkerExecutor workerExecutor) {
+        this.workerExecutor = workerExecutor;
+    }
 
     @Override
     public void apply(Project project) {
@@ -165,6 +173,11 @@ public class AgenticPlugin implements Plugin<Project> {
             task.getProcessorVersion().set(processorVersion);
         });
         tasks.named(JavaPlugin.CLASSES_TASK_NAME).configure(task -> task.dependsOn(check));
+
+        // compileJava.doLast (C3a decision): writes the empty contract itself when nothing declares, so
+        // its class output is up to date and cacheable like any other compileJava output.
+        compileJava.configure(task -> task.doLast(
+                new EmptyContractResourcesWriter(workerExecutor, processorPath, processorVersion)));
 
         // The sources compiled as compileJava compiles them, less the contract options, so accepting
         // works while the gate fails. Everything is read from compileJava lazily, when the task graph is
