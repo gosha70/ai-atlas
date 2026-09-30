@@ -64,10 +64,18 @@ class PageableBindingCheckTest {
         assertThat(PageableBindingCheck.problems(resolver(r -> r.setPrefix("q_"))))
                 .anySatisfy(p -> assertThat(p).contains("as page N"))
                 .anySatisfy(p -> assertThat(p).contains("as size N"));
+    }
+
+    @Test
+    void aRenamedSortIsOnlyAWarningAsOperationsWithoutSortableFieldsDropSort() throws IOException {
         SortHandlerMethodArgumentResolver sort = new SortHandlerMethodArgumentResolver();
-        sort.setSortParameter("order");
-        assertThat(PageableBindingCheck.problems(new PageableHandlerMethodArgumentResolver(sort)))
-                .singleElement().asString().contains("descending sort on id");
+        sort.setSortParameter("orderBy");
+        PageableHandlerMethodArgumentResolver resolver = new PageableHandlerMethodArgumentResolver(sort);
+
+        assertThat(PageableBindingCheck.problems(resolver)).isEmpty();
+        assertThat(PageableBindingCheck.sortProblem(resolver)).contains("descending sort on id");
+        assertThat(PageableBindingCheck.sortProblem(new PageableHandlerMethodArgumentResolver())).isNull();
+        runner(RenamedSort.class).withClassLoader(irLoader()).run(context -> assertThat(context).hasNotFailed());
     }
 
     @Test
@@ -117,6 +125,16 @@ class PageableBindingCheckTest {
         @Bean
         PageableHandlerMethodArgumentResolver pageableResolver() {
             return new PageableHandlerMethodArgumentResolver();
+        }
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class RenamedSort {
+        @Bean
+        PageableHandlerMethodArgumentResolver pageableResolver() {
+            SortHandlerMethodArgumentResolver sort = new SortHandlerMethodArgumentResolver();
+            sort.setSortParameter("orderBy");
+            return new PageableHandlerMethodArgumentResolver(sort);
         }
     }
 

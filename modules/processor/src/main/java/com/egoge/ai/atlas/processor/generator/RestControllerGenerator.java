@@ -261,8 +261,6 @@ public final class RestControllerGenerator {
         }
     }
 
-    /** A name for the {@code WebRequest} parameter that no service parameter takes. */
-
     private static String buildCallArgs(MethodModel method) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < method.parameters().size(); i++) {

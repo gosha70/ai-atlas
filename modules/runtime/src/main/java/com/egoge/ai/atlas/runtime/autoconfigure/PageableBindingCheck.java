@@ -5,6 +5,8 @@ package com.egoge.ai.atlas.runtime.autoconfigure;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -45,6 +47,10 @@ import java.util.stream.Collectors;
  * {@code page=1&size=1} and {@code page=2&size=2}, each with {@code sort=id,desc}, and compares the
  * result. It runs only when a Contract IR on the class path lists an API operation with a
  * {@code Pageable} parameter, so an application without ai-atlas paging is never affected.
+ *
+ * <p>A renamed or prefixed {@code sort} parameter only logs a WARNING: the generated controller
+ * reads {@code sort} only for an operation declaring sortable fields, and drops it otherwise, and
+ * the Contract IR does not record which operations declare them.
  */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnClass(name = PageableBindingCheck.RESOLVER)
@@ -53,6 +59,7 @@ public class PageableBindingCheck {
     static final String RESOLVER = "org.springframework.data.web.PageableHandlerMethodArgumentResolver";
     static final String IR_RESOURCE = "META-INF/ai-atlas/api.ir.json";
 
+    private static final Logger log = LoggerFactory.getLogger(PageableBindingCheck.class);
     private static final String PREFIX = "[ai-atlas] ";
     private static final String PAGEABLE = "org.springframework.data.domain.Pageable";
     private static final String API_CHANNEL = "API";
@@ -72,28 +79,32 @@ public class PageableBindingCheck {
             if (operations.isEmpty()) {
                 return;
             }
+            String sortProblem = sortProblem(resolver);
+            if (sortProblem != null) {
+                log.warn(PREFIX + "The application's Spring Data paging resolver {}. An operation of {} that"
+                        + " declares sortable fields would then ignore the documented sort parameter; keep"
+                        + " spring.data.web.sort.sort-parameter=sort for those.", sortProblem, operations);
+            }
             Set<String> problems = problems(resolver);
             if (!problems.isEmpty()) {
                 throw new IllegalStateException(PREFIX + "The generated REST endpoints of " + operations
                         + " publish zero-based page, size and sort query parameters without a prefix, but the"
                         + " application's Spring Data paging resolver " + String.join("; ", problems)
                         + ". Keep spring.data.web.pageable.page-parameter=page, size-parameter=size, no prefix,"
-                        + " one-indexed-parameters=false and spring.data.web.sort.sort-parameter=sort, and no"
-                        + " PageableHandlerMethodArgumentResolverCustomizer changing them");
+                        + " one-indexed-parameters=false, and no PageableHandlerMethodArgumentResolverCustomizer"
+                        + " changing them");
             }
         };
     }
 
     /**
-     * How the resolver departs from zero-based {@code page}, {@code size} and {@code sort} without a
-     * prefix, each described once; empty when it binds them as published.
+     * How the resolver departs from zero-based {@code page} and {@code size} without a prefix, each
+     * described once; empty when it binds them as published.
      */
     static Set<String> problems(PageableHandlerMethodArgumentResolver resolver) {
-        MethodParameter parameter = probeParameter();
         Set<String> problems = new LinkedHashSet<>();
         for (int n : PROBES) {
-            Pageable pageable = resolver.resolveArgument(parameter, null, request(Map.of(
-                    "page", String.valueOf(n), "size", String.valueOf(n), "sort", SORT_PROPERTY + ",desc")), null);
+            Pageable pageable = probe(resolver, n);
             if (pageable.isUnpaged() || pageable.getPageNumber() != n) {
                 problems.add("does not read ?page=N as page N (a renamed or prefixed page parameter, or"
                         + " one-indexed pages)");
@@ -102,13 +113,26 @@ public class PageableBindingCheck {
                 problems.add("does not read ?size=N as size N (a renamed or prefixed size parameter, or a"
                         + " maximum page size below 2)");
             }
-            Sort.Order order = pageable.getSort().getOrderFor(SORT_PROPERTY);
-            if (order == null || order.getDirection() != Sort.Direction.DESC) {
-                problems.add("does not read ?sort=" + SORT_PROPERTY + ",desc as a descending sort on "
-                        + SORT_PROPERTY + " (a renamed or prefixed sort parameter)");
-            }
         }
         return problems;
+    }
+
+    /** How the resolver departs from the published {@code sort} parameter, or {@code null}. */
+    static String sortProblem(PageableHandlerMethodArgumentResolver resolver) {
+        for (int n : PROBES) {
+            Sort.Order order = probe(resolver, n).getSort().getOrderFor(SORT_PROPERTY);
+            if (order == null || order.getDirection() != Sort.Direction.DESC) {
+                return "does not read ?sort=" + SORT_PROPERTY + ",desc as a descending sort on " + SORT_PROPERTY
+                        + " (a renamed or prefixed sort parameter)";
+            }
+        }
+        return null;
+    }
+
+    /** Resolves {@code ?page=n&size=n&sort=id,desc} with the resolver. */
+    private static Pageable probe(PageableHandlerMethodArgumentResolver resolver, int n) {
+        return resolver.resolveArgument(probeParameter(), null, request(Map.of(
+                "page", String.valueOf(n), "size", String.valueOf(n), "sort", SORT_PROPERTY + ",desc")), null);
     }
 
     /** The ids of the API operations taking a {@code Pageable}, over every Contract IR on the class path. */

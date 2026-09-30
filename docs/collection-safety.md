@@ -91,8 +91,10 @@ They never clamp one into range.
   names OpenAPI publishes, zero-based. The runtime enforces that at startup: when a Contract IR on
   the class path lists an API operation taking a `Pageable`, and the application's Spring Data paging
   resolver would bind it otherwise, startup fails, naming the operations. That covers a renamed
-  `page`, `size` or `sort` parameter, a prefix and one-indexed pages, whether set through
-  `spring.data.web.*` properties or a `PageableHandlerMethodArgumentResolverCustomizer`. The check
+  `page` or `size` parameter, a prefix and one-indexed pages, whether set through
+  `spring.data.web.*` properties or a `PageableHandlerMethodArgumentResolverCustomizer`. A renamed
+  `sort` parameter only logs a warning: the controller reads `sort` only for an operation declaring
+  sortable fields, and drops it otherwise. The check
   resolves probe requests with the application's own resolver, so it sees the effective
   configuration; an application without such an operation is never affected.
 
