@@ -120,6 +120,72 @@ class ReleaseResourcesFunctionalTest {
         assertReleaseNeverWrites("META-INF/openapi/openapi-v99.json", "clean");
     }
 
+    @Test
+    void anotherProcessorsResourceIsIgnored() throws IOException {
+        append("""
+
+                tasks.named<JavaCompile>("compileJava") {
+                    val destDir = destinationDirectory
+                    doLast {
+                        val foreign = File(destDir.get().asFile, "META-INF/foo/bar.json")
+                        foreign.parentFile.mkdirs()
+                        foreign.writeText("{}\\n")
+                    }
+                }
+                """);
+        runner("atlasAccept").build();
+
+        BuildResult result = runner("agenticRelease", "-Pversion=1.0.0").build();
+
+        assertThat(result.task(":agenticRelease").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+        assertThat(new File(projectDir, "build/classes/java/main/META-INF/foo/bar.json")).isFile();
+    }
+
+    @Test
+    void anEmptyContractReleases() throws IOException {
+        write(ORDER, "package test;\n\npublic class Order {\n}\n");
+        write(SERVICE, "package test;\n\npublic class OrderService {\n}\n");
+        runner("atlasAccept").build();
+
+        BuildResult result = runner("agenticRelease", "-Pversion=1.0.0").build();
+
+        assertThat(result.task(":agenticRelease").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+        Path dir = releaseDir("1.0.0");
+        Path emittedIr = projectDir.toPath().resolve("build/classes/java/main/META-INF/ai-atlas/api.ir.json");
+        assertThat(Files.readAllBytes(dir.resolve("api.ir.json"))).isEqualTo(Files.readAllBytes(emittedIr));
+        assertThat(Files.readString(dir.resolve("release.json"))).contains("\"contract\": \"empty\"");
+    }
+
+    /**
+     * Distinct from {@link #anUnlistedReservedFilePlantedAfterCompileFailsTheReleaseAndChangesNothing}:
+     * there, the class output carries a {@code "declared"} manifest; here it carries the {@code
+     * "empty"} one {@link com.egoge.ai.atlas.plugin.EmptyContractResourcesAction} writes, so this
+     * pins that {@code ClassOutputResources} rejects an unlisted reserved file against that manifest
+     * shape too (OQ-2 default).
+     */
+    @Test
+    void anEmptyContractWithALeftoverReservedFileFailsTheRelease() throws IOException {
+        write(ORDER, "package test;\n\npublic class Order {\n}\n");
+        write(SERVICE, "package test;\n\npublic class OrderService {\n}\n");
+        append("""
+
+                tasks.named<JavaCompile>("compileJava") {
+                    val destDir = destinationDirectory
+                    doLast {
+                        val stale = File(destDir.get().asFile, "META-INF/openapi/openapi-v1.json")
+                        stale.parentFile.mkdirs()
+                        stale.writeText("{}\\n")
+                    }
+                }
+                """);
+        runner("atlasAccept").build();
+
+        BuildResult result = runner("agenticRelease", "-Pversion=1.0.0").buildAndFail();
+
+        assertThat(result.getOutput()).contains("openapi-v1.json", "clean");
+        assertThat(releaseDir("1.0.0")).doesNotExist();
+    }
+
     /**
      * Compiles (with the build script's tamper already wired into {@code compileJava.doLast}), so
      * the tampered class output is stable and {@code UP-TO-DATE} on a second build; then runs {@code
@@ -154,6 +220,10 @@ class ReleaseResourcesFunctionalTest {
         assertThat(releaseDir).doesNotExist();
         // (4) the aggregate changelog is still absent.
         assertThat(changelog).doesNotExist();
+    }
+
+    private Path releaseDir(String version) {
+        return projectDir.toPath().resolve(".atlas/releases/" + version);
     }
 
     /** Every regular file under {@code dir}, concatenated in a stable (sorted-path) order. */
