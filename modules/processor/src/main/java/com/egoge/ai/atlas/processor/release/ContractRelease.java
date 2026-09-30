@@ -8,7 +8,6 @@ import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.contract.EmptyContract;
 import com.egoge.ai.atlas.processor.contract.IrJson;
 import com.egoge.ai.atlas.processor.contract.ReleaseComparison;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,14 +17,11 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
 import java.util.stream.Stream;
 
 /**
@@ -60,7 +56,6 @@ public final class ContractRelease {
     public static final String MCP_TOOLS_FILE = "mcp-tools.json";
 
     private static final String PREFIX = "[ai-atlas] ";
-    private static final String RESTORE = " Released contracts are immutable: restore it from version control.";
 
     private ContractRelease() {
     }
@@ -135,7 +130,7 @@ public final class ContractRelease {
         String acceptedJson = new String(accepted, StandardCharsets.UTF_8);
         ContractIr current = parse(acceptedJson, request.baseline().toString());
 
-        List<ReleasePolicy.Release> history = new ArrayList<>(history(releases));
+        List<ReleasePolicy.Release> history = new ArrayList<>(ReleaseHistory.history(releases));
         ReleasePolicy.Release previous = history.isEmpty() ? null : history.get(history.size() - 1);
         if (previous != null && version.compareTo(previous.version()) <= 0) {
             throw new ReleaseException("Version " + version + " is not above the latest release " + previous.version()
@@ -200,33 +195,6 @@ public final class ContractRelease {
     }
 
     /**
-     * Every release in {@code releases}, oldest first, each verified: its manifest names this
-     * release, every file it records has the recorded digest, and it holds no other file. A
-     * directory whose name is not {@code MAJOR.MINOR.PATCH} is not a release and is skipped.
-     *
-     * @param releases the directory of releases, which may not exist
-     * @return the releases, with their IR migrated in memory
-     * @throws ReleaseException if a release fails verification
-     * @throws IOException      if a file cannot be read
-     */
-    public static List<ReleasePolicy.Release> history(Path releases) throws ReleaseException, IOException {
-        List<ReleasePolicy.Release> result = new ArrayList<>();
-        for (Path dir : releaseDirs(releases)) {
-            ReleaseVersion version = ReleaseVersion.parse(dir.getFileName().toString());
-            ReleaseManifest manifest = verify(dir, version);
-            ContractIr ir = parse(Files.readString(dir.resolve(IR_FILE), StandardCharsets.UTF_8),
-                    dir.resolve(IR_FILE).toString());
-            if (ir.apiMajor() != manifest.apiMajor()) {
-                throw new ReleaseException("Release manifest " + dir.resolve(MANIFEST_FILE) + " records apiMajor "
-                        + manifest.apiMajor() + ", but its " + IR_FILE + " has apiMajor " + ir.apiMajor() + "."
-                        + RESTORE);
-            }
-            result.add(new ReleasePolicy.Release(version, ir));
-        }
-        return result;
-    }
-
-    /**
      * Verifies every release, and that {@code version} is released with exactly the build's IR,
      * as CI checks the version it tags.
      *
@@ -240,7 +208,7 @@ public final class ContractRelease {
     public static void checkReleased(Path releases, String version, byte[] emittedIr)
             throws ReleaseException, IOException {
         ReleaseVersion parsed = version(version);
-        history(releases);
+        ReleaseHistory.history(releases);
         Path ir = releases.resolve(parsed.toString()).resolve(IR_FILE);
         if (!Files.isRegularFile(ir)) {
             throw new ReleaseException("Version " + parsed + " is not released: there is no " + ir + ". Run"
@@ -251,23 +219,6 @@ public final class ContractRelease {
                     + ". The build does not publish the contract version " + parsed + " released: build the"
                     + " sources that were released, or release a new version.");
         }
-    }
-
-    /**
-     * The aggregate changelog: every release's section, newest first.
-     *
-     * @param releases the directory of releases, which may not exist
-     * @return the document
-     * @throws IOException if a section cannot be read
-     */
-    public static String aggregateChangelog(Path releases) throws IOException {
-        List<Path> dirs = new ArrayList<>(releaseDirs(releases));
-        Collections.reverse(dirs);
-        List<String> sections = new ArrayList<>();
-        for (Path dir : dirs) {
-            sections.add(Files.readString(dir.resolve(CHANGELOG_FILE), StandardCharsets.UTF_8));
-        }
-        return ReleaseChangelog.aggregate(sections);
     }
 
     /**
@@ -326,71 +277,13 @@ public final class ContractRelease {
         }
     }
 
-    /** The release directories, oldest version first. */
-    private static List<Path> releaseDirs(Path releases) throws IOException {
-        if (!Files.isDirectory(releases)) {
-            return List.of();
-        }
-        try (Stream<Path> entries = Files.list(releases)) {
-            return entries.filter(Files::isDirectory).filter(dir -> ReleaseVersion.matches(dir.getFileName().toString()))
-                    .sorted(Comparator.comparing(dir -> ReleaseVersion.parse(dir.getFileName().toString())))
-                    .toList();
-        }
-    }
-
-    private static ReleaseManifest verify(Path dir, ReleaseVersion version) throws ReleaseException, IOException {
-        Path manifestFile = dir.resolve(MANIFEST_FILE);
-        if (!Files.isRegularFile(manifestFile)) {
-            throw new ReleaseException("Release " + dir + " has no " + MANIFEST_FILE + ", so it cannot be verified."
-                    + RESTORE);
-        }
-        ReleaseManifest manifest;
-        try {
-            manifest = ReleaseManifest.read(Files.readString(manifestFile, StandardCharsets.UTF_8));
-        } catch (IllegalArgumentException e) {
-            throw new ReleaseException("Release manifest " + manifestFile + " cannot be read: " + e.getMessage() + "."
-                    + RESTORE);
-        }
-        if (!version.toString().equals(manifest.version())) {
-            throw new ReleaseException("Release manifest " + manifestFile + " records version " + manifest.version()
-                    + ", not " + version + "." + RESTORE);
-        }
-        for (String required : List.of(IR_FILE, CHANGELOG_FILE)) {
-            if (!manifest.digests().containsKey(required)) {
-                throw new ReleaseException("Release manifest " + manifestFile + " records no digest of " + required
-                        + "." + RESTORE);
-            }
-        }
-        Set<String> present = new TreeSet<>();
-        try (Stream<Path> files = Files.list(dir)) {
-            files.map(file -> file.getFileName().toString()).filter(name -> !name.startsWith(".")).forEach(present::add);
-        }
-        for (Map.Entry<String, String> entry : manifest.digests().entrySet()) {
-            Path file = dir.resolve(entry.getKey());
-            if (!Files.isRegularFile(file)) {
-                throw new ReleaseException("Released file " + file + " was deleted after release." + RESTORE);
-            }
-            if (!sha256(Files.readAllBytes(file)).equals(entry.getValue())) {
-                throw new ReleaseException("Released file " + file + " was modified after release: its SHA-256 is not"
-                        + " the one " + MANIFEST_FILE + " records." + RESTORE);
-            }
-        }
-        present.removeAll(manifest.digests().keySet());
-        present.remove(MANIFEST_FILE);
-        if (!present.isEmpty()) {
-            throw new ReleaseException("Release " + dir + " holds " + present + ", which " + MANIFEST_FILE
-                    + " does not record: a file was added after release. Remove it.");
-        }
-        return manifest;
-    }
-
     private static void writeChangelog(Path releases, Path changelog) throws IOException {
         Path parent = changelog.toAbsolutePath().getParent();
         if (parent != null) {
             Files.createDirectories(parent);
         }
         Path staging = changelog.resolveSibling("." + changelog.getFileName() + ".tmp");
-        Files.writeString(staging, aggregateChangelog(releases), StandardCharsets.UTF_8);
+        Files.writeString(staging, ReleaseHistory.aggregateChangelog(releases), StandardCharsets.UTF_8);
         Files.move(staging, changelog, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 

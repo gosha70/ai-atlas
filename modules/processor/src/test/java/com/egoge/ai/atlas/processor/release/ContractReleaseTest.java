@@ -278,38 +278,6 @@ class ContractReleaseTest {
     }
 
     @Test
-    void aReleasedFileEditedDeletedOrAddedFailsVerification() throws Exception {
-        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
-        Path ir = releases.resolve("1.0.0/api.ir.json");
-        String original = Files.readString(ir);
-
-        Files.writeString(ir, original.replace("\"Id\"", "\"Identifier\""));
-        assertThatThrownBy(() -> ContractRelease.history(releases))
-                .hasMessageContaining("Released file " + ir + " was modified after release")
-                .hasMessageContaining("restore it from version control");
-        assertThatThrownBy(() -> ContractRelease.release(releases, changelog,
-                request("1.1.0", accept(irJson(1, "")), null, null)))
-                .hasMessageContaining("was modified after release");
-
-        Files.delete(ir);
-        assertThatThrownBy(() -> ContractRelease.history(releases)).hasMessageContaining("was deleted after release");
-
-        Files.writeString(ir, original);
-        Files.writeString(releases.resolve("1.0.0/notes.txt"), "x");
-        assertThatThrownBy(() -> ContractRelease.history(releases))
-                .hasMessageContaining("holds [notes.txt], which release.json does not record");
-    }
-
-    @Test
-    void aManifestNamingAnotherVersionFailsVerification() throws Exception {
-        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
-        Files.move(releases.resolve("1.0.0"), releases.resolve("1.0.1"));
-
-        assertThatThrownBy(() -> ContractRelease.history(releases))
-                .hasMessageContaining("records version 1.0.0, not 1.0.1");
-    }
-
-    @Test
     void aReleaseWithAnOlderIrVersionKeepsItsBytesAndIsComparedAfterMigration() throws Exception {
         Files.createDirectories(releases.resolve("1.0.0"));
         writeRelease(releases.resolve("1.0.0"), "1.0.0", IR_VERSION_1);
@@ -318,7 +286,7 @@ class ContractReleaseTest {
                 request("1.1.0", accept(irJson(1, NOTE)), null, null));
 
         assertThat(Files.readString(releases.resolve("1.0.0/api.ir.json"))).isEqualTo(IR_VERSION_1);
-        assertThat(ContractRelease.history(releases)).hasSize(2);
+        assertThat(ReleaseHistory.history(releases)).hasSize(2);
         assertThat(outcome.changelog()).isEqualTo("""
                 ## 1.1.0 (API major 1)
 

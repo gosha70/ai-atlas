@@ -4,6 +4,7 @@
 package com.egoge.ai.atlas.plugin;
 
 import com.egoge.ai.atlas.processor.release.ContractRelease;
+import com.egoge.ai.atlas.processor.release.ReleaseHistory;
 import org.gradle.api.GradleException;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
@@ -41,7 +42,7 @@ public abstract class ReleaseCheckAction implements WorkAction<ReleaseCheckActio
                 ContractRelease.checkReleased(releases, version, ReleaseAction.emitted(parameters));
                 LOGGER.lifecycle("[ai-atlas] The build's contract is the released contract " + version + ".");
             } else {
-                int count = ContractRelease.history(releases).size();
+                int count = ReleaseHistory.history(releases).size();
                 LOGGER.info("[ai-atlas] Verified {} release(s) in {}", count, releases);
             }
         } catch (ContractRelease.ReleaseException e) {
