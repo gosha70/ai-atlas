@@ -12,8 +12,9 @@ import org.gradle.api.provider.Property;
 import javax.inject.Inject;
 
 /**
- * {@code agentic { release { … } } }: where {@code agenticRelease} writes released contracts, the
- * version {@code agenticReleaseCheck} matches the build against, and the release policy.
+ * {@code agentic { release { … } } }: where {@code agenticRelease} writes released contracts, and
+ * the release policy. {@code agenticReleaseVerify} matches the build against {@code
+ * agentic { releaseVersion } }, which CI sets with {@code -Pversion}; it has no version of its own.
  *
  * <pre>
  * agentic {
@@ -50,13 +51,6 @@ public abstract class ReleaseSpec {
      * written.
      */
     public abstract RegularFileProperty getChangelog();
-
-    /**
-     * The released version {@code agenticReleaseCheck} requires the build's contract to be, such as
-     * the version CI builds a tag of. Unset by default, and then only the releases' digests are
-     * checked. The task's {@code --release-version} option overrides it.
-     */
-    public abstract Property<String> getCheckVersion();
 
     /**
      * The git tag name template a released version is proved by (F1), with exactly one

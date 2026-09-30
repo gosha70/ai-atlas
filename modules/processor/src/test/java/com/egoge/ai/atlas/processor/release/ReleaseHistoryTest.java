@@ -16,6 +16,7 @@ import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.CONTRACT_RESO
 import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.TAG_NAME;
 import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.artifacts;
 import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.irJson;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** {@link ReleaseHistory}: verified reads of the releases {@link ContractRelease} writes. */
@@ -64,6 +65,44 @@ class ReleaseHistoryTest {
 
         assertThatThrownBy(() -> ReleaseHistory.history(releases))
                 .hasMessageContaining("records version 1.0.0, not 1.0.1");
+    }
+
+    @Test
+    void checkConsistencyPassesForAConsistentHistory() throws Exception {
+        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
+        ContractRelease.release(releases, changelog, request("1.1.0", accept(irJson(1, ReleaseFixtures.NOTE)), null,
+                null));
+
+        assertThat(ReleaseHistory.checkConsistency(releases, changelog)).isEqualTo(2);
+    }
+
+    @Test
+    void checkConsistencySucceedsSilentlyWithNoReleasesAndNoChangelog() throws Exception {
+        assertThat(ReleaseHistory.checkConsistency(releases, changelog)).isZero();
+    }
+
+    @Test
+    void aBrokenPreviousChainFailsConsistency() throws Exception {
+        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
+        ContractRelease.release(releases, changelog, request("1.1.0", accept(irJson(1, ReleaseFixtures.NOTE)), null,
+                null));
+        Path manifestFile = releases.resolve("1.1.0/release.json");
+        Files.writeString(manifestFile, Files.readString(manifestFile).replace("\"1.0.0\"", "\"0.9.0\""));
+
+        assertThatThrownBy(() -> ReleaseHistory.checkConsistency(releases, changelog))
+                .hasMessageContaining("records previous 0.9.0")
+                .hasMessageContaining("preceding release in " + releases + " is 1.0.0");
+    }
+
+    @Test
+    void anEditedChangelogFailsConsistency() throws Exception {
+        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
+
+        Files.writeString(changelog, Files.readString(changelog) + "\nHand-edited.\n");
+
+        assertThatThrownBy(() -> ReleaseHistory.checkConsistency(releases, changelog))
+                .hasMessageContaining("does not equal what the release history")
+                .hasMessageContaining("edited after release");
     }
 
     // ------------------------------------------------------------ helpers

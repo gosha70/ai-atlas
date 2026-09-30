@@ -51,8 +51,8 @@ import java.util.stream.Stream;
  * <p>Also configures IntelliJ IDEA to recognize generated source directories, and the contract
  * gate: the {@code contractBaseline} and {@code contractLocked} options of the main
  * {@code compileJava}, with the {@code constraints} option next to them, the {@value #CONTRACT_CHECK_TASK} task that {@code classes} depends on, and
- * the {@value #ACCEPT_TASK} task; and the release workflow, {@value #RELEASE_TASK} and
- * {@value #RELEASE_CHECK_TASK}, which {@code check} depends on.
+ * the {@value #ACCEPT_TASK} task; and the release workflow, {@value #RELEASE_TASK},
+ * {@value #RELEASE_HISTORY_CHECK_TASK} (part of {@code check}) and {@value #RELEASE_VERIFY_TASK}.
  */
 public class AgenticPlugin implements Plugin<Project> {
 
@@ -62,8 +62,10 @@ public class AgenticPlugin implements Plugin<Project> {
     public static final String ACCEPT_TASK = "atlasAccept";
     /** The task that releases the accepted contract as an immutable snapshot. */
     public static final String RELEASE_TASK = "agenticRelease";
-    /** The task, part of {@code check}, that verifies the released snapshots. */
-    public static final String RELEASE_CHECK_TASK = "agenticReleaseCheck";
+    /** The task, part of {@code check}, that verifies the released snapshots' internal consistency. */
+    public static final String RELEASE_HISTORY_CHECK_TASK = "agenticReleaseHistoryCheck";
+    /** The task, not part of {@code check}, that verifies the build against a tagged release. */
+    public static final String RELEASE_VERIFY_TASK = "agenticReleaseVerify";
 
     private static final String ACCEPT_COMPILE_TASK = "atlasAcceptCompile";
     static final String TASK_GROUP = "ai-atlas";

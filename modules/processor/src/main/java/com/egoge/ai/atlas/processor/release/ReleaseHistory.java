@@ -15,6 +15,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Stream;
@@ -59,6 +60,57 @@ public final class ReleaseHistory {
             result.add(new ReleasePolicy.Release(version, ir, false));
         }
         return result;
+    }
+
+    /**
+     * Verifies only the internal consistency of the committed release snapshots (E1, AC13, AC14):
+     * no git, no network. Beyond what {@link #history} already verifies (every directory against
+     * its manifest, including digests and extra or missing files), this also checks that each
+     * manifest's {@code previous} equals the preceding directory's version (the first being {@code
+     * null}), and that {@code changelog} equals {@link #aggregateChangelog} byte for byte. With no
+     * release directory and no changelog file, this succeeds silently.
+     *
+     * @param releases  the directory of releases, which may not exist
+     * @param changelog the aggregate changelog to check
+     * @return the number of releases verified
+     * @throws ReleaseException if a release fails verification, the {@code previous} chain is
+     *                          broken, or the changelog does not match
+     * @throws IOException      if a file cannot be read
+     */
+    public static int checkConsistency(Path releases, Path changelog) throws ReleaseException, IOException {
+        List<Path> dirs = releaseDirs(releases);
+        history(releases); // verifies every directory's manifest, digests, and extra/missing files
+        String previous = null;
+        for (Path dir : dirs) {
+            Path manifestFile = dir.resolve(ContractRelease.MANIFEST_FILE);
+            ReleaseManifest manifest;
+            try {
+                manifest = ReleaseManifest.read(Files.readString(manifestFile, StandardCharsets.UTF_8));
+            } catch (IllegalArgumentException e) {
+                throw new ReleaseException("Release manifest " + manifestFile + " cannot be read: " + e.getMessage()
+                        + "." + RESTORE);
+            }
+            if (!Objects.equals(previous, manifest.previous())) {
+                throw new ReleaseException("Release manifest " + manifestFile + " records previous " + manifest.previous()
+                        + ", but the preceding release in " + releases + " is " + previous + ": the previous chain"
+                        + " is broken." + RESTORE);
+            }
+            previous = manifest.version();
+        }
+        if (!dirs.isEmpty() || Files.isRegularFile(changelog)) {
+            String expected = aggregateChangelog(releases);
+            if (!Files.isRegularFile(changelog)) {
+                throw new ReleaseException("The aggregate changelog " + changelog + " is missing, but release history"
+                        + " exists under " + releases + ". Regenerate it with a release, or restore it from version"
+                        + " control.");
+            }
+            String actual = Files.readString(changelog, StandardCharsets.UTF_8);
+            if (!actual.equals(expected)) {
+                throw new ReleaseException("The aggregate changelog " + changelog + " does not equal what the release"
+                        + " history under " + releases + " would generate: it was edited after release." + RESTORE);
+            }
+        }
+        return dirs.size();
     }
 
     /**

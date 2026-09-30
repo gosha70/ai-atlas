@@ -26,8 +26,8 @@ import java.util.stream.Stream;
 
 /**
  * Releases the accepted contract as an immutable snapshot, {@code <releases>/<version>/}, and
- * verifies the snapshots already released. The engine behind the Gradle plugin's
- * {@code agenticRelease} and {@code agenticReleaseCheck}; it reads and writes only the files it is
+ * verifies a build's contract against one already released. The engine behind the Gradle plugin's
+ * {@code agenticRelease} and {@code agenticReleaseVerify}; it reads and writes only the files it is
  * given, with no network, database or model call, and writes no timestamp, host or path.
  *
  * <p>A release directory holds:

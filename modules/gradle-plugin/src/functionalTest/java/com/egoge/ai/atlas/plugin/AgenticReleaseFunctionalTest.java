@@ -26,7 +26,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * {@code agenticRelease} and {@code agenticReleaseCheck} (epic #23 §10): immutable released
+ * {@code agenticRelease} and {@code agenticReleaseHistoryCheck} (epic #23 §10): immutable released
  * contracts, their changelog and deprecation policy, and their verification in {@code check}.
  * Each release is accepted with {@code atlasAccept} first, as the task releases only the accepted
  * contract. The single-release and basic cases; the multi-release, cross-version deprecation
@@ -212,9 +212,11 @@ class AgenticReleaseFunctionalTest {
 
     @Test
     void checkVerifiesTheDigestsOfEveryRelease() throws IOException {
-        assertThat(runner("check").build().task(":agenticReleaseCheck").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+        assertThat(runner("check").build().task(":agenticReleaseHistoryCheck").getOutcome())
+                .isEqualTo(TaskOutcome.SUCCESS);
         releaseAndTag("1.0.0");
-        assertThat(runner("check").build().task(":agenticReleaseCheck").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+        assertThat(runner("check").build().task(":agenticReleaseHistoryCheck").getOutcome())
+                .isEqualTo(TaskOutcome.SUCCESS);
         Path ir = releaseDir("1.0.0").resolve("api.ir.json");
         Files.writeString(ir, Files.readString(ir).replace("\"Id\"", "\"Identifier\""));
 
@@ -224,26 +226,6 @@ class AgenticReleaseFunctionalTest {
         assertThat(result.getOutput()).contains("Released file " + ir.toRealPath() + " was modified after release",
                 "restore it from version control");
         assertThat(release("1.1.0").buildAndFail().getOutput()).isNotEmpty();
-    }
-
-    @Test
-    void checkMatchesTheBuildWithAGivenReleaseVersion() throws IOException {
-        releaseAndTag("1.0.0");
-
-        BuildResult matches = runner("check", "agenticReleaseCheck", "--release-version=1.0.0").build();
-        assertThat(matches.getOutput()).contains("The build's contract is the released contract 1.0.0.");
-
-        order(NOTE.formatted(""));
-        runner("atlasAccept").build();
-        BuildResult differs = runner("agenticReleaseCheck", "--release-version=1.0.0").buildAndFail();
-        assertThat(differs.getOutput()).contains("The contract the build emitted differs from the released contract",
-                "1.0.0" + File.separator + "api.ir.json");
-        assertThat(runner("agenticReleaseCheck", "--release-version=1.1.0").buildAndFail().getOutput())
-                .contains("Version 1.1.0 is not released");
-
-        append("agentic { release { checkVersion.set(\"1.0.0\") } }\n");
-        assertThat(runner("check").buildAndFail().getOutput())
-                .contains("The contract the build emitted differs from the released contract");
     }
 
     // ------------------------------------------------------------ helpers

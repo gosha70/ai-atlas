@@ -14,8 +14,10 @@ import org.gradle.language.base.plugins.LifecycleBasePlugin;
 
 /**
  * The release workflow's task wiring, extracted from {@link AgenticPlugin}: {@value
- * AgenticPlugin#RELEASE_TASK} snapshots the accepted contract after the gate passed, and {@value
- * AgenticPlugin#RELEASE_CHECK_TASK}, which {@code check} depends on, verifies the snapshots.
+ * AgenticPlugin#RELEASE_TASK} snapshots the accepted contract after the gate passed, {@value
+ * AgenticPlugin#RELEASE_HISTORY_CHECK_TASK}, which {@code check} depends on, verifies the
+ * snapshots' internal consistency, and {@value AgenticPlugin#RELEASE_VERIFY_TASK} verifies the
+ * build against a tagged release.
  */
 final class ReleaseTasks {
 
@@ -23,8 +25,8 @@ final class ReleaseTasks {
     }
 
     /**
-     * Registers {@value AgenticPlugin#RELEASE_TASK} and {@value AgenticPlugin#RELEASE_CHECK_TASK},
-     * and wires the latter into {@code check}.
+     * Registers {@value AgenticPlugin#RELEASE_TASK}, {@value AgenticPlugin#RELEASE_HISTORY_CHECK_TASK}
+     * (wired into {@code check}) and {@value AgenticPlugin#RELEASE_VERIFY_TASK}.
      *
      * @param project          the project
      * @param extension        the {@code agentic} extension
@@ -58,17 +60,16 @@ final class ReleaseTasks {
             task.getTagNameTemplate().set(release.getTagName());
             task.getProcessorVersion().set(processorVersion);
         });
-        TaskProvider<AgenticReleaseCheck> check = tasks.register(AgenticPlugin.RELEASE_CHECK_TASK,
-                AgenticReleaseCheck.class, task -> {
+        TaskProvider<AgenticReleaseHistoryCheck> historyCheck = tasks.register(
+                AgenticPlugin.RELEASE_HISTORY_CHECK_TASK, AgenticReleaseHistoryCheck.class, task -> {
             task.setGroup(LifecycleBasePlugin.VERIFICATION_GROUP);
-            task.setDescription("Verifies the released contracts' digests, and the build's contract against a"
-                    + " given release version.");
-            task.getClassesDirs().from(compileJava.flatMap(JavaCompile::getDestinationDirectory));
+            task.setDescription("Verifies the internal consistency of the released contracts: digests, the"
+                    + " previous chain, and the aggregate changelog. No git, no network.");
             task.getProcessorClasspath().from(processorPath);
             task.getReleasesDir().set(release.getDirectory());
-            task.getReleaseVersion().convention(release.getCheckVersion());
+            task.getChangelog().set(release.getChangelog());
             task.getProcessorVersion().set(processorVersion);
         });
-        tasks.named(LifecycleBasePlugin.CHECK_TASK_NAME).configure(task -> task.dependsOn(check));
+        tasks.named(LifecycleBasePlugin.CHECK_TASK_NAME).configure(task -> task.dependsOn(historyCheck));
     }
 }

@@ -131,9 +131,13 @@ class EmptyContractResourcesFunctionalTest {
         assertThat(checked.task(":atlasContractCheck").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
     }
 
-    /** The release check reads the class output's empty contract, at the overridden major it was released at. */
+    /**
+     * The history check's digests cover an empty contract released at an overridden major. The
+     * stronger claim, that the build's own empty contract matches this exact release, is
+     * {@code agenticReleaseVerify}'s job (E2/E3), not the git-free history check's.
+     */
     @Test
-    void anEmptyContractReleasedAtAnOverriddenMajorPassesTheReleaseCheck() throws IOException {
+    void anEmptyContractReleasedAtAnOverriddenMajorPassesTheHistoryCheck() throws IOException {
         Files.writeString(new File(projectDir, "build.gradle.kts").toPath(), """
 
                 tasks.named<JavaCompile>("compileJava") {
@@ -143,9 +147,9 @@ class EmptyContractResourcesFunctionalTest {
         run("atlasAccept").build();
         run("classes", "agenticRelease", "-Pversion=2.0.0").build();
 
-        BuildResult checked = run("agenticReleaseCheck", "--release-version=2.0.0").build();
+        BuildResult checked = run("agenticReleaseHistoryCheck").build();
 
-        assertThat(checked.getOutput()).contains("The build's contract is the released contract 2.0.0.");
+        assertThat(checked.task(":agenticReleaseHistoryCheck").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
     }
 
     @Test
