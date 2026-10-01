@@ -12,8 +12,8 @@ a release inspects, channel-aware deprecation credit restricted to tag-proved re
 between an offline internal-consistency check (`agenticReleaseHistoryCheck`, under `check`) and a
 git-aware tag verification (`agenticReleaseVerify`, for the CI tag build).
 
-See [`specs/release-workflow/spec.md`](spec.md) for the full acceptance criteria and the owner's four
-rounds of decisions; [`plan.md`](plan.md) for the design and gap analysis; [`tasks.md`](tasks.md) for
+See [`specs/release-workflow/spec.md`](https://github.com/gosha70/ai-atlas/blob/feature/release-workflow/specs/release-workflow/spec.md) for the full acceptance criteria and the owner's four
+rounds of decisions; [`plan.md`](https://github.com/gosha70/ai-atlas/blob/feature/release-workflow/specs/release-workflow/plan.md) for the design and gap analysis; [`tasks.md`](https://github.com/gosha70/ai-atlas/blob/feature/release-workflow/specs/release-workflow/tasks.md) for
 the task breakdown this PR followed.
 
 ## Scope
@@ -78,13 +78,15 @@ for the authoritative list — abbreviated here by phase.)
 - **Phase B — channel-aware credit**: `4a50513` (B1, published-only, channel-aware evidence),
   `1f52f17` (B2, `policy { }` rename), `78835ee` (B3, comparison coverage per release's own major).
 - **Phase C — the contract-resources manifest**: `7c04a78` (C1, reserved paths/manifest format),
-  `e9a5d37` (C2, processor writes `contract-resources.json`), `8041f02`/`dbfaf2e` (C3a/C3b, empty
-  contract from `compileJava`), `468ba98` (empty-contract linkage-failure surfaces from `compileJava`,
-  not `atlasContractCheck`), `af13fdb`/`4c34b36` (C4, the release validates, never writes, the
-  manifest), `18f99a3`/`c8431e5` (C5/C6, canonical equality, resource functional tests),
+  `e9a5d37` (C2, processor writes `contract-resources.json`), `8041f02` (C3a, spike decision recorded
+  in `plan.md`), `dbfaf2e` (C3b, empty contract from `compileJava`), `468ba98` (empty-contract linkage-failure surfaces from `compileJava`,
+  not `atlasContractCheck`), `af13fdb` (C4, the release validates, never writes, the
+  manifest), `4c34b36` (the manifest records the IR's digest), `18f99a3`/`c8431e5` (C5/C6, canonical equality, resource functional tests),
   `626cdf8`/`9d283f1` (the compile/accept-vs-release two-path split, owner-corrected),
-  `878db54`/`cd8867e`/`b4dbeb3`/`c34277f` (the dependency-boundary fixes: no task dependency that
-  could regenerate what a release validates), `ff609ba`.
+  `878db54`/`cd8867e` (the dependency boundary: no task dependency that could regenerate what a
+  release validates), `b4dbeb3`/`c34277f`/`ff609ba` (PR review fixes: the snapshot keeps the
+  baseline's IR bytes, the empty contract follows an overridden API major, the release check reads
+  the class output's empty contract).
 - **Phase D — tags, proof, pending, history**: `3e3ee70` (D1, `TagName`), `a32c95b` (D2,
   `GitRepository`, offline read-only shell-out), `a08676a` (D3, `PublishedHistory`), `2fe87cf` (D5,
   functional tests migrated to tagged history, landed before D4 per the dependency order),
@@ -130,8 +132,9 @@ for the authoritative list — abbreviated here by phase.)
 
 - CI result (all four builds): pending the push of this range; every earlier phase's head
   (`6571965`, `caf2d40`, `95cd3a4`, `32b5423`) passed all four builds (ubuntu/macOS × JDK 17/21).
-- Origin alignment: `CCT_SPECS_DIR=specs bash scripts/check-origin-alignment.sh release-workflow`
-  (code-copilot-team script) exits **0**: aligned, high, from the record committed in this branch,
+- Origin alignment: `CCT_SPECS_DIR=specs bash <code-copilot-team>/scripts/check-origin-alignment.sh
+  release-workflow`, run from this repository's root with the script from the code-copilot-team
+  repository, exits **0**: aligned, high, from the record committed in this branch,
   `specs/release-workflow/origin-alignment-2026-10-01-0803.md`, which lists the additions not yet
   recorded as owner decisions.
 - Review: each phase's commit range (A–G) was reviewed before it was pushed.
