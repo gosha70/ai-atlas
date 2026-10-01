@@ -1,7 +1,9 @@
 /*
  * Copyright (c) 2026 egoge.com. All rights reserved.
  */
-package com.egoge.ai.atlas.processor.release;
+package com.egoge.ai.atlas.plugin;
+
+import com.egoge.ai.atlas.processor.release.ReleasePolicy;
 
 import com.egoge.ai.atlas.processor.contract.ContractIr;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,18 +21,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.CONTRACT_RESOURCES_JSON;
-import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.TAG_NAME;
-import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.NOTE;
-import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.irJson;
+import static com.egoge.ai.atlas.plugin.ReleaseFixtures.CONTRACT_RESOURCES_JSON;
+import static com.egoge.ai.atlas.plugin.ReleaseFixtures.TAG_NAME;
+import static com.egoge.ai.atlas.plugin.ReleaseFixtures.NOTE;
+import static com.egoge.ai.atlas.plugin.ReleaseFixtures.irJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * {@link ContractRelease}: C5's canonical, not byte, equality between the build's emitted IR and
+ * {@link ReleaseSnapshots}: C5's canonical, not byte, equality between the build's emitted IR and
  * the accepted baseline.
  */
-class ContractReleaseEqualityTest {
+class ReleaseSnapshotsEqualityTest {
 
     /**
      * An {@code irVersion} 3 baseline of {@code Order} with {@code id}, and {@code find}, at major 1:
@@ -140,8 +142,8 @@ class ContractReleaseEqualityTest {
         Files.writeString(baseline, IR_VERSION_3, StandardCharsets.UTF_8);
         byte[] emitted = irJson(1, "").getBytes(StandardCharsets.UTF_8);
 
-        ContractRelease.Outcome outcome = ContractRelease.release(releases, changelog,
-                new ContractRelease.Request("1.0.0", false, ReleasePolicy.Policy.DEFAULT, baseline, emitted,
+        ReleaseSnapshots.Outcome outcome = ReleaseSnapshots.release(releases, changelog,
+                new ReleaseSnapshots.Request("1.0.0", false, ReleasePolicy.Policy.DEFAULT, baseline, emitted,
                         Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of()));
 
         assertThat(outcome.directory()).isEqualTo(releases.resolve("1.0.0"));
@@ -158,10 +160,10 @@ class ContractReleaseEqualityTest {
         Files.writeString(baseline, IR_VERSION_3, StandardCharsets.UTF_8);
         byte[] emitted = irJson(1, NOTE).getBytes(StandardCharsets.UTF_8);
 
-        assertThatThrownBy(() -> ContractRelease.release(releases, changelog,
-                new ContractRelease.Request("1.0.0", false, ReleasePolicy.Policy.DEFAULT, baseline, emitted,
+        assertThatThrownBy(() -> ReleaseSnapshots.release(releases, changelog,
+                new ReleaseSnapshots.Request("1.0.0", false, ReleasePolicy.Policy.DEFAULT, baseline, emitted,
                         Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of())))
-                .isInstanceOf(ContractRelease.ReleaseException.class)
+                .isInstanceOf(ReleaseSnapshots.ReleaseException.class)
                 .hasMessageContaining("The contract the build emitted differs from the baseline " + baseline)
                 .hasMessageContaining("run atlasAccept, then release");
         assertThat(releases).doesNotExist();

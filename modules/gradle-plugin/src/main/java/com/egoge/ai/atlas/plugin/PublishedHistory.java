@@ -3,7 +3,6 @@
  */
 package com.egoge.ai.atlas.plugin;
 
-import com.egoge.ai.atlas.processor.release.ContractRelease;
 import com.egoge.ai.atlas.processor.release.ReleaseManifest;
 import com.egoge.ai.atlas.processor.release.ReleaseVersion;
 import org.gradle.api.GradleException;
@@ -35,8 +34,8 @@ final class PublishedHistory {
     private static final String PREFIX = "[ai-atlas] ";
     private static final String FETCH_REMEDY = "Fetch tags and full history, e.g. actions/checkout with"
             + " fetch-depth: 0 and fetch-tags: true.";
-    private static final String RELEASE_JSON = ContractRelease.MANIFEST_FILE;
-    private static final String IR_JSON = ContractRelease.IR_FILE;
+    private static final String RELEASE_JSON = ReleaseSnapshots.MANIFEST_FILE;
+    private static final String IR_JSON = ReleaseSnapshots.IR_FILE;
 
     private PublishedHistory() {
     }
@@ -163,7 +162,7 @@ final class PublishedHistory {
             throw fail("Tag " + tagName + "'s " + releaseJsonPath + " cannot be read: " + e.getMessage());
         }
         String expectedDigest = taggedManifest.digests().get(IR_JSON);
-        String actualDigest = ContractRelease.sha256(taggedIrBytes);
+        String actualDigest = ReleaseSnapshots.sha256(taggedIrBytes);
         if (expectedDigest == null || !expectedDigest.equals(actualDigest)) {
             throw fail("Tag " + tagName + "'s " + irPath + " does not match the digest its own " + releaseJsonPath
                     + " records: the tagged commit's snapshot is internally inconsistent.");

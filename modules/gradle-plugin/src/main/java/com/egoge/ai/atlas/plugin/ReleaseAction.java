@@ -3,7 +3,6 @@
  */
 package com.egoge.ai.atlas.plugin;
 
-import com.egoge.ai.atlas.processor.release.ContractRelease;
 import com.egoge.ai.atlas.processor.release.ReleasePolicy;
 import com.egoge.ai.atlas.processor.release.ReleaseVersion;
 import org.gradle.api.GradleException;
@@ -21,7 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Releases the accepted contract through the processor's {@link ContractRelease}. Loaded from the
+ * Releases the accepted contract through the processor's {@link ReleaseSnapshots}. Loaded from the
  * project's {@code annotationProcessor} classpath in an isolated class loader, like
  * {@link AcceptAction}, so the comparison, the policy and the IR reader are those of the processor
  * that compiled.
@@ -96,21 +95,21 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
             String releasesPrefix = repository ? git.releasesPrefix(releases) : "";
             Path changelog = parameters.getChangelog().get().getAsFile().toPath();
             if (repository) {
-                requireNoEolConversion(git, releases.resolve(version).resolve(ContractRelease.MANIFEST_FILE),
+                requireNoEolConversion(git, releases.resolve(version).resolve(ReleaseSnapshots.MANIFEST_FILE),
                         changelog, releasesPrefix);
             }
             PublishedHistory.Verdict verdict = PublishedHistory.verify(releases, releasesPrefix, tagName, git);
             ClassOutputResources.Result resources =
                     ClassOutputResources.validate(parameters.getClassesDirs().getFiles());
-            ContractRelease.Outcome outcome = ContractRelease.release(releases,
-                    changelog, new ContractRelease.Request(version,
+            ReleaseSnapshots.Outcome outcome = ReleaseSnapshots.release(releases,
+                    changelog, new ReleaseSnapshots.Request(version,
                             parameters.getVersionTracksApiMajor().get(), policy,
                             parameters.getBaseline().get().getAsFile().toPath(),
-                            resources.artifacts().get(ContractRelease.IR_FILE), resources.artifacts(),
+                            resources.artifacts().get(ReleaseSnapshots.IR_FILE), resources.artifacts(),
                             resources.contractResourcesJson(), resolvedTagName, verdict.published()));
             LOGGER.lifecycle("[ai-atlas] Released contract " + outcome.version() + " (API major " + outcome.apiMajor()
                     + ") to " + outcome.directory() + System.lineSeparator() + outcome.changelog());
-        } catch (ContractRelease.ReleaseException e) {
+        } catch (ReleaseSnapshots.ReleaseException e) {
             throw new GradleException(e.getMessage(), e);
         } catch (IOException e) {
             throw new GradleException("[ai-atlas] agenticRelease failed: " + e.getMessage(), e);

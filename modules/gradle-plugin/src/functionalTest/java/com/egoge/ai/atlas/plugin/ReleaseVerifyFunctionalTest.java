@@ -3,7 +3,6 @@
  */
 package com.egoge.ai.atlas.plugin;
 
-import com.egoge.ai.atlas.processor.release.ContractRelease;
 import com.egoge.ai.atlas.processor.release.ReleaseManifest;
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.GradleRunner;
@@ -18,6 +17,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -244,10 +246,23 @@ class ReleaseVerifyFunctionalTest {
         Files.writeString(ir, rewritten);
         ReleaseManifest original = ReleaseManifest.read(Files.readString(manifestFile));
         Map<String, String> digests = new TreeMap<>(original.digests());
-        digests.put("api.ir.json", ContractRelease.sha256(rewritten.getBytes(StandardCharsets.UTF_8)));
+        digests.put("api.ir.json", sha256(rewritten.getBytes(StandardCharsets.UTF_8)));
         Files.writeString(manifestFile, new ReleaseManifest(original.version(), original.apiMajor(),
                 original.irVersion(), original.previous(), original.tagName(), original.policy(), digests,
                 original.contractResources()).write());
+    }
+
+    /**
+     * The lowercase hexadecimal SHA-256 of {@code bytes}: this functional test runs the plugin as a
+     * consumer would, through TestKit, so it never references the plugin's own internal
+     * {@code ReleaseSnapshots}, which computes release.json's digests the same way.
+     */
+    private static String sha256(byte[] bytes) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
     }
 
     private void order(String members) throws IOException {

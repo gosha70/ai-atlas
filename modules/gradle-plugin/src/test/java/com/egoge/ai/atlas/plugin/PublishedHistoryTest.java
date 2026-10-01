@@ -3,7 +3,6 @@
  */
 package com.egoge.ai.atlas.plugin;
 
-import com.egoge.ai.atlas.processor.release.ContractRelease;
 import com.egoge.ai.atlas.processor.release.ReleaseManifest;
 import com.egoge.ai.atlas.processor.release.ReleasePolicy;
 import com.egoge.ai.atlas.processor.release.ReleaseVersion;
@@ -203,7 +202,7 @@ class PublishedHistoryTest {
         Files.writeString(dir.resolve("api.ir.json"), IR, StandardCharsets.UTF_8);
         byte[] irBytes = IR.getBytes(StandardCharsets.UTF_8);
         ReleaseManifest manifest = new ReleaseManifest(version, 1, 1, null, tagName, ReleasePolicy.Policy.DEFAULT,
-                Map.of("api.ir.json", ContractRelease.sha256(irBytes)), Map.of("contract", "empty"));
+                Map.of("api.ir.json", ReleaseSnapshots.sha256(irBytes)), Map.of("contract", "empty"));
         Files.writeString(dir.resolve("release.json"), manifest.write(), StandardCharsets.UTF_8);
     }
 

@@ -1,13 +1,17 @@
 /*
  * Copyright (c) 2026 egoge.com. All rights reserved.
  */
-package com.egoge.ai.atlas.processor.release;
+package com.egoge.ai.atlas.plugin;
 
 import com.egoge.ai.atlas.processor.contract.ContractGate;
 import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.contract.EmptyContract;
 import com.egoge.ai.atlas.processor.contract.IrJson;
 import com.egoge.ai.atlas.processor.contract.ReleaseComparison;
+import com.egoge.ai.atlas.processor.release.ReleaseChangelog;
+import com.egoge.ai.atlas.processor.release.ReleaseManifest;
+import com.egoge.ai.atlas.processor.release.ReleasePolicy;
+import com.egoge.ai.atlas.processor.release.ReleaseVersion;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -45,7 +49,7 @@ import java.util.stream.Stream;
  * Each release keeps the {@code irVersion} it was written with; {@link IrJson#read} migrates an
  * older one in memory, so released files never change when ai-atlas is upgraded.
  */
-public final class ContractRelease {
+public final class ReleaseSnapshots {
 
     /** The released Contract IR, byte-identical to the accepted baseline. */
     public static final String IR_FILE = "api.ir.json";
@@ -60,7 +64,7 @@ public final class ContractRelease {
 
     private static final String PREFIX = "[ai-atlas] ";
 
-    private ContractRelease() {
+    private ReleaseSnapshots() {
     }
 
     /** A release that cannot be made, or a released snapshot that fails verification. */
@@ -149,7 +153,7 @@ public final class ContractRelease {
         String acceptedJson = new String(accepted, StandardCharsets.UTF_8);
         ContractIr current = parse(acceptedJson, request.baseline().toString());
 
-        List<ReleasePolicy.Release> history = published(ReleaseHistory.history(releases), request.published());
+        List<ReleasePolicy.Release> history = published(ReleaseSnapshotHistory.history(releases), request.published());
         if (!history.isEmpty() && !history.get(history.size() - 1).published()) {
             ReleasePolicy.Release pending = history.get(history.size() - 1);
             throw new ReleaseException("Release " + pending.version() + " is pending: tag its commit as "
@@ -229,7 +233,7 @@ public final class ContractRelease {
      *
      * @param releases              the directory of releases
      * @param changelog             the aggregate changelog, checked by {@link
-     *                              ReleaseHistory#checkConsistency}
+     *                              ReleaseSnapshotHistory#checkConsistency}
      * @param version               the version the build claims to be, {@code MAJOR.MINOR.PATCH}
      * @param emittedIr             the IR the build emitted, or the empty document when it declares
      *                              nothing
@@ -245,7 +249,7 @@ public final class ContractRelease {
                                    Map<String, byte[]> artifacts, String contractResourcesJson)
             throws ReleaseException, IOException {
         ReleaseVersion parsed = version(version);
-        ReleaseHistory.checkConsistency(releases, changelog);
+        ReleaseSnapshotHistory.checkConsistency(releases, changelog);
         Path dir = releases.resolve(parsed.toString());
         if (!Files.isDirectory(dir)) {
             throw new ReleaseException("Version " + parsed + " is not released: there is no " + dir + ". Run"
@@ -310,7 +314,7 @@ public final class ContractRelease {
         try (Stream<Path> files = Files.list(dir)) {
             for (Path file : files.filter(Files::isRegularFile).toList()) {
                 String name = file.getFileName().toString();
-                if (ReleaseHistory.isReleaseFile(name) && !name.equals(IR_FILE) && !name.equals(MANIFEST_FILE)
+                if (ReleaseSnapshotHistory.isReleaseFile(name) && !name.equals(IR_FILE) && !name.equals(MANIFEST_FILE)
                         && !name.equals(DIFF_FILE) && !name.equals(CHANGELOG_FILE)) {
                     result.add(name);
                 }
@@ -408,7 +412,7 @@ public final class ContractRelease {
             Files.createDirectories(parent);
         }
         Path staging = changelog.resolveSibling("." + changelog.getFileName() + ".tmp");
-        Files.writeString(staging, ReleaseHistory.aggregateChangelog(releases), StandardCharsets.UTF_8);
+        Files.writeString(staging, ReleaseSnapshotHistory.aggregateChangelog(releases), StandardCharsets.UTF_8);
         Files.move(staging, changelog, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 

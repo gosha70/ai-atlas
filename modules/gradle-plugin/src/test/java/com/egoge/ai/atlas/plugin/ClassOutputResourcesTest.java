@@ -8,7 +8,6 @@ import com.egoge.ai.atlas.processor.contract.ContractResources;
 import com.egoge.ai.atlas.processor.contract.EffectiveOptions;
 import com.egoge.ai.atlas.processor.generator.McpToolsResourceGenerator;
 import com.egoge.ai.atlas.processor.generator.OpenApiGenerator;
-import com.egoge.ai.atlas.processor.release.ContractRelease;
 import org.gradle.api.GradleException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -47,7 +46,7 @@ class ClassOutputResourcesTest {
 
     @Test
     void aMissingListedArtifactFailsNamingThePath() throws IOException {
-        writeManifest(emptyManifest(Map.of(ContractIr.RESOURCE_PATH, ContractRelease.sha256(IR_BYTES))));
+        writeManifest(emptyManifest(Map.of(ContractIr.RESOURCE_PATH, ReleaseSnapshots.sha256(IR_BYTES))));
         // IR_BYTES is listed in the manifest, but never written to disk.
 
         assertThatThrownBy(() -> ClassOutputResources.validate(List.of(classOutput.toFile())))
@@ -59,7 +58,7 @@ class ClassOutputResourcesTest {
     void aDigestMismatchFailsNamingThePath() throws IOException {
         write(ContractIr.RESOURCE_PATH, IR_BYTES);
         writeManifest(emptyManifest(Map.of(ContractIr.RESOURCE_PATH,
-                ContractRelease.sha256("{\"irVersion\": 2}\n".getBytes(StandardCharsets.UTF_8)))));
+                ReleaseSnapshots.sha256("{\"irVersion\": 2}\n".getBytes(StandardCharsets.UTF_8)))));
 
         assertThatThrownBy(() -> ClassOutputResources.validate(List.of(classOutput.toFile())))
                 .isInstanceOf(GradleException.class).hasMessageContaining(ContractIr.RESOURCE_PATH)
@@ -70,7 +69,7 @@ class ClassOutputResourcesTest {
     void anUnlistedReservedFileFailsNamingThePathAndMentioningClean() throws IOException {
         write(ContractIr.RESOURCE_PATH, IR_BYTES);
         write(McpToolsResourceGenerator.RESOURCE_PATH, MCP_TOOLS_BYTES); // present, but not listed below
-        writeManifest(emptyManifest(Map.of(ContractIr.RESOURCE_PATH, ContractRelease.sha256(IR_BYTES))));
+        writeManifest(emptyManifest(Map.of(ContractIr.RESOURCE_PATH, ReleaseSnapshots.sha256(IR_BYTES))));
 
         assertThatThrownBy(() -> ClassOutputResources.validate(List.of(classOutput.toFile())))
                 .isInstanceOf(GradleException.class).hasMessageContaining(McpToolsResourceGenerator.RESOURCE_PATH)
@@ -91,7 +90,7 @@ class ClassOutputResourcesTest {
     void anUnrelatedMetaInfFileIsIgnored() throws IOException {
         write(ContractIr.RESOURCE_PATH, IR_BYTES);
         write("META-INF/other/x.json", "{}\n".getBytes(StandardCharsets.UTF_8));
-        writeManifest(emptyManifest(Map.of(ContractIr.RESOURCE_PATH, ContractRelease.sha256(IR_BYTES))));
+        writeManifest(emptyManifest(Map.of(ContractIr.RESOURCE_PATH, ReleaseSnapshots.sha256(IR_BYTES))));
 
         ClassOutputResources.Result result = ClassOutputResources.validate(List.of(classOutput.toFile()));
 
@@ -105,9 +104,9 @@ class ClassOutputResourcesTest {
         write(openApiPath, OPENAPI_BYTES);
         write(McpToolsResourceGenerator.RESOURCE_PATH, MCP_TOOLS_BYTES);
         String json = writeManifest(declaredManifest(Map.of(
-                ContractIr.RESOURCE_PATH, ContractRelease.sha256(IR_BYTES),
-                openApiPath, ContractRelease.sha256(OPENAPI_BYTES),
-                McpToolsResourceGenerator.RESOURCE_PATH, ContractRelease.sha256(MCP_TOOLS_BYTES))));
+                ContractIr.RESOURCE_PATH, ReleaseSnapshots.sha256(IR_BYTES),
+                openApiPath, ReleaseSnapshots.sha256(OPENAPI_BYTES),
+                McpToolsResourceGenerator.RESOURCE_PATH, ReleaseSnapshots.sha256(MCP_TOOLS_BYTES))));
 
         ClassOutputResources.Result result = ClassOutputResources.validate(List.of(classOutput.toFile()));
 
@@ -121,7 +120,7 @@ class ClassOutputResourcesTest {
     @Test
     void itNeverWritesDeletesOrModifiesTheClassOutputWhetherItThrowsOrSucceeds() throws IOException {
         write(ContractIr.RESOURCE_PATH, IR_BYTES);
-        writeManifest(emptyManifest(Map.of(ContractIr.RESOURCE_PATH, ContractRelease.sha256(IR_BYTES))));
+        writeManifest(emptyManifest(Map.of(ContractIr.RESOURCE_PATH, ReleaseSnapshots.sha256(IR_BYTES))));
         Map<String, byte[]> before = snapshot();
 
         ClassOutputResources.validate(List.of(classOutput.toFile()));

@@ -1,7 +1,12 @@
 /*
  * Copyright (c) 2026 egoge.com. All rights reserved.
  */
-package com.egoge.ai.atlas.processor.release;
+package com.egoge.ai.atlas.plugin;
+
+import com.egoge.ai.atlas.processor.release.ReleaseChangelog;
+import com.egoge.ai.atlas.processor.release.ReleaseManifest;
+import com.egoge.ai.atlas.processor.release.ReleasePolicy;
+import com.egoge.ai.atlas.processor.release.ReleaseVersion;
 
 import com.egoge.ai.atlas.processor.contract.EmptyContract;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,17 +24,17 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 
-import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.CONTRACT_RESOURCES_JSON;
-import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.TAG_NAME;
-import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.LEGACY;
-import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.NOTE;
-import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.artifacts;
-import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.irJson;
+import static com.egoge.ai.atlas.plugin.ReleaseFixtures.CONTRACT_RESOURCES_JSON;
+import static com.egoge.ai.atlas.plugin.ReleaseFixtures.TAG_NAME;
+import static com.egoge.ai.atlas.plugin.ReleaseFixtures.LEGACY;
+import static com.egoge.ai.atlas.plugin.ReleaseFixtures.NOTE;
+import static com.egoge.ai.atlas.plugin.ReleaseFixtures.artifacts;
+import static com.egoge.ai.atlas.plugin.ReleaseFixtures.irJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** {@link ContractRelease}: immutable snapshots of the accepted contract, and their verification. */
-class ContractReleaseTest {
+/** {@link ReleaseSnapshots}: immutable snapshots of the accepted contract, and their verification. */
+class ReleaseSnapshotsTest {
 
     /** An {@code irVersion} 1 release of {@code Order} with {@code id}, and {@code find}, at major 1. */
     private static final String IR_VERSION_1 = """
@@ -130,7 +135,7 @@ class ContractReleaseTest {
     void aFirstReleaseSnapshotsTheAcceptedContract() throws Exception {
         String ir = accept(irJson(1, ""));
 
-        ContractRelease.Outcome outcome = ContractRelease.release(releases, changelog,
+        ReleaseSnapshots.Outcome outcome = ReleaseSnapshots.release(releases, changelog,
                 request("1.0.0", ir, "{\"openapi\": \"3.0.3\"}\n", "{\"tools\": []}\n"));
 
         Path release = releases.resolve("1.0.0");
@@ -147,7 +152,7 @@ class ContractReleaseTest {
         assertThat(manifest.digests()).containsOnlyKeys("CHANGELOG.md", "api.ir.json", "contract-diff.json",
                 "mcp-tools.json", "openapi-v1.json");
         assertThat(manifest.digests().get("api.ir.json"))
-                .isEqualTo(ContractRelease.sha256(ir.getBytes(StandardCharsets.UTF_8)));
+                .isEqualTo(ReleaseSnapshots.sha256(ir.getBytes(StandardCharsets.UTF_8)));
         assertThat(Files.readString(release.resolve("contract-diff.json"))).contains("\"publishedMajor\": 0",
                 "\"path\": \"field test.Order#id\"", "\"change\": \"added\"");
         assertThat(outcome.changelog()).startsWith("## 1.0.0 (API major 1)\n\nFirst release of this contract.\n");
@@ -161,30 +166,30 @@ class ContractReleaseTest {
         String ir = accept(irJson(1, ""));
         String emitted = ir + "\n";
 
-        ContractRelease.release(releases, changelog, request("1.0.0", emitted, null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", emitted, null, null));
 
         Path snapshot = releases.resolve("1.0.0/api.ir.json");
         assertThat(Files.readAllBytes(snapshot)).isEqualTo(Files.readAllBytes(baseline))
                 .isNotEqualTo(emitted.getBytes(StandardCharsets.UTF_8));
         assertThat(ReleaseManifest.read(Files.readString(releases.resolve("1.0.0/release.json"))).digests()
-                .get("api.ir.json")).isEqualTo(ContractRelease.sha256(ir.getBytes(StandardCharsets.UTF_8)));
+                .get("api.ir.json")).isEqualTo(ReleaseSnapshots.sha256(ir.getBytes(StandardCharsets.UTF_8)));
     }
 
     @Test
     void verifyBuildComparesTheBuildsIrCanonically() throws Exception {
         String ir = accept(irJson(1, ""));
-        ContractRelease.release(releases, changelog, request("1.0.0", ir, null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", ir, null, null));
 
-        ContractRelease.verifyBuild(releases, changelog, "1.0.0", (ir + "\n").getBytes(StandardCharsets.UTF_8),
+        ReleaseSnapshots.verifyBuild(releases, changelog, "1.0.0", (ir + "\n").getBytes(StandardCharsets.UTF_8),
                 artifacts(ir, null, null), CONTRACT_RESOURCES_JSON);
-        assertThatThrownBy(() -> ContractRelease.verifyBuild(releases, changelog, "1.0.0",
+        assertThatThrownBy(() -> ReleaseSnapshots.verifyBuild(releases, changelog, "1.0.0",
                 irJson(1, NOTE).getBytes(StandardCharsets.UTF_8), artifacts(irJson(1, NOTE), null, null),
                 CONTRACT_RESOURCES_JSON)).hasMessageContaining("differs from the released");
     }
 
     @Test
     void optionalFilesAreLeftOutWhenNotGenerated() throws Exception {
-        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
 
         assertThat(files(releases.resolve("1.0.0"))).containsExactly("CHANGELOG.md", "api.ir.json",
                 "contract-diff.json", "release.json");
@@ -192,12 +197,12 @@ class ContractReleaseTest {
 
     @Test
     void aReleasedVersionIsNeverOverwritten() throws Exception {
-        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
         Map<String, byte[]> before = contents(releases.resolve("1.0.0"));
         String note = accept(irJson(1, NOTE));
 
-        assertThatThrownBy(() -> ContractRelease.release(releases, changelog, request("1.0.0", note, null, null)))
-                .isInstanceOf(ContractRelease.ReleaseException.class)
+        assertThatThrownBy(() -> ReleaseSnapshots.release(releases, changelog, request("1.0.0", note, null, null)))
+                .isInstanceOf(ReleaseSnapshots.ReleaseException.class)
                 .hasMessageContaining("Version 1.0.0 is already released at")
                 .hasMessageContaining("release a new version instead");
         assertThat(contents(releases.resolve("1.0.0"))).containsOnlyKeys(before.keySet())
@@ -208,10 +213,10 @@ class ContractReleaseTest {
     void aSnapshotAndOtherVersionsAreRefused() throws Exception {
         String ir = accept(irJson(1, ""));
 
-        assertThatThrownBy(() -> ContractRelease.release(releases, changelog, request("1.0.0-SNAPSHOT", ir, null, null)))
+        assertThatThrownBy(() -> ReleaseSnapshots.release(releases, changelog, request("1.0.0-SNAPSHOT", ir, null, null)))
                 .hasMessage("[ai-atlas] Version '1.0.0-SNAPSHOT' is a SNAPSHOT, and a SNAPSHOT is never released:"
                         + " its contract can still change under the same name. Release 1.0.0 instead.");
-        assertThatThrownBy(() -> ContractRelease.release(releases, changelog, request("1.0", ir, null, null)))
+        assertThatThrownBy(() -> ReleaseSnapshots.release(releases, changelog, request("1.0", ir, null, null)))
                 .hasMessageContaining("is not a release version");
         assertThat(releases).doesNotExist();
     }
@@ -221,12 +226,12 @@ class ContractReleaseTest {
         accept(irJson(1, ""));
         byte[] emitted = irJson(1, NOTE).getBytes(StandardCharsets.UTF_8);
 
-        assertThatThrownBy(() -> ContractRelease.release(releases, changelog, new ContractRelease.Request("1.0.0",
+        assertThatThrownBy(() -> ReleaseSnapshots.release(releases, changelog, new ReleaseSnapshots.Request("1.0.0",
                 false, ReleasePolicy.Policy.DEFAULT, baseline, emitted, Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of())))
                 .hasMessageContaining("The contract the build emitted differs from the baseline " + baseline)
                 .hasMessageContaining("run atlasAccept, then release");
         Files.delete(baseline);
-        assertThatThrownBy(() -> ContractRelease.release(releases, changelog, new ContractRelease.Request("1.0.0",
+        assertThatThrownBy(() -> ReleaseSnapshots.release(releases, changelog, new ReleaseSnapshots.Request("1.0.0",
                 false, ReleasePolicy.Policy.DEFAULT, baseline, emitted, Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of())))
                 .hasMessageContaining("No contract baseline at " + baseline);
         assertThat(releases).doesNotExist();
@@ -234,12 +239,12 @@ class ContractReleaseTest {
 
     @Test
     void versionsAndMajorsNeverGoBackwards() throws Exception {
-        ContractRelease.release(releases, changelog, request("1.1.0", accept(irJson(2, "")), null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.1.0", accept(irJson(2, "")), null, null));
 
-        assertThatThrownBy(() -> ContractRelease.release(releases, changelog,
+        assertThatThrownBy(() -> ReleaseSnapshots.release(releases, changelog,
                 request("1.0.5", accept(irJson(2, NOTE)), null, null)))
                 .hasMessageContaining("Version 1.0.5 is not above the latest release 1.1.0");
-        assertThatThrownBy(() -> ContractRelease.release(releases, changelog,
+        assertThatThrownBy(() -> ReleaseSnapshots.release(releases, changelog,
                 request("1.2.0", accept(irJson(1, "")), null, null)))
                 .hasMessageContaining("The contract's apiMajor 1 is below the apiMajor 2 of the latest release 1.1.0");
     }
@@ -247,13 +252,13 @@ class ContractReleaseTest {
     @Test
     void theVersionCanBeRequiredToTrackTheApiMajor() throws Exception {
         String ir = accept(irJson(2, ""));
-        ContractRelease.Request request = new ContractRelease.Request("1.0.0", true, ReleasePolicy.Policy.DEFAULT,
+        ReleaseSnapshots.Request request = new ReleaseSnapshots.Request("1.0.0", true, ReleasePolicy.Policy.DEFAULT,
                 baseline, ir.getBytes(StandardCharsets.UTF_8), Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of());
 
-        assertThatThrownBy(() -> ContractRelease.release(releases, changelog, request))
+        assertThatThrownBy(() -> ReleaseSnapshots.release(releases, changelog, request))
                 .hasMessageContaining("Version 1.0.0 has major 1, but the contract's apiMajor is 2")
                 .hasMessageContaining("releaseVersionTracksApiMajor");
-        ContractRelease.release(releases, changelog, new ContractRelease.Request("2.0.0", true,
+        ReleaseSnapshots.release(releases, changelog, new ReleaseSnapshots.Request("2.0.0", true,
                 ReleasePolicy.Policy.DEFAULT, baseline, ir.getBytes(StandardCharsets.UTF_8), Map.of(),
                 CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of()));
         assertThat(releases.resolve("2.0.0")).isDirectory();
@@ -261,11 +266,11 @@ class ContractReleaseTest {
 
     @Test
     void aPolicyViolationFailsAndWritesNothing() throws Exception {
-        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, LEGACY.formatted(""))),
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", accept(irJson(1, LEGACY.formatted(""))),
                 null, null));
         String aggregate = Files.readString(changelog);
 
-        assertThatThrownBy(() -> ContractRelease.release(releases, changelog,
+        assertThatThrownBy(() -> ReleaseSnapshots.release(releases, changelog,
                 request("1.1.0", accept(irJson(1, "")), null, null)))
                 .hasMessageContaining("Release 1.1.0 violates the release policy (released deprecated in at least 1"
                         + " release(s), removed at least 1 major(s) after deprecation, failOnBreaking = true) at 1"
@@ -278,9 +283,9 @@ class ContractReleaseTest {
 
     @Test
     void theAggregateChangelogListsEveryReleaseNewestFirst() throws Exception {
-        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
-        ContractRelease.release(releases, changelog, request("1.1.0", accept(irJson(1, NOTE)), null, null));
-        ContractRelease.release(releases, changelog, request("1.10.0", accept(irJson(1, NOTE)), null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.1.0", accept(irJson(1, NOTE)), null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.10.0", accept(irJson(1, NOTE)), null, null));
 
         String aggregate = Files.readString(changelog);
         assertThat(aggregate).isEqualTo(ReleaseChangelog.aggregate(List.of(
@@ -294,13 +299,13 @@ class ContractReleaseTest {
 
     @Test
     void theSameInputsGiveTheSameBytes() throws Exception {
-        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
-        ContractRelease.release(releases, changelog, request("1.1.0", accept(irJson(1, NOTE)), "{}\n", null));
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.1.0", accept(irJson(1, NOTE)), "{}\n", null));
         Map<String, byte[]> first = contents(releases.resolve("1.1.0"));
         byte[] aggregate = Files.readAllBytes(changelog);
 
         deleteRecursively(releases.resolve("1.1.0"));
-        ContractRelease.release(releases, changelog, request("1.1.0", accept(irJson(1, NOTE)), "{}\n", null));
+        ReleaseSnapshots.release(releases, changelog, request("1.1.0", accept(irJson(1, NOTE)), "{}\n", null));
 
         Map<String, byte[]> second = contents(releases.resolve("1.1.0"));
         assertThat(second.keySet()).isEqualTo(first.keySet());
@@ -313,11 +318,11 @@ class ContractReleaseTest {
         Files.createDirectories(releases.resolve("1.0.0"));
         writeRelease(releases.resolve("1.0.0"), "1.0.0", IR_VERSION_1);
 
-        ContractRelease.Outcome outcome = ContractRelease.release(releases, changelog,
+        ReleaseSnapshots.Outcome outcome = ReleaseSnapshots.release(releases, changelog,
                 request("1.1.0", accept(irJson(1, NOTE)), null, null));
 
         assertThat(Files.readString(releases.resolve("1.0.0/api.ir.json"))).isEqualTo(IR_VERSION_1);
-        assertThat(ReleaseHistory.history(releases)).hasSize(2);
+        assertThat(ReleaseSnapshotHistory.history(releases)).hasSize(2);
         assertThat(outcome.changelog()).isEqualTo("""
                 ## 1.1.0 (API major 1)
 
@@ -334,20 +339,20 @@ class ContractReleaseTest {
     @Test
     void verifyBuildMatchesTheBuildsContractWithTheReleasedOne() throws Exception {
         String ir = accept(irJson(1, ""));
-        ContractRelease.release(releases, changelog, request("1.0.0", ir, null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", ir, null, null));
         Files.writeString(releases.resolve("1.0.0/.DS_Store"), "Finder"); // a dotfile is not a released artifact
 
-        ContractRelease.verifyBuild(releases, changelog, "1.0.0", ir.getBytes(StandardCharsets.UTF_8),
+        ReleaseSnapshots.verifyBuild(releases, changelog, "1.0.0", ir.getBytes(StandardCharsets.UTF_8),
                 artifacts(ir, null, null), CONTRACT_RESOURCES_JSON);
-        assertThatThrownBy(() -> ContractRelease.verifyBuild(releases, changelog, "1.0.0",
+        assertThatThrownBy(() -> ReleaseSnapshots.verifyBuild(releases, changelog, "1.0.0",
                 irJson(1, NOTE).getBytes(StandardCharsets.UTF_8), artifacts(irJson(1, NOTE), null, null),
                 CONTRACT_RESOURCES_JSON))
                 .hasMessageContaining("The contract the build emitted differs from the released contract "
                         + releases.resolve("1.0.0/api.ir.json"));
-        assertThatThrownBy(() -> ContractRelease.verifyBuild(releases, changelog, "1.1.0",
+        assertThatThrownBy(() -> ReleaseSnapshots.verifyBuild(releases, changelog, "1.1.0",
                 ir.getBytes(StandardCharsets.UTF_8), artifacts(ir, null, null), CONTRACT_RESOURCES_JSON))
                 .hasMessageContaining("Version 1.1.0 is not released");
-        assertThatThrownBy(() -> ContractRelease.verifyBuild(releases, changelog, "1.1.0-SNAPSHOT",
+        assertThatThrownBy(() -> ReleaseSnapshots.verifyBuild(releases, changelog, "1.1.0-SNAPSHOT",
                 ir.getBytes(StandardCharsets.UTF_8), artifacts(ir, null, null), CONTRACT_RESOURCES_JSON))
                 .hasMessageContaining("is a SNAPSHOT");
     }
@@ -355,10 +360,10 @@ class ContractReleaseTest {
     @Test
     void verifyBuildFailsWhenTheBuildProducesAnArtifactTheReleaseDoesNotHave() throws Exception {
         String ir = accept(irJson(1, ""));
-        ContractRelease.release(releases, changelog, request("1.0.0", ir, null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", ir, null, null));
 
         Map<String, byte[]> withMcpTools = artifacts(ir, null, "{\"tools\": []}\n");
-        assertThatThrownBy(() -> ContractRelease.verifyBuild(releases, changelog, "1.0.0",
+        assertThatThrownBy(() -> ReleaseSnapshots.verifyBuild(releases, changelog, "1.0.0",
                 ir.getBytes(StandardCharsets.UTF_8), withMcpTools, CONTRACT_RESOURCES_JSON))
                 .hasMessageContaining("[mcp-tools.json]").hasMessageContaining("does not");
     }
@@ -366,23 +371,23 @@ class ContractReleaseTest {
     @Test
     void verifyBuildFailsWhenTheReleaseHasAnArtifactTheBuildDoesNotProduce() throws Exception {
         String ir = accept(irJson(1, ""));
-        ContractRelease.release(releases, changelog, request("1.0.0", ir, null, "{\"tools\": []}\n"));
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", ir, null, "{\"tools\": []}\n"));
 
-        assertThatThrownBy(() -> ContractRelease.verifyBuild(releases, changelog, "1.0.0",
+        assertThatThrownBy(() -> ReleaseSnapshots.verifyBuild(releases, changelog, "1.0.0",
                 ir.getBytes(StandardCharsets.UTF_8), artifacts(ir, null, null), CONTRACT_RESOURCES_JSON))
                 .hasMessageContaining("[mcp-tools.json]").hasMessageContaining("the build does not produce");
     }
 
     @Test
     void anEmptyContractCanBeReleasedAndItsRemovalsArePoliced() throws Exception {
-        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
         String empty = accept(EmptyContract.json("/api", 1));
 
-        assertThatThrownBy(() -> ContractRelease.release(releases, changelog, request("1.1.0", empty, null, null)))
+        assertThatThrownBy(() -> ReleaseSnapshots.release(releases, changelog, request("1.1.0", empty, null, null)))
                 .hasMessageContaining("at 2 element(s)")
                 .hasMessageContaining("field test.Order#id (removed)")
                 .hasMessageContaining("operation test.OrderService#find(java.lang.Long) (removed)");
-        ContractRelease.release(releases, changelog, new ContractRelease.Request("1.1.0", false,
+        ReleaseSnapshots.release(releases, changelog, new ReleaseSnapshots.Request("1.1.0", false,
                 new ReleasePolicy.Policy(0, 0, true), baseline, empty.getBytes(StandardCharsets.UTF_8), Map.of(),
                 CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of(ReleaseVersion.parse("1.0.0"))));
         assertThat(Files.readString(releases.resolve("1.1.0/CHANGELOG.md"))).contains("### Removed",
@@ -393,12 +398,12 @@ class ContractReleaseTest {
     void aPendingReleaseBlocksTheNextOne() throws Exception {
         // 1.0.0 is on disk but excluded from `published` (F1): it is pending, so the next release
         // must refuse, naming it and its own tag name.
-        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
-        ContractRelease.Request pendingNext = new ContractRelease.Request("1.1.0", false, ReleasePolicy.Policy.DEFAULT,
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
+        ReleaseSnapshots.Request pendingNext = new ReleaseSnapshots.Request("1.1.0", false, ReleasePolicy.Policy.DEFAULT,
                 baseline, accept(irJson(1, NOTE)).getBytes(StandardCharsets.UTF_8), Map.of(), CONTRACT_RESOURCES_JSON,
                 TAG_NAME, Set.of());
 
-        assertThatThrownBy(() -> ContractRelease.release(releases, changelog, pendingNext))
+        assertThatThrownBy(() -> ReleaseSnapshots.release(releases, changelog, pendingNext))
                 .hasMessageContaining("Release 1.0.0 is pending")
                 .hasMessageContaining("tag its commit as " + TAG_NAME)
                 .hasMessageContaining("push the tag, then release");
@@ -412,15 +417,15 @@ class ContractReleaseTest {
         ReleaseVersion v100 = ReleaseVersion.parse("1.0.0");
         ReleaseVersion v110 = ReleaseVersion.parse("1.1.0");
         ReleaseVersion v120 = ReleaseVersion.parse("1.2.0");
-        ContractRelease.release(releases, changelog, new ContractRelease.Request("1.0.0", false,
+        ReleaseSnapshots.release(releases, changelog, new ReleaseSnapshots.Request("1.0.0", false,
                 ReleasePolicy.Policy.DEFAULT, baseline, accept(irJson(1, LEGACY.formatted(""))).getBytes(StandardCharsets.UTF_8),
                 Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of()));
         // 1.1.0 first declares the field deprecated, and is itself published when it is made.
-        ContractRelease.release(releases, changelog, new ContractRelease.Request("1.1.0", false,
+        ReleaseSnapshots.release(releases, changelog, new ReleaseSnapshots.Request("1.1.0", false,
                 ReleasePolicy.Policy.DEFAULT, baseline, accept(irJson(1, deprecated)).getBytes(StandardCharsets.UTF_8), Map.of(),
                 CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of(v100)));
         // 1.2.0 repeats the same deprecated declaration, and is also published when it is made.
-        ContractRelease.release(releases, changelog, new ContractRelease.Request("1.2.0", false,
+        ReleaseSnapshots.release(releases, changelog, new ReleaseSnapshots.Request("1.2.0", false,
                 ReleasePolicy.Policy.DEFAULT, baseline, accept(irJson(1, deprecated)).getBytes(StandardCharsets.UTF_8), Map.of(),
                 CONTRACT_RESOURCES_JSON, TAG_NAME, Set.of(v100, v110)));
 
@@ -428,11 +433,11 @@ class ContractReleaseTest {
         // `published` here (it is not the newest snapshot, so this is not "pending"), so only 1.2.0
         // may count, even though 1.1.0's own IR is deprecated too.
         ReleasePolicy.Policy needsTwo = new ReleasePolicy.Policy(2, 1, true);
-        ContractRelease.Request removal = new ContractRelease.Request("2.0.0", false, needsTwo, baseline,
+        ReleaseSnapshots.Request removal = new ReleaseSnapshots.Request("2.0.0", false, needsTwo, baseline,
                 accept(irJson(2, "")).getBytes(StandardCharsets.UTF_8), Map.of(), CONTRACT_RESOURCES_JSON, TAG_NAME,
                 Set.of(v100, v120));
 
-        assertThatThrownBy(() -> ContractRelease.release(releases, changelog, removal))
+        assertThatThrownBy(() -> ReleaseSnapshots.release(releases, changelog, removal))
                 .hasMessageContaining("Release 2.0.0 violates the release policy")
                 .hasMessageContaining("field test.Order#legacy (removed): removed in API major 2, deprecated since"
                         + " major 1 and released deprecated in 1 release(s) from 1.2.0");
@@ -452,9 +457,9 @@ class ContractReleaseTest {
         return ir;
     }
 
-    private ContractRelease.Request request(String version, String ir, String openApi, String mcpTools)
+    private ReleaseSnapshots.Request request(String version, String ir, String openApi, String mcpTools)
             throws IOException {
-        return new ContractRelease.Request(version, false, ReleasePolicy.Policy.DEFAULT, baseline,
+        return new ReleaseSnapshots.Request(version, false, ReleasePolicy.Policy.DEFAULT, baseline,
                 ir.getBytes(StandardCharsets.UTF_8), artifacts(ir, openApi, mcpTools), CONTRACT_RESOURCES_JSON,
                 TAG_NAME, ReleaseFixtures.allExistingVersions(releases));
     }
@@ -466,8 +471,8 @@ class ContractReleaseTest {
         Files.writeString(dir.resolve("CHANGELOG.md"), section);
         Files.writeString(dir.resolve("release.json"), new ReleaseManifest(version, 1,
                 ReleaseManifest.irVersionOf(ir), null, TAG_NAME, ReleasePolicy.Policy.DEFAULT, Map.of(
-                "api.ir.json", ContractRelease.sha256(ir.getBytes(StandardCharsets.UTF_8)),
-                "CHANGELOG.md", ContractRelease.sha256(section.getBytes(StandardCharsets.UTF_8))),
+                "api.ir.json", ReleaseSnapshots.sha256(ir.getBytes(StandardCharsets.UTF_8)),
+                "CHANGELOG.md", ReleaseSnapshots.sha256(section.getBytes(StandardCharsets.UTF_8))),
                 Map.<String, Object>of("contract", "declared")).write());
     }
 

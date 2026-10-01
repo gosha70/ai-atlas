@@ -4,7 +4,6 @@
 package com.egoge.ai.atlas.plugin;
 
 import com.egoge.ai.atlas.processor.contract.ContractResources;
-import com.egoge.ai.atlas.processor.release.ContractRelease;
 import org.gradle.api.GradleException;
 
 import java.io.File;
@@ -30,7 +29,7 @@ import java.util.stream.Stream;
  * reserved resources.
  *
  * <p>Runs inside the release worker's isolated class loader, so it may call processor classes, such
- * as {@link ContractResources} and {@link ContractRelease#sha256}, from the {@code
+ * as {@link ContractResources} and {@link ReleaseSnapshots#sha256}, from the {@code
  * annotationProcessor} classpath the worker was given.
  */
 final class ClassOutputResources {
@@ -101,7 +100,7 @@ final class ClassOutputResources {
                 throw new GradleException(PREFIX + "The reserved artifact " + path + ", listed in " + manifestFile
                         + ", is missing from " + classOutput + ".");
             }
-            String digest = ContractRelease.sha256(Files.readAllBytes(file.toPath()));
+            String digest = ReleaseSnapshots.sha256(Files.readAllBytes(file.toPath()));
             if (!digest.equals(artifact.getValue())) {
                 throw new GradleException(PREFIX + "The reserved artifact " + path + " in " + classOutput
                         + " does not match the digest recorded in " + manifestFile + ": it was modified after"

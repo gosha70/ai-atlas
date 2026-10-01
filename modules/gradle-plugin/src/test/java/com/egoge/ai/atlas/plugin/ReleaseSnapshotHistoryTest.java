@@ -1,7 +1,9 @@
 /*
  * Copyright (c) 2026 egoge.com. All rights reserved.
  */
-package com.egoge.ai.atlas.processor.release;
+package com.egoge.ai.atlas.plugin;
+
+import com.egoge.ai.atlas.processor.release.ReleasePolicy;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,15 +14,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.CONTRACT_RESOURCES_JSON;
-import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.TAG_NAME;
-import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.artifacts;
-import static com.egoge.ai.atlas.processor.release.ReleaseFixtures.irJson;
+import static com.egoge.ai.atlas.plugin.ReleaseFixtures.CONTRACT_RESOURCES_JSON;
+import static com.egoge.ai.atlas.plugin.ReleaseFixtures.TAG_NAME;
+import static com.egoge.ai.atlas.plugin.ReleaseFixtures.artifacts;
+import static com.egoge.ai.atlas.plugin.ReleaseFixtures.irJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** {@link ReleaseHistory}: verified reads of the releases {@link ContractRelease} writes. */
-class ReleaseHistoryTest {
+/** {@link ReleaseSnapshotHistory}: verified reads of the releases {@link ReleaseSnapshots} writes. */
+class ReleaseSnapshotHistoryTest {
 
     @TempDir
     Path dir;
@@ -37,70 +39,70 @@ class ReleaseHistoryTest {
 
     @Test
     void aReleasedFileEditedDeletedOrAddedFailsVerification() throws Exception {
-        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
         Path ir = releases.resolve("1.0.0/api.ir.json");
         String original = Files.readString(ir);
 
         Files.writeString(ir, original.replace("\"Id\"", "\"Identifier\""));
-        assertThatThrownBy(() -> ReleaseHistory.history(releases))
+        assertThatThrownBy(() -> ReleaseSnapshotHistory.history(releases))
                 .hasMessageContaining("Released file " + ir + " was modified after release")
                 .hasMessageContaining("restore it from version control");
-        assertThatThrownBy(() -> ContractRelease.release(releases, changelog,
+        assertThatThrownBy(() -> ReleaseSnapshots.release(releases, changelog,
                 request("1.1.0", accept(irJson(1, "")), null, null)))
                 .hasMessageContaining("was modified after release");
 
         Files.delete(ir);
-        assertThatThrownBy(() -> ReleaseHistory.history(releases)).hasMessageContaining("was deleted after release");
+        assertThatThrownBy(() -> ReleaseSnapshotHistory.history(releases)).hasMessageContaining("was deleted after release");
 
         Files.writeString(ir, original);
         Files.writeString(releases.resolve("1.0.0/notes.txt"), "x");
-        assertThatThrownBy(() -> ReleaseHistory.history(releases))
+        assertThatThrownBy(() -> ReleaseSnapshotHistory.history(releases))
                 .hasMessageContaining("holds [notes.txt], which release.json does not record");
     }
 
     @Test
     void aManifestNamingAnotherVersionFailsVerification() throws Exception {
-        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
         Files.move(releases.resolve("1.0.0"), releases.resolve("1.0.1"));
 
-        assertThatThrownBy(() -> ReleaseHistory.history(releases))
+        assertThatThrownBy(() -> ReleaseSnapshotHistory.history(releases))
                 .hasMessageContaining("records version 1.0.0, not 1.0.1");
     }
 
     @Test
     void checkConsistencyPassesForAConsistentHistory() throws Exception {
-        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
-        ContractRelease.release(releases, changelog, request("1.1.0", accept(irJson(1, ReleaseFixtures.NOTE)), null,
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.1.0", accept(irJson(1, ReleaseFixtures.NOTE)), null,
                 null));
 
-        assertThat(ReleaseHistory.checkConsistency(releases, changelog)).isEqualTo(2);
+        assertThat(ReleaseSnapshotHistory.checkConsistency(releases, changelog)).isEqualTo(2);
     }
 
     @Test
     void checkConsistencySucceedsSilentlyWithNoReleasesAndNoChangelog() throws Exception {
-        assertThat(ReleaseHistory.checkConsistency(releases, changelog)).isZero();
+        assertThat(ReleaseSnapshotHistory.checkConsistency(releases, changelog)).isZero();
     }
 
     @Test
     void aBrokenPreviousChainFailsConsistency() throws Exception {
-        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
-        ContractRelease.release(releases, changelog, request("1.1.0", accept(irJson(1, ReleaseFixtures.NOTE)), null,
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.1.0", accept(irJson(1, ReleaseFixtures.NOTE)), null,
                 null));
         Path manifestFile = releases.resolve("1.1.0/release.json");
         Files.writeString(manifestFile, Files.readString(manifestFile).replace("\"1.0.0\"", "\"0.9.0\""));
 
-        assertThatThrownBy(() -> ReleaseHistory.checkConsistency(releases, changelog))
+        assertThatThrownBy(() -> ReleaseSnapshotHistory.checkConsistency(releases, changelog))
                 .hasMessageContaining("records previous 0.9.0")
                 .hasMessageContaining("preceding release in " + releases + " is 1.0.0");
     }
 
     @Test
     void anEditedChangelogFailsConsistency() throws Exception {
-        ContractRelease.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
+        ReleaseSnapshots.release(releases, changelog, request("1.0.0", accept(irJson(1, "")), null, null));
 
         Files.writeString(changelog, Files.readString(changelog) + "\nHand-edited.\n");
 
-        assertThatThrownBy(() -> ReleaseHistory.checkConsistency(releases, changelog))
+        assertThatThrownBy(() -> ReleaseSnapshotHistory.checkConsistency(releases, changelog))
                 .hasMessageContaining("does not equal what the release history")
                 .hasMessageContaining("edited after release");
     }
@@ -118,9 +120,9 @@ class ReleaseHistoryTest {
         return ir;
     }
 
-    private ContractRelease.Request request(String version, String ir, String openApi, String mcpTools)
+    private ReleaseSnapshots.Request request(String version, String ir, String openApi, String mcpTools)
             throws IOException {
-        return new ContractRelease.Request(version, false, ReleasePolicy.Policy.DEFAULT, baseline,
+        return new ReleaseSnapshots.Request(version, false, ReleasePolicy.Policy.DEFAULT, baseline,
                 ir.getBytes(StandardCharsets.UTF_8), artifacts(ir, openApi, mcpTools), CONTRACT_RESOURCES_JSON,
                 TAG_NAME, ReleaseFixtures.allExistingVersions(releases));
     }

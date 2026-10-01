@@ -3,7 +3,6 @@
  */
 package com.egoge.ai.atlas.plugin;
 
-import com.egoge.ai.atlas.processor.release.ContractRelease;
 import com.egoge.ai.atlas.processor.release.ReleaseVersion;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.ConfigurableFileCollection;
@@ -25,7 +24,7 @@ import java.util.Optional;
  * {@code agenticReleaseVerify}'s worker: proves {@code agentic { releaseVersion } }'s tag resolves
  * to exactly {@code HEAD} (E2, D8.2, plan §3.5, OQ-3), through the same fail-closed
  * {@link GitRepository} and {@link PublishedHistory} proof {@code agenticRelease} uses, then
- * verifies the build matches that release through the processor's {@link ContractRelease#verifyBuild}.
+ * verifies the build matches that release through the processor's {@link ReleaseSnapshots#verifyBuild}.
  * Loaded from the project's {@code annotationProcessor} classpath in an isolated class loader.
  *
  * <p>It never depends on the compilation it validates (plan §3.5, spec fourth round): {@link
@@ -93,11 +92,11 @@ public abstract class ReleaseVerifyAction implements WorkAction<ReleaseVerifyAct
             }
             ClassOutputResources.Result resources = ClassOutputResources.validate(classesDirs);
 
-            ContractRelease.verifyBuild(releasesDir, changelog, version, resources.artifacts().get(ContractRelease.IR_FILE),
+            ReleaseSnapshots.verifyBuild(releasesDir, changelog, version, resources.artifacts().get(ReleaseSnapshots.IR_FILE),
                     resources.artifacts(), resources.contractResourcesJson());
             LOGGER.lifecycle(PREFIX + "The build matches the released contract " + version + " (tag " + resolvedTagName
                     + ").");
-        } catch (ContractRelease.ReleaseException e) {
+        } catch (ReleaseSnapshots.ReleaseException e) {
             throw new GradleException(PREFIX + AgenticPlugin.RELEASE_VERIFY_TASK + ": tag " + resolvedTagName
                     + " (release " + version + ") failed verification: " + e.getMessage(), e);
         } catch (IOException e) {

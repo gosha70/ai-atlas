@@ -1,10 +1,15 @@
 /*
  * Copyright (c) 2026 egoge.com. All rights reserved.
  */
-package com.egoge.ai.atlas.processor.release;
+package com.egoge.ai.atlas.plugin;
 
+import com.egoge.ai.atlas.plugin.ReleaseSnapshots.ReleaseException;
 import com.egoge.ai.atlas.processor.contract.ContractIr;
-import com.egoge.ai.atlas.processor.release.ContractRelease.ReleaseException;
+import com.egoge.ai.atlas.processor.contract.IrJson;
+import com.egoge.ai.atlas.processor.release.ReleaseChangelog;
+import com.egoge.ai.atlas.processor.release.ReleaseManifest;
+import com.egoge.ai.atlas.processor.release.ReleasePolicy;
+import com.egoge.ai.atlas.processor.release.ReleaseVersion;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -21,15 +26,15 @@ import java.util.TreeSet;
 import java.util.stream.Stream;
 
 /**
- * Reads the release directories {@link ContractRelease} writes: the verified history, and the
- * aggregate changelog, extracted from {@link ContractRelease} so each file stays under the
+ * Reads the release directories {@link ReleaseSnapshots} writes: the verified history, and the
+ * aggregate changelog, extracted from {@link ReleaseSnapshots} so each file stays under the
  * 500-line cap.
  */
-public final class ReleaseHistory {
+public final class ReleaseSnapshotHistory {
 
     private static final String RESTORE = " Released contracts are immutable: restore it from version control.";
 
-    private ReleaseHistory() {
+    private ReleaseSnapshotHistory() {
     }
 
     /**
@@ -47,14 +52,14 @@ public final class ReleaseHistory {
         for (Path dir : releaseDirs(releases)) {
             ReleaseVersion version = ReleaseVersion.parse(dir.getFileName().toString());
             ReleaseManifest manifest = verify(dir, version);
-            ContractIr ir = parse(Files.readString(dir.resolve(ContractRelease.IR_FILE), StandardCharsets.UTF_8),
-                    dir.resolve(ContractRelease.IR_FILE).toString());
+            ContractIr ir = parse(Files.readString(dir.resolve(ReleaseSnapshots.IR_FILE), StandardCharsets.UTF_8),
+                    dir.resolve(ReleaseSnapshots.IR_FILE).toString());
             if (ir.apiMajor() != manifest.apiMajor()) {
-                throw new ReleaseException("Release manifest " + dir.resolve(ContractRelease.MANIFEST_FILE)
-                        + " records apiMajor " + manifest.apiMajor() + ", but its " + ContractRelease.IR_FILE
+                throw new ReleaseException("Release manifest " + dir.resolve(ReleaseSnapshots.MANIFEST_FILE)
+                        + " records apiMajor " + manifest.apiMajor() + ", but its " + ReleaseSnapshots.IR_FILE
                         + " has apiMajor " + ir.apiMajor() + "." + RESTORE);
             }
-            // Not the real publication verdict: this reader does not touch git. ContractRelease
+            // Not the real publication verdict: this reader does not touch git. ReleaseSnapshots
             // remaps each entry's published flag from PublishedHistory's tag-proved verdict (F1,
             // D10.1) before using this list for anything that depends on it.
             result.add(new ReleasePolicy.Release(version, ir, false));
@@ -82,7 +87,7 @@ public final class ReleaseHistory {
         history(releases); // verifies every directory's manifest, digests, and extra/missing files
         String previous = null;
         for (Path dir : dirs) {
-            Path manifestFile = dir.resolve(ContractRelease.MANIFEST_FILE);
+            Path manifestFile = dir.resolve(ReleaseSnapshots.MANIFEST_FILE);
             ReleaseManifest manifest;
             try {
                 manifest = ReleaseManifest.read(Files.readString(manifestFile, StandardCharsets.UTF_8));
@@ -125,7 +130,7 @@ public final class ReleaseHistory {
         Collections.reverse(dirs);
         List<String> sections = new ArrayList<>();
         for (Path dir : dirs) {
-            sections.add(Files.readString(dir.resolve(ContractRelease.CHANGELOG_FILE), StandardCharsets.UTF_8));
+            sections.add(Files.readString(dir.resolve(ReleaseSnapshots.CHANGELOG_FILE), StandardCharsets.UTF_8));
         }
         return ReleaseChangelog.aggregate(sections);
     }
@@ -143,9 +148,9 @@ public final class ReleaseHistory {
     }
 
     private static ReleaseManifest verify(Path dir, ReleaseVersion version) throws ReleaseException, IOException {
-        Path manifestFile = dir.resolve(ContractRelease.MANIFEST_FILE);
+        Path manifestFile = dir.resolve(ReleaseSnapshots.MANIFEST_FILE);
         if (!Files.isRegularFile(manifestFile)) {
-            throw new ReleaseException("Release " + dir + " has no " + ContractRelease.MANIFEST_FILE
+            throw new ReleaseException("Release " + dir + " has no " + ReleaseSnapshots.MANIFEST_FILE
                     + ", so it cannot be verified." + RESTORE);
         }
         ReleaseManifest manifest;
@@ -159,7 +164,7 @@ public final class ReleaseHistory {
             throw new ReleaseException("Release manifest " + manifestFile + " records version " + manifest.version()
                     + ", not " + version + "." + RESTORE);
         }
-        for (String required : List.of(ContractRelease.IR_FILE, ContractRelease.CHANGELOG_FILE)) {
+        for (String required : List.of(ReleaseSnapshots.IR_FILE, ReleaseSnapshots.CHANGELOG_FILE)) {
             if (!manifest.digests().containsKey(required)) {
                 throw new ReleaseException("Release manifest " + manifestFile + " records no digest of " + required
                         + "." + RESTORE);
@@ -167,22 +172,22 @@ public final class ReleaseHistory {
         }
         Set<String> present = new TreeSet<>();
         try (Stream<Path> files = Files.list(dir)) {
-            files.map(file -> file.getFileName().toString()).filter(ReleaseHistory::isReleaseFile).forEach(present::add);
+            files.map(file -> file.getFileName().toString()).filter(ReleaseSnapshotHistory::isReleaseFile).forEach(present::add);
         }
         for (Map.Entry<String, String> entry : manifest.digests().entrySet()) {
             Path file = dir.resolve(entry.getKey());
             if (!Files.isRegularFile(file)) {
                 throw new ReleaseException("Released file " + file + " was deleted after release." + RESTORE);
             }
-            if (!ContractRelease.sha256(Files.readAllBytes(file)).equals(entry.getValue())) {
+            if (!ReleaseSnapshots.sha256(Files.readAllBytes(file)).equals(entry.getValue())) {
                 throw new ReleaseException("Released file " + file + " was modified after release: its SHA-256 is not"
-                        + " the one " + ContractRelease.MANIFEST_FILE + " records." + RESTORE);
+                        + " the one " + ReleaseSnapshots.MANIFEST_FILE + " records." + RESTORE);
             }
         }
         present.removeAll(manifest.digests().keySet());
-        present.remove(ContractRelease.MANIFEST_FILE);
+        present.remove(ReleaseSnapshots.MANIFEST_FILE);
         if (!present.isEmpty()) {
-            throw new ReleaseException("Release " + dir + " holds " + present + ", which " + ContractRelease.MANIFEST_FILE
+            throw new ReleaseException("Release " + dir + " holds " + present + ", which " + ReleaseSnapshots.MANIFEST_FILE
                     + " does not record: a file was added after release. Remove it.");
         }
         return manifest;
@@ -190,8 +195,8 @@ public final class ReleaseHistory {
 
     private static ContractIr parse(String json, String source) throws ReleaseException {
         try {
-            return com.egoge.ai.atlas.processor.contract.IrJson.parse(json, source);
-        } catch (com.egoge.ai.atlas.processor.contract.IrJson.IrReadException e) {
+            return IrJson.parse(json, source);
+        } catch (IrJson.IrReadException e) {
             throw new ReleaseException(e.getMessage());
         }
     }

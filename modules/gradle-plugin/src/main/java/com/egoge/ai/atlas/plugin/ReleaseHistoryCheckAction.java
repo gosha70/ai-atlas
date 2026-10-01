@@ -3,8 +3,6 @@
  */
 package com.egoge.ai.atlas.plugin;
 
-import com.egoge.ai.atlas.processor.release.ContractRelease;
-import com.egoge.ai.atlas.processor.release.ReleaseHistory;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.RegularFileProperty;
@@ -18,7 +16,7 @@ import java.nio.file.Path;
 
 /**
  * Verifies the internal consistency of the committed release snapshots, through the processor's
- * {@link ReleaseHistory#checkConsistency}: no git, no network, and it never reads the build's
+ * {@link ReleaseSnapshotHistory#checkConsistency}: no git, no network, and it never reads the build's
  * class output. Loaded from the project's {@code annotationProcessor} classpath in an isolated
  * class loader.
  */
@@ -42,9 +40,9 @@ public abstract class ReleaseHistoryCheckAction implements WorkAction<ReleaseHis
         Path releases = parameters.getReleasesDir().get().getAsFile().toPath();
         Path changelog = parameters.getChangelog().get().getAsFile().toPath();
         try {
-            int count = ReleaseHistory.checkConsistency(releases, changelog);
+            int count = ReleaseSnapshotHistory.checkConsistency(releases, changelog);
             LOGGER.info("[ai-atlas] Verified the internal consistency of {} release(s) in {}", count, releases);
-        } catch (ContractRelease.ReleaseException e) {
+        } catch (ReleaseSnapshots.ReleaseException e) {
             throw new GradleException(e.getMessage(), e);
         } catch (IOException e) {
             throw new GradleException("[ai-atlas] agenticReleaseHistoryCheck failed: " + e.getMessage(), e);

@@ -14,15 +14,8 @@ import javax.tools.StandardLocation;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Stream;
 
 import static com.google.testing.compile.Compiler.javac;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,10 +38,6 @@ final class ReleaseFixtures {
             @AgenticField(description = "A note") private String note;
             public String getNote() { return note; }
             """;
-    /** A minimal, valid contract-resources manifest, for tests that do not exercise it directly. */
-    static final String CONTRACT_RESOURCES_JSON = "{\"contract\": \"declared\"}\n";
-    /** A resolved tag name, for tests that do not exercise F1's tag-name resolution directly. */
-    static final String TAG_NAME = "v0.0.0-test";
 
     private static final String ORDER = """
             package test;
@@ -124,40 +113,5 @@ final class ReleaseFixtures {
     /** An unpublished (pending) release: part of the history chain, but earns no credit. */
     static ReleasePolicy.Release pending(String version, ContractIr ir) {
         return new ReleasePolicy.Release(ReleaseVersion.parse(version), ir, false);
-    }
-
-    /**
-     * A {@link ContractRelease.Request#artifacts()} map for {@code ContractRelease.release}: the
-     * OpenAPI document of {@code ir}'s {@code apiMajor}, and/or the MCP tool specifications, each
-     * only when its text is not {@code null}.
-     */
-    static Map<String, byte[]> artifacts(String ir, String openApi, String mcpTools) {
-        Map<String, byte[]> artifacts = new LinkedHashMap<>();
-        // As the plugin passes them: the class output's IR is among the artifacts
-        artifacts.put(ContractRelease.IR_FILE, ir.getBytes(StandardCharsets.UTF_8));
-        if (openApi != null) {
-            artifacts.put(ContractRelease.openApiFile(parse(ir).apiMajor()), openApi.getBytes(StandardCharsets.UTF_8));
-        }
-        if (mcpTools != null) {
-            artifacts.put(ContractRelease.MCP_TOOLS_FILE, mcpTools.getBytes(StandardCharsets.UTF_8));
-        }
-        return artifacts;
-    }
-
-    /**
-     * Every release already on disk under {@code releases}, F1's {@code published} set as most
-     * tests want it: everything already there counts as published, so a test not exercising F1's
-     * pending rule directly never has to think about it.
-     */
-    static Set<ReleaseVersion> allExistingVersions(Path releases) throws IOException {
-        Set<ReleaseVersion> versions = new LinkedHashSet<>();
-        if (!Files.isDirectory(releases)) {
-            return versions;
-        }
-        try (Stream<Path> entries = Files.list(releases)) {
-            entries.filter(Files::isDirectory).map(dir -> dir.getFileName().toString())
-                    .filter(ReleaseVersion::matches).map(ReleaseVersion::parse).forEach(versions::add);
-        }
-        return versions;
     }
 }
