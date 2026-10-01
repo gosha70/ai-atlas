@@ -12,7 +12,7 @@ a release inspects, channel-aware deprecation credit restricted to tag-proved re
 between an offline internal-consistency check (`agenticReleaseHistoryCheck`, under `check`) and a
 git-aware tag verification (`agenticReleaseVerify`, for the CI tag build).
 
-See [`specs/release-workflow/spec.md`](https://github.com/gosha70/ai-atlas/blob/feature/release-workflow/specs/release-workflow/spec.md) for the full acceptance criteria and the owner's four
+See [`specs/release-workflow/spec.md`](https://github.com/gosha70/ai-atlas/blob/feature/release-workflow/specs/release-workflow/spec.md) for the full acceptance criteria and the owner's five
 rounds of decisions; [`plan.md`](https://github.com/gosha70/ai-atlas/blob/feature/release-workflow/specs/release-workflow/plan.md) for the design and gap analysis; [`tasks.md`](https://github.com/gosha70/ai-atlas/blob/feature/release-workflow/specs/release-workflow/tasks.md) for
 the task breakdown this PR followed.
 
@@ -30,6 +30,9 @@ In scope (see `spec.md` "Owner decisions"):
   validates), the dependency boundary (no task dependency that could regenerate what a release
   validates), and the snapshot-equals-the-build comparison (IR canonical, artifacts byte for byte,
   configuration structural) — spec's second, third and fourth rounds.
+- The `.gitattributes` `-text` requirement for released files, `ai.atlas.collections` in the
+  recorded configuration, and an empty module's processor version mismatch reported by
+  `compileJava` — spec's fifth round.
 
 Out of scope (unchanged by this PR): the compatibility gate itself (`atlasContractCheck`,
 `atlasAccept`, lock mode), channel projections, constraints, collection safety — all already shipped

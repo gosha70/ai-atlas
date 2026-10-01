@@ -80,6 +80,21 @@ Second round, the same day, settling the plan's remaining open questions (`plan.
 - **OQ-9, OQ-10:** the plan's defaults (`failOnBreaking` inside `policy { }`, the aggregate
   changelog header kept; no new property putting verify under `check`).
 
+Fifth round (2026-10-01), accepting three behaviours the Phase G origin-alignment check found
+outside the decisions above:
+
+- **Line endings:** `agenticRelease` fails unless git leaves the new snapshot's `release.json` and
+  `.atlas/CHANGELOG.md` unconverted (`git check-attr --cached text` reports `unset`), naming the
+  `.gitattributes` lines to commit (`.atlas/releases/** -text`, `.atlas/CHANGELOG.md -text` in the
+  default setup). Otherwise a checkout with `core.autocrlf`, Git for Windows' default, rewrites the
+  released bytes and breaks every digest and tag proof.
+- **Recorded configuration:** the effective configuration in `contract-resources.json` includes
+  `ai.atlas.collections` alongside the draft's five options, because it changes the IR, the OpenAPI
+  document and the MCP schemas.
+- **Where an empty module's version mismatch is reported:** because the plugin writes the empty
+  contract in `compileJava` (OQ-2), a processor version mismatch in a module with no ai-atlas
+  declarations is reported by `compileJava`, not `atlasContractCheck`, with the same message.
+
 ## Acceptance criteria
 
 Stated as in the draft, numbered in order. Each is closed by the tasks listed; a task names its
