@@ -310,8 +310,8 @@ public final class ContractRelease {
         try (Stream<Path> files = Files.list(dir)) {
             for (Path file : files.filter(Files::isRegularFile).toList()) {
                 String name = file.getFileName().toString();
-                if (!name.equals(IR_FILE) && !name.equals(MANIFEST_FILE) && !name.equals(DIFF_FILE)
-                        && !name.equals(CHANGELOG_FILE)) {
+                if (ReleaseHistory.isReleaseFile(name) && !name.equals(IR_FILE) && !name.equals(MANIFEST_FILE)
+                        && !name.equals(DIFF_FILE) && !name.equals(CHANGELOG_FILE)) {
                     result.add(name);
                 }
             }

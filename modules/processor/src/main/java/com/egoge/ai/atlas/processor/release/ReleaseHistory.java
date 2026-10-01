@@ -167,7 +167,7 @@ public final class ReleaseHistory {
         }
         Set<String> present = new TreeSet<>();
         try (Stream<Path> files = Files.list(dir)) {
-            files.map(file -> file.getFileName().toString()).filter(name -> !name.startsWith(".")).forEach(present::add);
+            files.map(file -> file.getFileName().toString()).filter(ReleaseHistory::isReleaseFile).forEach(present::add);
         }
         for (Map.Entry<String, String> entry : manifest.digests().entrySet()) {
             Path file = dir.resolve(entry.getKey());
@@ -194,5 +194,16 @@ public final class ReleaseHistory {
         } catch (com.egoge.ai.atlas.processor.contract.IrJson.IrReadException e) {
             throw new ReleaseException(e.getMessage());
         }
+    }
+
+    /**
+     * Whether a file in a release directory belongs to the release: every file but a dotfile, such
+     * as a {@code .DS_Store} an operating system leaves there.
+     *
+     * @param name the file name
+     * @return whether the release consists of it
+     */
+    static boolean isReleaseFile(String name) {
+        return !name.startsWith(".");
     }
 }

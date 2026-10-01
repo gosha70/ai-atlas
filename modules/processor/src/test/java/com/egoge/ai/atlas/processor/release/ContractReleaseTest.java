@@ -335,6 +335,7 @@ class ContractReleaseTest {
     void verifyBuildMatchesTheBuildsContractWithTheReleasedOne() throws Exception {
         String ir = accept(irJson(1, ""));
         ContractRelease.release(releases, changelog, request("1.0.0", ir, null, null));
+        Files.writeString(releases.resolve("1.0.0/.DS_Store"), "Finder"); // a dotfile is not a released artifact
 
         ContractRelease.verifyBuild(releases, changelog, "1.0.0", ir.getBytes(StandardCharsets.UTF_8),
                 artifacts(ir, null, null), CONTRACT_RESOURCES_JSON);

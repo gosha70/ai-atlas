@@ -211,8 +211,11 @@ final class GitRepository implements GitQuery {
     public Optional<String> headCommit() {
         String[] args = {"rev-parse", "--verify", "--quiet", "HEAD"};
         Optional<Result> result = run(args);
-        if (result.isEmpty() || result.get().exitCode() != 0) {
-            return Optional.empty();
+        if (result.isEmpty() || result.get().exitCode() == 1) {
+            return Optional.empty(); // no commit yet
+        }
+        if (result.get().exitCode() != 0) {
+            throw failure(result.get(), args);
         }
         String sha = result.get().text();
         return sha.isEmpty() ? Optional.empty() : Optional.of(sha);

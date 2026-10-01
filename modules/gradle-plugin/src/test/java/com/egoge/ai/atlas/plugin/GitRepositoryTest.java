@@ -178,6 +178,17 @@ class GitRepositoryTest {
                 .hasMessageContaining("detected dubious ownership").hasMessageContaining("exit code 128");
         assertThatThrownBy(repo::isShallow).isInstanceOf(GradleException.class)
                 .hasMessageContaining("detected dubious ownership");
+        // Not "no commit": a refused repository must not read as a tag that is not HEAD
+        assertThatThrownBy(repo::headCommit).isInstanceOf(GradleException.class)
+                .hasMessageContaining("detected dubious ownership");
+    }
+
+    @Test
+    void aRepositoryWithoutCommitsHasNoHead() throws IOException, InterruptedException {
+        Path empty = Files.createDirectories(dir.resolveSibling("no-commits"));
+        git(empty, "init", "-q");
+
+        assertThat(new GitRepository(empty).headCommit()).isEmpty();
     }
 
     @Test
