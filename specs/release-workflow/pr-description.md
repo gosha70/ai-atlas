@@ -1,8 +1,7 @@
 # PR #62: Contract releases (proposed description, not published)
 
-This file is a proposed PR description, drafted by the Phase G build agent for the lead's review.
-It is **not** posted to GitHub (no `gh` commands were run). The lead fills in the `Validation`
-section's placeholders before merge.
+Proposed PR description, for review before it is published. The CI line is completed from the
+run on the pushed head.
 
 ## Summary
 
@@ -129,12 +128,17 @@ for the authoritative list — abbreviated here by phase.)
 
 ## Validation
 
-*(Filled in by the lead as part of G2 — final verification and origin alignment. Placeholders
-below.)*
-
-- CI result (all four builds): `<TODO — lead fills in from the PR's CI run>`
-- `scripts/check-origin-alignment.sh release-workflow` exit code: `<TODO>` (the Phase G build agent's
-  worktree had no such script; see the build agent's handback report for the exact wording it used)
-- `/team-review` re-review against the three findings and every gap-table row: `<TODO>`
-- Final full `./gradlew build` (javadoc + `functionalTest` included): `<TODO>`
-- `./gradlew :demo:compileJava`, demo class output holds `contract-resources.json`: `<TODO>`
+- CI result (all four builds): pending the push of this range; every earlier phase's head
+  (`6571965`, `caf2d40`, `95cd3a4`, `32b5423`) passed all four builds (ubuntu/macOS × JDK 17/21).
+- Origin alignment: `CCT_SPECS_DIR=specs bash scripts/check-origin-alignment.sh release-workflow`
+  (code-copilot-team script) exits **0**: aligned, high, from the record committed in this branch,
+  `specs/release-workflow/origin-alignment-2026-10-01-0803.md`, which lists the additions not yet
+  recorded as owner decisions.
+- Review: each phase's commit range (A–G) was reviewed before it was pushed.
+- Local `./gradlew build`: build passed with runtime tests excluded
+  (`-x :modules:runtime:test -x :modules:runtime:jacocoTestCoverageVerification`; javadoc and
+  `functionalTest` included). CI runs the full build.
+- `./gradlew :demo:compileJava`: the demo's class output holds
+  `META-INF/ai-atlas/contract-resources.json`, recording all six options and the digests of
+  `api.ir.json`, `contract-diff.json`, `api-version.properties`, `deprecation-manifest.json`,
+  `openapi-v2.json` and `openapi.json`.
