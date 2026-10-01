@@ -20,10 +20,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Releases the accepted contract through the processor's {@link ReleaseSnapshots}. Loaded from the
- * project's {@code annotationProcessor} classpath in an isolated class loader, like
- * {@link AcceptAction}, so the comparison, the policy and the IR reader are those of the processor
- * that compiled.
+ * Releases the accepted contract through {@link ReleaseSnapshots}. Loaded from the project's
+ * {@code annotationProcessor} classpath in an isolated class loader, like {@link AcceptAction}, so
+ * the comparison, the policy and the IR reader are those of the processor that compiled.
  */
 public abstract class ReleaseAction implements WorkAction<ReleaseAction.Parameters> {
 
