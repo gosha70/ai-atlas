@@ -24,11 +24,11 @@ import java.util.Optional;
  * {@code agenticReleaseVerify}'s worker: proves {@code agentic { releaseVersion } }'s tag resolves
  * to exactly {@code HEAD} (E2, D8.2, plan §3.5, OQ-3), through the same fail-closed
  * {@link GitRepository} and {@link PublishedHistory} proof {@code agenticRelease} uses, then
- * verifies the build matches that release through the processor's {@link ReleaseSnapshots#verifyBuild}.
+ * verifies the build matches that release through {@link ReleaseSnapshots#verifyBuild}.
  * Loaded from the project's {@code annotationProcessor} classpath in an isolated class loader.
  *
  * <p>It never depends on the compilation it validates (plan §3.5, spec fourth round): {@link
- * #getClassesDirs()} is populated from a plain provider by {@link AgenticReleaseVerify}, ordered
+ * AgenticReleaseVerify#getClassesDirs()} is populated from a plain provider, ordered
  * only with {@code mustRunAfter}, so this action must itself detect and clearly report a missing
  * class output, rather than relying on a task dependency to have produced one.
  */

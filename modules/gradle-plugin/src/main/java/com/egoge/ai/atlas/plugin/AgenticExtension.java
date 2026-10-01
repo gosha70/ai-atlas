@@ -157,7 +157,7 @@ public abstract class AgenticExtension {
      */
     public abstract Property<Boolean> getReleaseVersionTracksApiMajor();
 
-    /** The release settings: directory, changelog, check version and deprecation policy. */
+    /** The release settings: directory, changelog, tag name and release policy. */
     public ReleaseSpec getRelease() {
         return release;
     }
