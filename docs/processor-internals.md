@@ -260,9 +260,10 @@ picks the subset a manifest for a given configuration *must* list.
 
 **The plugin calls processor classes directly, not through reflection or a service boundary**: the
 Gradle plugin's release workers (`com.egoge.ai.atlas.plugin.ReleaseAction`,
-`ReleaseHistoryCheckAction`, `ReleaseVerifyAction`) call `ReleasePolicy`, `ReleaseChangelog`,
-`ReleaseComparison`, `ReleaseManifest`, `IrJson` and `ContractGate.diffJson` from this module by
-their ordinary Java API, loaded from the project's `annotationProcessor` classpath in an isolated
+`ReleaseHistoryCheckAction`, `ReleaseVerifyAction`, and the empty-contract and accept workers)
+call `ReleasePolicy`, `ReleaseChangelog`, `ReleaseComparison`, `ReleaseManifest`, `ReleaseVersion`,
+`ContractIr`, `IrJson`, `EmptyContract`, `EffectiveOptions`, `ContractResources` and `ContractGate`
+(for example `ContractGate.diffJson`) from this module by their ordinary Java API, loaded from the project's `annotationProcessor` classpath in an isolated
 class loader. **Changing any of those signatures breaks the plugin.** This coupling is acceptable
 only because the plugin and processor versions are required to match (`agentic { version }` defaults
 to the plugin's own version): a mismatch is not a silent miscompile, it is reported clearly, naming

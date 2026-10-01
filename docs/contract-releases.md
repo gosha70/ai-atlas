@@ -251,9 +251,13 @@ committed `.atlas/releases/<version>/`, oldest first:
   tag and fails (see [Adopting ai-atlas in a repository with existing tags](#adopting-ai-atlas-in-a-repository-with-existing-tags)).
 
 **Only the newest committed snapshot may be `PENDING`.** `agenticRelease` refuses to make a *new*
-release while the previous one is pending, naming the tag to create: "Release 1.3.0 is pending: tag
-its commit as v1.3.0 and push the tag, then release." Tag and push the previous release before
-making the next one.
+release while the previous one is pending, naming the tag to create:
+
+```
+Release 1.3.0 is pending: tag its commit as v1.3.0 and push the tag, then release.
+```
+
+Tag and push the previous release before making the next one.
 
 Only a `PUBLISHED` (tag-proved) release earns deprecation credit (see [The policy](#the-policy)); a
 pending release counts in the version/major ordering but contributes no evidence.
@@ -263,8 +267,13 @@ pending release counts in the version/major ordering but contributes no evidence
 A brand-new project with no `.atlas/releases/` directory and no tags matching the template releases
 normally: a genuine first release needs no git history at all. Each of the following, by contrast,
 means the **history that does exist cannot be trusted**, and fails naming what is missing, together
-with "Fetch tags and full history, e.g. `actions/checkout` with `fetch-depth: 0` and
-`fetch-tags: true`.":
+with:
+
+```
+Fetch tags and full history, e.g. actions/checkout with fetch-depth: 0 and fetch-tags: true.
+```
+
+The cases:
 
 - an **untagged older snapshot** (not the newest) — a committed release with no tag to prove it;
 - a **tag with no snapshot** — an orphan tag matching the template;
@@ -282,9 +291,7 @@ added to the working tree but never staged does not count, because the commit th
 would lack it. Without it, the fix fails before writing anything:
 
 ```
-[ai-atlas] git would convert the line endings of released files on checkout, as Git for Windows does
-by default, so they would no longer match the digests release.json records. Add these lines to
-.gitattributes, commit them, then release:
+[ai-atlas] git would convert the line endings of released files on checkout, as Git for Windows does by default, so they would no longer match the digests release.json records. Add these lines to .gitattributes, commit them, then release:
   .atlas/releases/** -text
   .atlas/CHANGELOG.md -text
 ```
