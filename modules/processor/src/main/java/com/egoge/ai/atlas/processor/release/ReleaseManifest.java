@@ -144,7 +144,7 @@ public record ReleaseManifest(String version, int apiMajor, int irVersion, Strin
      * @return the parsed object tree
      * @throws IllegalArgumentException if the text is not valid JSON
      */
-    static Map<String, Object> contractResourcesOf(String json) {
+    public static Map<String, Object> contractResourcesOf(String json) {
         try {
             return toMap(READER.readTree(json));
         } catch (JsonProcessingException e) {
@@ -163,7 +163,7 @@ public record ReleaseManifest(String version, int apiMajor, int irVersion, Strin
      * @param irJson the IR document's text, already read successfully by {@link IrJson#parse}
      * @return its {@code irVersion}
      */
-    static int irVersionOf(String irJson) {
+    public static int irVersionOf(String irJson) {
         try {
             return integer(READER.readTree(irJson), K_IR_VERSION);
         } catch (JsonProcessingException e) {
