@@ -195,8 +195,10 @@ class ContractGateWiringFunctionalTest {
                 }
                 """.formatted(writeStubProcessor().getAbsolutePath().replace('\\', '/')));
 
+        // compileJava's own doLast (the empty-contract writer, C3b) now hits the mismatch first,
+        // since an empty module reaches it before atlasContractCheck ever runs.
         BuildResult check = run("classes", "--stacktrace").buildAndFail();
-        assertThat(check.task(":atlasContractCheck").getOutcome()).isEqualTo(TaskOutcome.FAILED);
+        assertThat(check.task(":compileJava").getOutcome()).isEqualTo(TaskOutcome.FAILED);
         assertVersionMismatchReported(check);
 
         BuildResult accept = run("atlasAccept", "--stacktrace").buildAndFail();

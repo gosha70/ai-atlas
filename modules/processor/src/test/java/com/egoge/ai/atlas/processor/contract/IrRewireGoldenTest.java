@@ -67,7 +67,8 @@ class IrRewireGoldenTest {
     /** The files this feature adds; everything else the processor writes is in the snapshot. */
     private static final Set<String> IR_FILES = Set.of(
             CLASS_OUTPUT + ContractIr.RESOURCE_PATH,
-            CLASS_OUTPUT + "META-INF/ai-atlas/contract-diff.json");
+            CLASS_OUTPUT + "META-INF/ai-atlas/contract-diff.json",
+            CLASS_OUTPUT + ContractResources.MANIFEST_PATH);
     private static final String JAVA_SUFFIX = ".java";
     private static final String CLASS_SUFFIX = ".class";
     private static final String DEMO_CASE = "demo";

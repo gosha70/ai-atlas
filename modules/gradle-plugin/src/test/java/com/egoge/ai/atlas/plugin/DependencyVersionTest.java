@@ -17,17 +17,17 @@ class DependencyVersionTest {
 
     @Test
     void thePluginReadsItsOwnVersionFromTheResourceItsBuildWrites() {
-        assertThat(AgenticPlugin.ownVersion()).isEqualTo(System.getProperty("ai.atlas.test.version"));
+        assertThat(PluginVersion.ownVersion()).isEqualTo(System.getProperty("ai.atlas.test.version"));
     }
 
     @Test
     void theDefaultIsThePluginsOwnVersion() {
-        assertThat(AgenticPlugin.dependencyVersion("1.4.2")).isEqualTo("1.4.2");
+        assertThat(PluginVersion.dependencyVersion("1.4.2")).isEqualTo("1.4.2");
     }
 
     @Test
     void anUnknownPluginVersionRequiresAnExplicitVersion() {
-        assertThatThrownBy(() -> AgenticPlugin.dependencyVersion(null))
+        assertThatThrownBy(() -> PluginVersion.dependencyVersion(null))
                 .isInstanceOf(GradleException.class)
                 .hasMessageContaining("cannot determine its own version")
                 .hasMessageContaining("agentic { version.set(\"<ai-atlas version>\") }")

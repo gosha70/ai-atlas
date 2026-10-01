@@ -5,16 +5,18 @@ package com.egoge.ai.atlas.plugin;
 
 import com.egoge.ai.atlas.processor.contract.ContractGate;
 import com.egoge.ai.atlas.processor.contract.ContractIr;
+import com.egoge.ai.atlas.processor.contract.EffectiveOptions;
 import com.egoge.ai.atlas.processor.contract.EmptyContract;
 import com.egoge.ai.atlas.processor.contract.IrJson;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
-import org.gradle.api.provider.Property;
+import org.gradle.api.provider.MapProperty;
 import org.gradle.workers.WorkAction;
 import org.gradle.workers.WorkParameters;
 
+import java.util.Map;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -45,11 +47,8 @@ public abstract class AcceptAction implements WorkAction<AcceptAction.Parameters
         /** The emitted IR, or unset when the sources declare nothing. */
         RegularFileProperty getFreshIr();
 
-        /** The configured REST base path, for the empty document. */
-        Property<String> getApiBasePath();
-
-        /** The configured major, for the empty document. */
-        Property<Integer> getApiMajor();
+        /** The accept compilation's effective {@code -A} options, for the empty document. */
+        MapProperty<String, String> getCompilerArguments();
     }
 
     @Override
@@ -59,8 +58,7 @@ public abstract class AcceptAction implements WorkAction<AcceptAction.Parameters
         try {
             byte[] fresh = parameters.getFreshIr().isPresent()
                     ? Files.readAllBytes(parameters.getFreshIr().get().getAsFile().toPath())
-                    : EmptyContract.json(parameters.getApiBasePath().get(), parameters.getApiMajor().get())
-                            .getBytes(StandardCharsets.UTF_8);
+                    : emptyContract(parameters.getCompilerArguments().get()).getBytes(StandardCharsets.UTF_8);
             report(baseline, IrJson.parse(new String(fresh, StandardCharsets.UTF_8), "the current contract"));
             Path parent = baseline.toAbsolutePath().getParent();
             if (parent != null) {
@@ -116,5 +114,15 @@ public abstract class AcceptAction implements WorkAction<AcceptAction.Parameters
 
     private static String value(String value) {
         return value != null ? value : "(none)";
+    }
+
+    /** The empty document at the options the accept compilation ran with. */
+    private static String emptyContract(Map<String, String> compilerArguments) {
+        EffectiveOptions options = EffectiveOptions.fromArguments(compilerArguments);
+        if (options == null) {
+            throw new GradleException("atlasAccept cannot write the empty contract: the accept compilation's"
+                    + " ai.atlas.* configuration is invalid.");
+        }
+        return EmptyContract.json(options.apiBasePath(), options.apiMajor());
     }
 }

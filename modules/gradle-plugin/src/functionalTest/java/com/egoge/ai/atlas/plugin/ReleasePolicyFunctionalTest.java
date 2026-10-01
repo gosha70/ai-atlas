@@ -1,0 +1,291 @@
+/*
+ * Copyright (c) 2026 egoge.com. All rights reserved.
+ */
+package com.egoge.ai.atlas.plugin;
+
+import org.gradle.testkit.runner.BuildResult;
+import org.gradle.testkit.runner.GradleRunner;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Stream;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * {@code agenticRelease}'s deprecation policy (epic #23 §10) across two or more releases: what a
+ * later release may remove from an earlier one, and channel-loss credit. The single-release and
+ * basic cases are {@link AgenticReleaseFunctionalTest} (D5); these are the multi-release cases
+ * moved out of it.
+ *
+ * <p>As in {@link AgenticReleaseFunctionalTest}, every successful release is committed and tagged
+ * in a throwaway repository ({@link GitFixture}), so an earlier release in the chain is always
+ * proved before the next one is made (F1, D3, D4).
+ */
+class ReleasePolicyFunctionalTest {
+
+    private static final String ORDER = "src/main/java/test/Order.java";
+    private static final String SERVICE = "src/main/java/test/OrderService.java";
+    private static final String ORDER_SOURCE = """
+            package test;
+
+            import com.egoge.ai.atlas.annotations.AgenticEntity;
+            import com.egoge.ai.atlas.annotations.AgenticExposed;
+            import com.egoge.ai.atlas.annotations.AgenticField;
+
+            @AgenticEntity(description = "An order")
+            public class Order {
+                @AgenticField(description = "Id") private Long id;
+                public Long getId() { return id; }
+                %s
+            }
+            """;
+    private static final String LEGACY = """
+            @AgenticField(description = "Legacy code"%s) private String legacy;
+            public String getLegacy() { return legacy; }
+            """;
+    private static final String NOTE = """
+            @AgenticField(description = "A note"%s) private String note;
+            public String getNote() { return note; }
+            """;
+    private static final String ROOT_CHANGELOG = "# Changelog\n\n## [Unreleased]\n- Hand-written.\n";
+
+    @TempDir
+    File projectDir;
+
+    GitFixture git;
+
+    @BeforeEach
+    void setup() throws IOException {
+        write("settings.gradle.kts", "rootProject.name = \"test-project\"");
+        String repo = System.getProperty("ai.atlas.functionalTest.repo").replace('\\', '/');
+        write("build.gradle.kts", """
+                plugins {
+                    id("com.egoge.ai-atlas")
+                }
+
+                repositories {
+                    maven { url = uri("%s") }
+                    mavenCentral()
+                }
+
+                agentic {
+                    version.set("%s")
+                    apiMajorVersion.set(providers.gradleProperty("apiMajor").map { it.toInt() }.orElse(1))
+                }
+                """.formatted(repo, System.getProperty("ai.atlas.functionalTest.version")));
+        write("CHANGELOG.md", ROOT_CHANGELOG);
+        order("");
+        write(SERVICE, """
+                package test;
+
+                import com.egoge.ai.atlas.annotations.AgenticExposed;
+
+                @AgenticExposed(description = "Orders", returnType = Order.class)
+                public class OrderService {
+                    @AgenticExposed(description = "Finds an order by id")
+                    public Order find(Long id) { return null; }
+                }
+                """);
+        git = new GitFixture(projectDir);
+    }
+
+    @Test
+    void aSecondCompatibleReleaseIsComparedWithTheFirst() throws IOException {
+        releaseAndTag("1.0.0");
+        order(NOTE.formatted(""));
+
+        releaseAndTag("1.1.0");
+
+        assertThat(Files.readString(releaseDir("1.1.0").resolve("CHANGELOG.md"))).isEqualTo("""
+                ## 1.1.0 (API major 1)
+
+                Compared with 1.0.0 (API major 1).
+
+                ### Added
+
+                - `field test.Order#note` (output, `java.lang.String`)
+                """);
+        assertThat(Files.readString(releaseDir("1.1.0").resolve("contract-diff.json")))
+                .contains("\"publishedMajor\": 1", "\"path\": \"field test.Order#note\"",
+                        "\"classification\": \"compatible\"");
+        assertThat(Files.readString(releaseDir("1.1.0").resolve("release.json"))).contains("\"previous\": \"1.0.0\"");
+        String aggregate = Files.readString(atlas("CHANGELOG.md"));
+        assertThat(aggregate.indexOf("## 1.1.0")).isPositive().isLessThan(aggregate.indexOf("## 1.0.0"));
+        assertThat(Files.readString(projectDir.toPath().resolve("CHANGELOG.md"))).isEqualTo(ROOT_CHANGELOG);
+    }
+
+    @Test
+    void aBreakingChangeInTheSameMajorFails() throws IOException {
+        releaseAndTag("1.0.0");
+        order(NOTE.formatted(""));
+        releaseAndTag("1.1.0");
+        order(NOTE.formatted("").replace("String note", "Integer note").replace("String getNote", "Integer getNote"));
+
+        // atlasAccept accepts the breaking change; the release policy refuses it within major 1
+        BuildResult result = release("1.2.0").buildAndFail();
+
+        assertThat(result.getOutput()).contains("Release 1.2.0 violates the release policy",
+                "field test.Order#note (javaType): breaking within API major 1, javaType java.lang.String →"
+                        + " java.lang.Integer (output): The field's schema in responses changes.",
+                "or release it under API major 2; or set failOnBreaking = false");
+        assertThat(releaseDir("1.2.0")).doesNotExist();
+
+        BuildResult nextMajor = releaseAndTag("2.0.0", "-PapiMajor=2");
+        assertThat(nextMajor.getOutput()).contains("Released contract 2.0.0 (API major 2)");
+        assertThat(Files.readString(releaseDir("2.0.0").resolve("CHANGELOG.md"))).contains("### Breaking",
+                "- `field test.Order#note`: javaType `java.lang.String` → `java.lang.Integer` (output).");
+    }
+
+    @Test
+    void aRemovalNeverReleasedDeprecatedFails() throws IOException {
+        order(LEGACY.formatted(""));
+        releaseAndTag("1.0.0");
+        order("");
+
+        // atlasAccept accepts the breaking removal; the release policy still refuses it
+        BuildResult result = release("2.0.0", "-PapiMajor=2").buildAndFail();
+
+        assertThat(result.getOutput()).contains("Release 2.0.0 violates the release policy",
+                "field test.Order#legacy (removed): removed in API major 2, but never released as deprecated.",
+                "declare @AgenticField(deprecatedSinceVersion = N)",
+                "agentic { release { policy { minDeprecatedReleases; minApiMajorAdvance; failOnBreaking } } }");
+        assertThat(releaseDir("2.0.0")).doesNotExist();
+    }
+
+    @Test
+    void aRemovalAfterAReleasedDeprecationSatisfiesThePolicy() throws IOException {
+        String deprecated = LEGACY.formatted(", deprecatedSinceVersion = 1, removedInVersion = 2,"
+                + " deprecatedMessage = \"Use id\"");
+        order(LEGACY.formatted(""));
+        releaseAndTag("1.0.0");
+        order(deprecated);
+        releaseAndTag("1.1.0");
+        assertThat(Files.readString(releaseDir("1.1.0").resolve("CHANGELOG.md"))).contains("""
+                ### Deprecated
+
+                - `field test.Order#legacy`: deprecated since major 1, removed in major 2. Use id
+                """);
+
+        releaseAndTag("2.0.0", "-PapiMajor=2");
+
+        Path dir = releaseDir("2.0.0");
+        assertThat(files(dir)).contains("openapi-v2.json").doesNotContain("openapi-v1.json");
+        assertThat(Files.readString(dir.resolve("CHANGELOG.md"))).isEqualTo("""
+                ## 2.0.0 (API major 2)
+
+                Compared with 1.1.0 (API major 1).
+
+                ### Removed
+
+                - `field test.Order#legacy` (output), deprecated since major 1 (first released deprecated in 1.1.0, 1 release(s))
+                """);
+    }
+
+    @Test
+    void theDeprecationPolicyIsConfigurable() throws IOException {
+        append("""
+                agentic {
+                    release {
+                        policy {
+                            minDeprecatedReleases.set(0)
+                            minApiMajorAdvance.set(0)
+                        }
+                    }
+                }
+                """);
+        order(LEGACY.formatted(""));
+        releaseAndTag("1.0.0");
+        order("");
+
+        releaseAndTag("1.1.0");
+
+        assertThat(Files.readString(releaseDir("1.1.0").resolve("release.json")))
+                .contains("\"minDeprecatedReleases\": 0", "\"minApiMajorAdvance\": 0");
+        assertThat(Files.readString(releaseDir("1.1.0").resolve("CHANGELOG.md")))
+                .contains("- `field test.Order#legacy` (output), never released as deprecated");
+    }
+
+    @Test
+    void aChannelLossIsARemoval() throws IOException {
+        append("agentic { projections.set(true) }\n");
+        order(NOTE.formatted(""));
+        releaseAndTag("1.0.0");
+        order(NOTE.formatted(", channels = AgenticExposed.Channel.API"));
+
+        BuildResult result = release("1.1.0").buildAndFail();
+
+        assertThat(result.getOutput()).contains("field test.Order#note (channels.AI): loses a channel,"
+                + " [AI, API] → [API], in API major 1, but never released as deprecated.",
+                "A channel has no lifecycle of its own, so deprecate the whole field.");
+        assertThat(releaseDir("1.1.0")).doesNotExist();
+    }
+
+    // ------------------------------------------------------------ helpers
+
+    /** Accepts the current sources, then returns a runner releasing them as {@code version}. */
+    private GradleRunner release(String version, String... extra) {
+        List<String> accept = new ArrayList<>(List.of("atlasAccept"));
+        accept.addAll(List.of(extra));
+        runner(accept.toArray(String[]::new)).build();
+        List<String> release = new ArrayList<>(List.of("classes", "agenticRelease", "-Pversion=" + version));
+        release.addAll(List.of(extra));
+        return runner(release.toArray(String[]::new));
+    }
+
+    /** Releases {@code version}, then commits and tags it as {@code v<version>} (F1). */
+    private BuildResult releaseAndTag(String version, String... extra) {
+        BuildResult result = release(version, extra).build();
+        git.commitAndTag("v" + version);
+        return result;
+    }
+
+    private void order(String members) throws IOException {
+        write(ORDER, ORDER_SOURCE.formatted(members));
+    }
+
+    private Path atlas(String path) {
+        return projectDir.toPath().resolve(".atlas/" + path);
+    }
+
+    private Path releaseDir(String version) {
+        return atlas("releases/" + version);
+    }
+
+    private static List<String> files(Path dir) throws IOException {
+        try (Stream<Path> files = Files.list(dir)) {
+            return files.map(p -> p.getFileName().toString()).sorted().toList();
+        }
+    }
+
+    private void append(String buildScript) {
+        try {
+            Files.writeString(projectDir.toPath().resolve("build.gradle.kts"), buildScript, StandardCharsets.UTF_8,
+                    StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private void write(String path, String content) throws IOException {
+        File file = new File(projectDir, path);
+        file.getParentFile().mkdirs();
+        Files.writeString(file.toPath(), content, StandardCharsets.UTF_8);
+    }
+
+    private GradleRunner runner(String... tasks) {
+        return GradleRunner.create()
+                .withProjectDir(projectDir)
+                .withPluginClasspath()
+                .withArguments(tasks);
+    }
+}
