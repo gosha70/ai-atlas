@@ -8,7 +8,9 @@ import com.egoge.ai.atlas.annotations.AgenticExposed;
 import com.egoge.ai.atlas.processor.contract.ContractGate;
 import com.egoge.ai.atlas.processor.contract.ContractIr;
 import com.egoge.ai.atlas.processor.contract.ContractProjection;
+import com.egoge.ai.atlas.processor.contract.EffectiveOptions;
 import com.egoge.ai.atlas.processor.contract.IrBuilder;
+import com.egoge.ai.atlas.processor.contract.ResourceRecorder;
 import com.egoge.ai.atlas.processor.generator.ApiVersionPropertiesGenerator;
 import com.egoge.ai.atlas.processor.generator.CollectionsOption;
 import com.egoge.ai.atlas.processor.generator.ConstraintsOption;
@@ -102,11 +104,13 @@ public class AgenticProcessor extends AbstractProcessor {
     private ProjectionsOption projections;
     private RestOption rest;
     private CollectionsOption collections;
+    private ResourceRecorder resourceRecorder;
 
     @Override public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
-        super.init(processingEnv);
+        resourceRecorder = ResourceRecorder.wrap(processingEnv);
+        super.init(resourceRecorder);
         resolveVersionConfig();
         qualityKind = QualityDiagnostics.resolveKind(OPT_STRICT,
                 processingEnv.getOptions().get(OPT_STRICT), processingEnv.getMessager());
@@ -119,7 +123,9 @@ public class AgenticProcessor extends AbstractProcessor {
                 processingEnv);
         versionConfigValid &= collections != null;
         if (projections != null) {
-            contractIr = new IrBuilder(processingEnv, projections::channels, projections.enabled(),
+            // resourceRecorder, not the raw processingEnv parameter: the IR's digest must be recorded like
+            // every other reserved artifact, for contract-resources.json (D2.4) to list it (C4, ClassOutputResources).
+            contractIr = new IrBuilder(resourceRecorder, projections::channels, projections.enabled(),
                     collections != null ? collections::bound : operationId -> ContractIr.Bound.NONE);
             rest = RestOption.resolve(OPT_REST, processingEnv, apiBasePath, apiMajor, projections::channels,
                     projections.enabled());
@@ -166,6 +172,8 @@ public class AgenticProcessor extends AbstractProcessor {
                         processingEnv.getFiler(), processingEnv.getMessager());
                 deprecationManifestGenerated = true;
             }
+            resourceRecorder.writeManifest(new EffectiveOptions(apiBasePath, apiMajor, openApiInfoVersion,
+                    constraints.enabled(), projections.enabled(), collections.enabled()));
             return false;
         }
 

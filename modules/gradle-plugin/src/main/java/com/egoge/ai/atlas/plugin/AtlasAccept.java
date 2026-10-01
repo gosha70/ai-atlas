@@ -7,6 +7,7 @@ import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.RegularFileProperty;
+import org.gradle.api.provider.MapProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Input;
@@ -46,13 +47,13 @@ public abstract class AtlasAccept extends DefaultTask {
     @Internal
     public abstract RegularFileProperty getBaseline();
 
-    /** The configured REST base path, for the empty document. */
+    /**
+     * The accept compilation's effective {@code -A} options, last value winning: the REST base path
+     * and major of the empty document, including an override the build adds to the compiler
+     * arguments after the {@code agentic} extension's.
+     */
     @Input
-    public abstract Property<String> getApiBasePath();
-
-    /** The configured major, for the empty document. */
-    @Input
-    public abstract Property<Integer> getApiMajor();
+    public abstract MapProperty<String, String> getCompilerArguments();
 
     /** The processor on the {@code annotationProcessor} classpath, named when this plugin cannot run it. */
     @Internal
@@ -81,8 +82,7 @@ public abstract class AtlasAccept extends DefaultTask {
                     if (ir != null) {
                         parameters.getFreshIr().set(ir);
                     }
-                    parameters.getApiBasePath().set(getApiBasePath());
-                    parameters.getApiMajor().set(getApiMajor());
+                    parameters.getCompilerArguments().set(getCompilerArguments());
                 });
         AgenticPlugin.awaitProcessor(getWorkerExecutor(), getProcessorVersion());
     }

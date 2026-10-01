@@ -28,13 +28,10 @@ import org.gradle.process.CommandLineArgumentProvider;
 import org.gradle.workers.WorkerExecutionException;
 import org.gradle.workers.WorkerExecutor;
 
+import javax.inject.Inject;
 import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.regex.Matcher;
@@ -54,7 +51,8 @@ import java.util.stream.Stream;
  * <p>Also configures IntelliJ IDEA to recognize generated source directories, and the contract
  * gate: the {@code contractBaseline} and {@code contractLocked} options of the main
  * {@code compileJava}, with the {@code constraints} option next to them, the {@value #CONTRACT_CHECK_TASK} task that {@code classes} depends on, and
- * the {@value #ACCEPT_TASK} task.
+ * the {@value #ACCEPT_TASK} task; and the release workflow, {@value #RELEASE_TASK},
+ * {@value #RELEASE_HISTORY_CHECK_TASK} (part of {@code check}) and {@value #RELEASE_VERIFY_TASK}.
  */
 public class AgenticPlugin implements Plugin<Project> {
 
@@ -62,17 +60,29 @@ public class AgenticPlugin implements Plugin<Project> {
     public static final String CONTRACT_CHECK_TASK = "atlasContractCheck";
     /** The task that writes the current contract to the baseline. */
     public static final String ACCEPT_TASK = "atlasAccept";
+    /** The task that releases the accepted contract as an immutable snapshot. */
+    public static final String RELEASE_TASK = "agenticRelease";
+    /** The task, part of {@code check}, that verifies the released snapshots' internal consistency. */
+    public static final String RELEASE_HISTORY_CHECK_TASK = "agenticReleaseHistoryCheck";
+    /** The task, not part of {@code check}, that verifies the build against a tagged release. */
+    public static final String RELEASE_VERIFY_TASK = "agenticReleaseVerify";
 
     private static final String ACCEPT_COMPILE_TASK = "atlasAcceptCompile";
-    private static final String TASK_GROUP = "ai-atlas";
+    static final String TASK_GROUP = "ai-atlas";
     private static final String DEFAULT_CONTRACT_BASELINE = ".atlas/api.ir.json";
+    private static final String DEFAULT_RELEASES_DIR = ".atlas/releases";
+    private static final String DEFAULT_RELEASE_CHANGELOG = ".atlas/CHANGELOG.md";
     private static final String ACCEPT_DIR = "atlas/accept";
     private static final String CONTRACT_OPTION_PREFIX = "-Aai.atlas.contract.";
     private static final String PROCESSOR_MODULE = "ai-atlas-processor";
     private static final Pattern PROCESSOR_JAR = Pattern.compile(PROCESSOR_MODULE + "-(.+)\\.jar");
-    private static final Pattern PLUGIN_JAR = Pattern.compile("-(\\d[^/]*)\\.jar$");
-    /** The resource, next to this class, holding the plugin's version, written by its build. */
-    static final String VERSION_RESOURCE = "ai-atlas-plugin.properties";
+
+    private final WorkerExecutor workerExecutor;
+
+    @Inject
+    public AgenticPlugin(WorkerExecutor workerExecutor) {
+        this.workerExecutor = workerExecutor;
+    }
 
     @Override
     public void apply(Project project) {
@@ -86,7 +96,7 @@ public class AgenticPlugin implements Plugin<Project> {
         // 2.0.0 must not select ai-atlas 2.0.0. Read only when agentic { version } is not set. When the
         // plugin's version is unknown, resolving it throws, so isPresent() and getOrNull() throw too
         // instead of reporting it absent.
-        extension.getVersion().convention(project.provider(() -> dependencyVersion(ownVersion())));
+        extension.getVersion().convention(project.provider(() -> PluginVersion.dependencyVersion(PluginVersion.ownVersion())));
         extension.getGroup().convention("com.egoge");
         extension.getMcpEnabled().convention(true);
         extension.getRestEnabled().convention(true);
@@ -99,6 +109,14 @@ public class AgenticPlugin implements Plugin<Project> {
         extension.getContractBaseline().convention(
                 project.getLayout().getProjectDirectory().file(DEFAULT_CONTRACT_BASELINE));
         extension.getContractLocked().convention(false);
+        extension.getReleaseVersion().convention(project.provider(() -> project.getVersion().toString()));
+        extension.getReleaseVersionTracksApiMajor().convention(false);
+        ReleaseSpec release = extension.getRelease();
+        release.getDirectory().convention(project.getLayout().getProjectDirectory().dir(DEFAULT_RELEASES_DIR));
+        release.getChangelog().convention(project.getLayout().getProjectDirectory().file(DEFAULT_RELEASE_CHANGELOG));
+        release.getPolicy().getMinDeprecatedReleases().convention(1);
+        release.getPolicy().getMinApiMajorAdvance().convention(1);
+        release.getPolicy().getFailOnBreaking().convention(true);
 
         // Add dependencies and processor options after evaluation (so extension values are resolved)
         project.afterEvaluate(p -> {
@@ -157,11 +175,16 @@ public class AgenticPlugin implements Plugin<Project> {
             task.getProcessorClasspath().from(processorPath);
             task.getBaseline().set(extension.getContractBaseline());
             task.getLocked().set(extension.getContractLocked());
-            task.getApiBasePath().set(extension.getApiBasePath());
-            task.getApiMajor().set(extension.getApiMajorVersion());
+            task.getCompilerArguments().set(compileJava.map(
+                    compile -> EffectiveCompilerArguments.lastWins(compile.getOptions().getAllCompilerArgs())));
             task.getProcessorVersion().set(processorVersion);
         });
         tasks.named(JavaPlugin.CLASSES_TASK_NAME).configure(task -> task.dependsOn(check));
+
+        // compileJava.doLast (C3a decision): writes the empty contract itself when nothing declares, so
+        // its class output is up to date and cacheable like any other compileJava output.
+        compileJava.configure(task -> task.doLast(
+                new EmptyContractResourcesWriter(workerExecutor, processorPath, processorVersion)));
 
         // The sources compiled as compileJava compiles them, less the contract options, so accepting
         // works while the gate fails. Everything is read from compileJava lazily, when the task graph is
@@ -207,10 +230,12 @@ public class AgenticPlugin implements Plugin<Project> {
             task.getClassesDirs().from(acceptCompile.flatMap(JavaCompile::getDestinationDirectory));
             task.getProcessorClasspath().from(processorPath);
             task.getBaseline().set(extension.getContractBaseline());
-            task.getApiBasePath().set(extension.getApiBasePath());
-            task.getApiMajor().set(extension.getApiMajorVersion());
+            task.getCompilerArguments().set(acceptCompile.map(
+                    compile -> EffectiveCompilerArguments.lastWins(compile.getOptions().getAllCompilerArgs())));
             task.getProcessorVersion().set(processorVersion);
         });
+
+        ReleaseTasks.configure(project, extension, compileJava, processorPath, processorVersion);
     }
 
     /**
@@ -232,62 +257,11 @@ public class AgenticPlugin implements Plugin<Project> {
             if (linkage == null) {
                 throw e;
             }
-            throw new GradleException("The ai-atlas Gradle plugin " + pluginVersion() + " cannot run "
+            throw new GradleException("The ai-atlas Gradle plugin " + PluginVersion.pluginVersion() + " cannot run "
                     + processorVersion.get() + " on the annotationProcessor classpath (" + linkage + ")."
                     + " The plugin and processor versions must match: align agentic { version } with the"
                     + " plugin's version, or remove the agentic { version } pin.");
         }
-    }
-
-    /**
-     * The ai-atlas version {@code agentic { version }} defaults to: this plugin's own version.
-     *
-     * @param pluginVersion the plugin's version, or {@code null} when it cannot be determined
-     * @return the version
-     * @throws GradleException when {@code pluginVersion} is {@code null}, asking for an explicit
-     *                         {@code agentic { version }}; it never falls back to the project version
-     */
-    static String dependencyVersion(String pluginVersion) {
-        if (pluginVersion == null) {
-            throw new GradleException("The ai-atlas Gradle plugin cannot determine its own version (its classes"
-                    + " were loaded without the version resource its build writes and without jar metadata), so it"
-                    + " cannot choose the ai-atlas dependency version. Set it explicitly:"
-                    + " agentic { version.set(\"<ai-atlas version>\") }. The project version is never used for it.");
-        }
-        return pluginVersion;
-    }
-
-    /**
-     * This plugin's version: the {@value #VERSION_RESOURCE} resource its build writes, else the
-     * jar's {@code Implementation-Version}, else the version in the jar's file name.
-     *
-     * @return the version, or {@code null} when none of these is available
-     */
-    static String ownVersion() {
-        try (InputStream in = AgenticPlugin.class.getResourceAsStream(VERSION_RESOURCE)) {
-            if (in != null) {
-                Properties properties = new Properties();
-                properties.load(in);
-                String version = properties.getProperty("version");
-                if (version != null && !version.isBlank()) {
-                    return version.trim();
-                }
-            }
-        } catch (IOException e) {
-            // fall through to the jar's metadata
-        }
-        String version = AgenticPlugin.class.getPackage().getImplementationVersion();
-        if (version == null) {
-            CodeSource source = AgenticPlugin.class.getProtectionDomain().getCodeSource();
-            Matcher jar = source == null ? null : PLUGIN_JAR.matcher(source.getLocation().getPath());
-            version = jar != null && jar.find() ? jar.group(1) : null;
-        }
-        return version;
-    }
-
-    private static String pluginVersion() {
-        String version = ownVersion();
-        return version != null ? version : "(development build)";
     }
 
     private static String processorVersion(Set<ResolvedArtifactResult> artifacts) {

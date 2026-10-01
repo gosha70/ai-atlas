@@ -104,6 +104,18 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
                         + " sorted list of distinct channels among " + EVERY_CHANNEL + ", got " + channels);
             }
         }
+
+        /**
+         * This field with another lifecycle.
+         *
+         * @param lifecycle the lifecycle
+         * @return a copy of this field with every other component unchanged
+         */
+        public Field withLifecycle(FieldLifecycle lifecycle) {
+            return new Field(name, displayName, javaType, collectionKind, elementType, typeHint, reference, enumType,
+                    allowedValues, openEnum, sensitive, checkCircularReference, description, constraints, channels,
+                    lifecycle);
+        }
     }
 
     /**
@@ -159,6 +171,17 @@ public record ContractIr(int irVersion, String apiBasePath, int apiMajor,
             if (returns == null) {
                 throw new IllegalArgumentException("operation '" + method + "' must record its return");
             }
+        }
+
+        /**
+         * This operation with another lifecycle.
+         *
+         * @param lifecycle the lifecycle
+         * @return a copy of this operation with every other component unchanged
+         */
+        public Operation withLifecycle(OperationLifecycle lifecycle) {
+            return new Operation(service, method, toolName, channels, description, rest, parameters, returns, hints,
+                    lifecycle);
         }
 
         /** The identity as {@code service#method(parameter types)}. */

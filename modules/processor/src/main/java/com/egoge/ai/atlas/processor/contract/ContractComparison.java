@@ -13,12 +13,9 @@ import com.egoge.ai.atlas.processor.contract.ContractIr.Operation;
 import com.egoge.ai.atlas.processor.contract.ContractIr.Parameter;
 import com.egoge.ai.atlas.processor.contract.ContractIr.TypeRef;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -249,28 +246,7 @@ final class ContractComparison {
      * on the channel returns, and those a field on the channel refers to from one of them.
      */
     private Set<String> reachable(String channel) {
-        return reachable.computeIfAbsent(channel, c -> {
-            Map<String, Entity> entities = new HashMap<>();
-            baseline.entities().forEach(entity -> entities.put(entity.className(), entity));
-            Deque<String> pending = new ArrayDeque<>();
-            for (Operation op : activeOperations(baseline).values()) {
-                if (op.channels().contains(c) && op.returns().reference() != null) {
-                    pending.add(op.returns().reference().entity());
-                }
-            }
-            Set<String> result = new HashSet<>();
-            while (!pending.isEmpty()) {
-                String className = pending.pop();
-                if (result.add(className)) {
-                    for (Field field : activeFields(entities.get(className)).values()) {
-                        if (field.channels().contains(c) && field.reference() != null) {
-                            pending.add(field.reference().entity());
-                        }
-                    }
-                }
-            }
-            return result;
-        });
+        return reachable.computeIfAbsent(channel, c -> ChannelReachability.entities(baseline, major, c));
     }
 
     /** The channel projection of a document's entities at M, with each field's recorded channels. */

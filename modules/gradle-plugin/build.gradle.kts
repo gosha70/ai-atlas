@@ -74,6 +74,24 @@ dependencies {
     // in an isolated class loader, so the check runs the processor version that compiled.
     compileOnly(project(":modules:processor"))
 
+    // ClassOutputResourcesTest calls processor classes (ContractResources, ReleaseSnapshots) directly,
+    // as a plain unit test, not through the isolated worker classpath: unlike compileOnly, this makes
+    // them available at test run time too.
+    testImplementation(project(":modules:processor"))
+
+    // ReleaseFixtures compiles fixture sources with the processor (F1, moved from the processor's
+    // own test fixtures along with ReleaseSnapshotsTest, ReleaseSnapshotsEqualityTest and
+    // ReleaseSnapshotHistoryTest): the annotations the fixture sources reference, and Google
+    // compile-testing to run javac with AgenticProcessor attached.
+    testImplementation(project(":modules:annotations"))
+    testImplementation(libs.compile.testing)
+    // The processor's generated MCP tool and REST controller classes reference these at compile
+    // time, exactly as the processor's own tests do (modules/processor/build.gradle.kts).
+    testImplementation(platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.spring.boot.get()}"))
+    testImplementation("org.springframework:spring-web")
+    testImplementation("org.springframework:spring-webmvc")
+    testImplementation(libs.spring.ai.mcp.server)
+
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)

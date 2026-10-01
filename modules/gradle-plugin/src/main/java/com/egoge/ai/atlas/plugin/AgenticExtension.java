@@ -3,8 +3,12 @@
  */
 package com.egoge.ai.atlas.plugin;
 
+import org.gradle.api.Action;
 import org.gradle.api.file.RegularFileProperty;
+import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Property;
+
+import javax.inject.Inject;
 
 /**
  * Extension object for configuring the AI-ATLAS Gradle plugin.
@@ -20,6 +24,16 @@ import org.gradle.api.provider.Property;
  */
 public abstract class AgenticExtension {
 
+    private final ReleaseSpec release;
+
+    /**
+     * @param objects creates the nested release settings
+     */
+    @Inject
+    public AgenticExtension(ObjectFactory objects) {
+        this.release = objects.newInstance(ReleaseSpec.class);
+    }
+
     /**
      * The version of the ai-atlas {@code annotations}, {@code processor} and {@code runtime}
      * dependencies the plugin adds. Defaults to this plugin's own version, which the plugin and
@@ -27,6 +41,7 @@ public abstract class AgenticExtension {
      * project under any version leaves the ai-atlas version unchanged. It must be set explicitly
      * only when the plugin cannot determine its own version, which happens only when the plugin's
      * classes are loaded without the version resource its build writes and without jar metadata.
+     * Not the version a contract is released as: see {@link #getReleaseVersion()}.
      */
     public abstract Property<String> getVersion();
 
@@ -138,4 +153,32 @@ public abstract class AgenticExtension {
      * compilation.
      */
     public abstract Property<Boolean> getCollections();
+
+    /**
+     * The version {@code agenticRelease} releases the contract as. Defaults to the project version.
+     * It must be {@code MAJOR.MINOR.PATCH}: a {@code -SNAPSHOT} or other pre-release is refused. It
+     * is independent of {@link #getVersion()}, the ai-atlas dependency version, and of
+     * {@link #getApiMajorVersion()}, unless {@link #getReleaseVersionTracksApiMajor()} is on.
+     */
+    public abstract Property<String> getReleaseVersion();
+
+    /**
+     * Whether a release's version major must equal the contract's {@code apiMajor}. Defaults to
+     * false, so a product at 5.x can serve API v2.
+     */
+    public abstract Property<Boolean> getReleaseVersionTracksApiMajor();
+
+    /** The release settings: directory, changelog, tag name and release policy. */
+    public ReleaseSpec getRelease() {
+        return release;
+    }
+
+    /**
+     * Configures the release settings.
+     *
+     * @param action the configuration
+     */
+    public void release(Action<? super ReleaseSpec> action) {
+        action.execute(release);
+    }
 }

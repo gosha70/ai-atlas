@@ -6,6 +6,7 @@ package com.egoge.ai.atlas.plugin;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.RegularFileProperty;
+import org.gradle.api.provider.MapProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Input;
@@ -50,13 +51,13 @@ public abstract class AtlasContractCheck extends DefaultTask {
     @Input
     public abstract Property<Boolean> getLocked();
 
-    /** The configured REST base path. */
+    /**
+     * {@code compileJava}'s effective {@code -A} options, last value winning: the REST base path and
+     * major the empty contract is built at, including an override the build adds to the compiler
+     * arguments after the {@code agentic} extension's.
+     */
     @Input
-    public abstract Property<String> getApiBasePath();
-
-    /** The configured major. */
-    @Input
-    public abstract Property<Integer> getApiMajor();
+    public abstract MapProperty<String, String> getCompilerArguments();
 
     /** The processor on the {@code annotationProcessor} classpath, named when this plugin cannot run it. */
     @Internal
@@ -76,8 +77,7 @@ public abstract class AtlasContractCheck extends DefaultTask {
                 .submit(EmptyContractAction.class, parameters -> {
                     parameters.getBaseline().set(getBaseline());
                     parameters.getLocked().set(getLocked());
-                    parameters.getApiBasePath().set(getApiBasePath());
-                    parameters.getApiMajor().set(getApiMajor());
+                    parameters.getCompilerArguments().set(getCompilerArguments());
                 });
         AgenticPlugin.awaitProcessor(getWorkerExecutor(), getProcessorVersion());
     }
