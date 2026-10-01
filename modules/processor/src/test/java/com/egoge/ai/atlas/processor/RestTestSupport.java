@@ -3,6 +3,7 @@
  */
 package com.egoge.ai.atlas.processor;
 
+import com.egoge.ai.atlas.processor.contract.ContractResources;
 import com.egoge.ai.atlas.processor.generator.McpToolsResourceGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -243,6 +244,29 @@ final class RestTestSupport {
             }
         }
         return files;
+    }
+
+    /**
+     * Asserts two compilations' {@link #outputs} are equal, but for the one line of
+     * {@code contract-resources.json} recording {@code flag}: the manifest records the effective
+     * configuration, so a flag that changes no other byte still changes that line, and only it.
+     */
+    static void assertSameOutputsButTheRecordedFlag(Map<String, String> actual, Map<String, String> expected,
+                                                    String flag) {
+        assertThat(actual).isNotEmpty();
+        assertThat(actual.keySet()).isEqualTo(expected.keySet());
+        String manifest = actual.keySet().stream().filter(p -> p.endsWith(ContractResources.MANIFEST_PATH))
+                .findFirst().orElseThrow();
+        Map<String, String> actualRest = new TreeMap<>(actual);
+        Map<String, String> expectedRest = new TreeMap<>(expected);
+        String actualManifest = actualRest.remove(manifest);
+        String expectedManifest = expectedRest.remove(manifest);
+        assertThat(actualRest).isEqualTo(expectedRest);
+        Pattern flagLine = Pattern.compile("(?m)^ *\"" + Pattern.quote(flag) + "\": (true|false),?\n");
+        assertThat(flagLine.matcher(actualManifest).results().count()).isEqualTo(1);
+        assertThat(flagLine.matcher(expectedManifest).results().count()).isEqualTo(1);
+        assertThat(flagLine.matcher(actualManifest).replaceAll(""))
+                .isEqualTo(flagLine.matcher(expectedManifest).replaceAll(""));
     }
 
     /** The MCP tool classes and {@code mcp-tools.json}. */

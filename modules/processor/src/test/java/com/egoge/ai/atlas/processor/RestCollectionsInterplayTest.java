@@ -22,6 +22,7 @@ import java.util.List;
 
 import static com.egoge.ai.atlas.processor.RestTestSupport.CUSTOMER;
 import static com.egoge.ai.atlas.processor.RestTestSupport.CUSTOMER_SERVICE;
+import static com.egoge.ai.atlas.processor.RestTestSupport.assertSameOutputsButTheRecordedFlag;
 import static com.egoge.ai.atlas.processor.RestTestSupport.JSON;
 import static com.egoge.ai.atlas.processor.RestTestSupport.ORDER;
 import static com.egoge.ai.atlas.processor.RestTestSupport.ORDER_SERVICE;
@@ -295,7 +296,7 @@ class RestCollectionsInterplayTest {
         assertThat(collectionsOnly.status()).isEqualTo(Compilation.Status.SUCCESS);
         assertThat(both.status()).isEqualTo(Compilation.Status.SUCCESS);
 
-        assertThat(outputs(both, false)).isEqualTo(outputs(collectionsOnly, false));
+        assertSameOutputsButTheRecordedFlag(outputs(both, false), outputs(collectionsOnly, false), "ai.atlas.rest");
     }
 
     @Test
@@ -303,6 +304,6 @@ class RestCollectionsInterplayTest {
         Compilation restOnly = compile(List.of(REST_ON), ORDER, ORDER_SERVICE, CUSTOMER, CUSTOMER_SERVICE);
         Compilation both = compile(BOTH, ORDER, ORDER_SERVICE, CUSTOMER, CUSTOMER_SERVICE);
 
-        assertThat(outputs(both, false)).isEqualTo(outputs(restOnly, false));
+        assertSameOutputsButTheRecordedFlag(outputs(both, false), outputs(restOnly, false), "ai.atlas.collections");
     }
 }

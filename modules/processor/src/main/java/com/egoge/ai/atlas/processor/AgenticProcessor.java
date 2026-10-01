@@ -173,7 +173,7 @@ public class AgenticProcessor extends AbstractProcessor {
                 deprecationManifestGenerated = true;
             }
             resourceRecorder.writeManifest(new EffectiveOptions(apiBasePath, apiMajor, openApiInfoVersion,
-                    constraints.enabled(), projections.enabled(), collections.enabled()));
+                    constraints.enabled(), projections.enabled(), collections.enabled(), rest.enabled()));
             return false;
         }
 

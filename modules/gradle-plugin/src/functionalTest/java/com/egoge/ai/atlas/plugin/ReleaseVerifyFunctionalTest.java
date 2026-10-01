@@ -176,6 +176,21 @@ class ReleaseVerifyFunctionalTest {
         assertThat(result.getOutput()).contains("mcp-tools.json", "the build does not produce");
     }
 
+    /**
+     * With nothing declared, {@code ai.atlas.rest} changes no artifact's bytes, only the recorded
+     * configuration: verify still catches it changing after the release.
+     */
+    @Test
+    void verifyFailsWhenOnlyTheRestOptionChanged() throws IOException {
+        releaseAndTag("1.0.0");
+        append("agentic { rest.set(true) }\n");
+
+        BuildResult result = runner("classes", "agenticReleaseVerify", "-Pversion=1.0.0").buildAndFail();
+
+        assertThat(result.getOutput()).contains("effective ai.atlas.* configuration", "ai.atlas.rest=true",
+                "ai.atlas.rest=false");
+    }
+
     @Test
     void aShallowCloneFails() throws IOException {
         releaseAndTag("1.0.0");

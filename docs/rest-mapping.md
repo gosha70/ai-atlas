@@ -37,7 +37,10 @@ remove the declaration
 ```
 
 With the flag off, or on with nothing declared, every generated source and resource is
-byte-identical to before (golden snapshot).
+byte-identical to before (golden snapshot), except `META-INF/ai-atlas/contract-resources.json`,
+which records the flag's value in the effective configuration (see
+[Contract releases](contract-releases.md#the-contract-resources-manifest)), so
+`agenticReleaseVerify` catches the flag changing after a release.
 
 ## `@AgenticExposed(rest = @Rest(...))`
 

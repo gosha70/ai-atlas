@@ -16,6 +16,7 @@ import static com.egoge.ai.atlas.processor.RestTestSupport.ORDER;
 import static com.egoge.ai.atlas.processor.RestTestSupport.ORDER_SERVICE;
 import static com.egoge.ai.atlas.processor.RestTestSupport.REST_OFF;
 import static com.egoge.ai.atlas.processor.RestTestSupport.REST_ON;
+import static com.egoge.ai.atlas.processor.RestTestSupport.assertSameOutputsButTheRecordedFlag;
 import static com.egoge.ai.atlas.processor.RestTestSupport.compile;
 import static com.egoge.ai.atlas.processor.RestTestSupport.mcpOutputs;
 import static com.egoge.ai.atlas.processor.RestTestSupport.outputs;
@@ -108,7 +109,8 @@ class RestUnchangedOutputTest {
                     customer), false);
             Map<String, String> on = outputs(compile(with(extra, REST_ON), ORDER, PLAIN_ORDER_SERVICE, customer), false);
 
-            assertThat(off).isNotEmpty().isEqualTo(explicitOff).isEqualTo(on);
+            assertThat(off).isNotEmpty().isEqualTo(explicitOff);
+            assertSameOutputsButTheRecordedFlag(on, off, "ai.atlas.rest");
         }
     }
 
