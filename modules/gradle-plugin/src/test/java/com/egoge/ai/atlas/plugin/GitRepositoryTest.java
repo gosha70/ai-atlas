@@ -184,6 +184,18 @@ class GitRepositoryTest {
     }
 
     @Test
+    void eolConversionIsOffOnlyWhereTheTextAttributeIsUnset() throws IOException {
+        GitRepository repo = new GitRepository(dir);
+        assertThat(repo.eolConversionOff(dir.resolve(".atlas/releases/1.0.0/release.json"))).isFalse();
+
+        Files.writeString(dir.resolve(".gitattributes"), ".atlas/** -text\n", StandardCharsets.UTF_8);
+
+        assertThat(repo.eolConversionOff(dir.resolve(".atlas/releases/1.0.0/release.json"))).isTrue();
+        assertThat(repo.eolConversionOff(dir.resolve(".atlas/CHANGELOG.md"))).isTrue();
+        assertThat(repo.eolConversionOff(dir.resolve("README.md"))).isFalse();
+    }
+
+    @Test
     void aRepositoryWithoutCommitsHasNoHead() throws IOException, InterruptedException {
         Path empty = Files.createDirectories(dir.resolveSibling("no-commits"));
         git(empty, "init", "-q");

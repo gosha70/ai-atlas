@@ -231,18 +231,43 @@ final class GitRepository implements GitQuery {
      * @return the prefix to combine with {@code <version>/release.json}, etc.
      */
     String releasesPrefix(Path releasesDir) {
+        String path = rootRelative(releasesDir);
+        return path.isEmpty() ? "" : path + "/";
+    }
+
+    /**
+     * {@code path}, relative to the repository root and forward-slashed; empty for the root itself.
+     * This repository must have been constructed at, or above, an existing ancestor of it.
+     *
+     * @param path a path inside the work tree, existing or not
+     * @return the root-relative path
+     */
+    String rootRelative(Path path) {
         String showPrefix = succeeded("rev-parse", "--show-prefix").text();
         String fromAnchor = directory.toAbsolutePath().normalize()
-                .relativize(releasesDir.toAbsolutePath().normalize()).toString().replace(java.io.File.separatorChar,
-                        '/');
-        StringBuilder prefix = new StringBuilder(showPrefix);
+                .relativize(path.toAbsolutePath().normalize()).toString().replace(java.io.File.separatorChar, '/');
+        StringBuilder relative = new StringBuilder(showPrefix);
         if (!fromAnchor.isEmpty() && !".".equals(fromAnchor)) {
-            if (prefix.length() > 0 && prefix.charAt(prefix.length() - 1) != '/') {
-                prefix.append('/');
+            if (relative.length() > 0 && relative.charAt(relative.length() - 1) != '/') {
+                relative.append('/');
             }
-            prefix.append(fromAnchor).append('/');
+            relative.append(fromAnchor);
         }
-        return prefix.toString();
+        int end = relative.length();
+        return end > 0 && relative.charAt(end - 1) == '/' ? relative.substring(0, end - 1) : relative.toString();
+    }
+
+    /**
+     * Whether git applies no end-of-line conversion to {@code path}: its {@code text} attribute is
+     * unset, as by {@code -text} or {@code binary} in {@code .gitattributes}. Otherwise a checkout
+     * with {@code core.autocrlf}, the default of Git for Windows, rewrites its line endings.
+     *
+     * @param path a path in the work tree, existing or not
+     * @return whether a checkout writes it byte for byte
+     */
+    boolean eolConversionOff(Path path) {
+        String answer = succeeded("check-attr", "text", "--", rootRelative(path)).text();
+        return answer.endsWith(": text: unset");
     }
 
     /**

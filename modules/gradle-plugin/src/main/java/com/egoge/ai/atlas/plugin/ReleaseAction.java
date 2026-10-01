@@ -92,12 +92,18 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
         GitRepository git = new GitRepository(GitRepository.nearestExistingAncestor(releases));
         try {
             // The prefix locates snapshots in tagged trees, so it exists only inside a repository
-            String releasesPrefix = git.isInsideWorkTree() ? git.releasesPrefix(releases) : "";
+            boolean repository = git.isInsideWorkTree();
+            String releasesPrefix = repository ? git.releasesPrefix(releases) : "";
+            Path changelog = parameters.getChangelog().get().getAsFile().toPath();
+            if (repository) {
+                requireNoEolConversion(git, releases.resolve(version).resolve(ContractRelease.MANIFEST_FILE),
+                        changelog, releasesPrefix);
+            }
             PublishedHistory.Verdict verdict = PublishedHistory.verify(releases, releasesPrefix, tagName, git);
             ClassOutputResources.Result resources =
                     ClassOutputResources.validate(parameters.getClassesDirs().getFiles());
             ContractRelease.Outcome outcome = ContractRelease.release(releases,
-                    parameters.getChangelog().get().getAsFile().toPath(), new ContractRelease.Request(version,
+                    changelog, new ContractRelease.Request(version,
                             parameters.getVersionTracksApiMajor().get(), policy,
                             parameters.getBaseline().get().getAsFile().toPath(),
                             resources.artifacts().get(ContractRelease.IR_FILE), resources.artifacts(),
@@ -128,5 +134,22 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
                     + " first.");
         }
         return Files.readAllBytes(ir);
+    }
+
+    /**
+     * Fails unless git converts no line endings in the release's files: a checkout with
+     * {@code core.autocrlf}, the default of Git for Windows, would otherwise rewrite them, so the
+     * history check and every tag proof would find them modified after release.
+     */
+    private static void requireNoEolConversion(GitRepository git, Path releaseFile, Path changelog,
+                                               String releasesPrefix) {
+        if (git.eolConversionOff(releaseFile) && git.eolConversionOff(changelog)) {
+            return;
+        }
+        throw new GradleException("[ai-atlas] git would convert the line endings of released files on checkout, as"
+                + " Git for Windows does by default, so they would no longer match the digests release.json records."
+                + " Add these lines to .gitattributes, commit them, then release:" + System.lineSeparator()
+                + "  " + releasesPrefix + "** -text" + System.lineSeparator()
+                + "  " + git.rootRelative(changelog) + " -text");
     }
 }

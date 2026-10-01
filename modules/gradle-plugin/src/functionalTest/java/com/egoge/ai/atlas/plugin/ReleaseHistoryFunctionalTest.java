@@ -5,6 +5,7 @@ package com.egoge.ai.atlas.plugin;
 
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.GradleRunner;
+import org.gradle.testkit.runner.TaskOutcome;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -137,6 +138,46 @@ class ReleaseHistoryFunctionalTest {
         assertThat(result.getOutput()).contains("Tag v2.0.0 matches", "2.0.0 snapshot for it",
                 "tagName.set(\"api-v{version}\")", "Fetch tags and full history");
         assertThat(releaseDir("1.1.0")).doesNotExist();
+    }
+
+    @Test
+    void releasedFilesSurviveACheckoutThatConvertsLineEndings() throws IOException {
+        git = new GitFixture(projectDir);
+        release("1.0.0").build();
+        git.commitAndTag("v1.0.0");
+        File clone = Files.createTempDirectory("ai-atlas-history-crlf").toFile();
+        assertThat(clone.delete()).isTrue();
+        // core.autocrlf=true converts LF to CRLF on checkout on any OS, as Git for Windows does by default
+        git.git("clone", "-q", "-c", "core.autocrlf=true", "file://" + projectDir.getAbsolutePath(),
+                clone.getAbsolutePath());
+
+        assertThat(runnerIn(clone, "agenticReleaseHistoryCheck").build().task(":agenticReleaseHistoryCheck")
+                .getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+
+        // Without the attribute (removed from the index too, which git also reads), the same checkout
+        // rewrites the released files and the check fails
+        git.git("-C", clone.getAbsolutePath(), "rm", "-q", "--cached", ".gitattributes");
+        Files.delete(clone.toPath().resolve(".gitattributes"));
+        try (var files = Files.walk(clone.toPath().resolve(".atlas"))) {
+            for (Path file : files.filter(Files::isRegularFile).toList()) {
+                Files.delete(file);
+            }
+        }
+        git.git("-C", clone.getAbsolutePath(), "checkout", "--", ".atlas");
+        assertThat(runnerIn(clone, "agenticReleaseHistoryCheck").buildAndFail().getOutput())
+                .contains("modified after release");
+    }
+
+    @Test
+    void releasingWithoutTheLineEndingAttributeFailsNamingTheLines() throws IOException {
+        git = new GitFixture(projectDir);
+        Files.delete(projectDir.toPath().resolve(".gitattributes"));
+
+        BuildResult result = release("1.0.0").buildAndFail();
+
+        assertThat(result.getOutput()).contains("Add these lines to .gitattributes", ".atlas/releases/** -text",
+                ".atlas/CHANGELOG.md -text");
+        assertThat(releaseDir("1.0.0")).doesNotExist();
     }
 
     @Test

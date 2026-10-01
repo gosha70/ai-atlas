@@ -31,6 +31,13 @@ final class GitFixture {
         git("config", "user.email", "ai-atlas-functional-test@example.invalid");
         git("config", "commit.gpgsign", "false");
         git("config", "tag.gpgsign", "false");
+        // As agenticRelease requires: no line-ending conversion of released files on checkout
+        try {
+            java.nio.file.Files.writeString(new File(projectDir, ".gitattributes").toPath(), ".atlas/** -text\n",
+                    StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /**
