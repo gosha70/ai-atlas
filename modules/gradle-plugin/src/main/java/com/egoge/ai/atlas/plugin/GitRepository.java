@@ -260,13 +260,15 @@ final class GitRepository implements GitQuery {
     /**
      * Whether git applies no end-of-line conversion to {@code path}: its {@code text} attribute is
      * unset, as by {@code -text} or {@code binary} in {@code .gitattributes}. Otherwise a checkout
-     * with {@code core.autocrlf}, the default of Git for Windows, rewrites its line endings.
+     * with {@code core.autocrlf}, the default of Git for Windows, rewrites its line endings. The
+     * attributes are read from the index, so a line written but never staged does not count: the
+     * commit that is tagged would lack it.
      *
      * @param path a path in the work tree, existing or not
      * @return whether a checkout writes it byte for byte
      */
     boolean eolConversionOff(Path path) {
-        String answer = succeeded("check-attr", "text", "--", rootRelative(path)).text();
+        String answer = succeeded("check-attr", "--cached", "text", "--", rootRelative(path)).text();
         return answer.endsWith(": text: unset");
     }
 

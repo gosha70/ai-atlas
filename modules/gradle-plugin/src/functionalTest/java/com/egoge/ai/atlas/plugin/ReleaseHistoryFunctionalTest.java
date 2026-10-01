@@ -171,12 +171,25 @@ class ReleaseHistoryFunctionalTest {
     @Test
     void releasingWithoutTheLineEndingAttributeFailsNamingTheLines() throws IOException {
         git = new GitFixture(projectDir);
+        git.git("rm", "-q", "--cached", ".gitattributes");
         Files.delete(projectDir.toPath().resolve(".gitattributes"));
 
         BuildResult result = release("1.0.0").buildAndFail();
 
         assertThat(result.getOutput()).contains("Add these lines to .gitattributes", ".atlas/releases/** -text",
                 ".atlas/CHANGELOG.md -text");
+        assertThat(releaseDir("1.0.0")).doesNotExist();
+    }
+
+    @Test
+    void aLineEndingAttributeWrittenButNotStagedDoesNotCount() {
+        // The tagged commit would lack an unstaged line, so a Windows clone would still convert
+        git = new GitFixture(projectDir);
+        git.git("rm", "-q", "--cached", ".gitattributes");
+
+        BuildResult result = release("1.0.0").buildAndFail();
+
+        assertThat(result.getOutput()).contains("Add these lines to .gitattributes");
         assertThat(releaseDir("1.0.0")).doesNotExist();
     }
 

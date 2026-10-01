@@ -38,6 +38,7 @@ final class GitFixture {
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }
+        git("add", ".gitattributes");
     }
 
     /**

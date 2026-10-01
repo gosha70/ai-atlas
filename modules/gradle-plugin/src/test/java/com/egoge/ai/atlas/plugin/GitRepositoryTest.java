@@ -184,11 +184,14 @@ class GitRepositoryTest {
     }
 
     @Test
-    void eolConversionIsOffOnlyWhereTheTextAttributeIsUnset() throws IOException {
+    void eolConversionIsOffOnlyWhereTheTextAttributeIsUnset() throws IOException, InterruptedException {
         GitRepository repo = new GitRepository(dir);
         assertThat(repo.eolConversionOff(dir.resolve(".atlas/releases/1.0.0/release.json"))).isFalse();
 
         Files.writeString(dir.resolve(".gitattributes"), ".atlas/** -text\n", StandardCharsets.UTF_8);
+        // Written but not staged: the attributes are read from the index
+        assertThat(repo.eolConversionOff(dir.resolve(".atlas/releases/1.0.0/release.json"))).isFalse();
+        git(dir, "add", ".gitattributes");
 
         assertThat(repo.eolConversionOff(dir.resolve(".atlas/releases/1.0.0/release.json"))).isTrue();
         assertThat(repo.eolConversionOff(dir.resolve(".atlas/CHANGELOG.md"))).isTrue();
