@@ -206,16 +206,7 @@ class ReleaseVerifyFunctionalTest {
     @Test
     void aConsistentRewriteOfAPublishedSnapshotPassesHistoryCheckButFailsVerifyNamingTheTag() throws IOException {
         releaseAndTag("1.0.0");
-        Path ir = releaseDir("1.0.0").resolve("api.ir.json");
-        Path manifestFile = releaseDir("1.0.0").resolve("release.json");
-        String rewritten = Files.readString(ir).replace("\"Id\"", "\"Identifier\"");
-        Files.writeString(ir, rewritten);
-        ReleaseManifest original = ReleaseManifest.read(Files.readString(manifestFile));
-        Map<String, String> digests = new TreeMap<>(original.digests());
-        digests.put("api.ir.json", ContractRelease.sha256(rewritten.getBytes(StandardCharsets.UTF_8)));
-        ReleaseManifest consistent = new ReleaseManifest(original.version(), original.apiMajor(), original.irVersion(),
-                original.previous(), original.tagName(), original.policy(), digests, original.contractResources());
-        Files.writeString(manifestFile, consistent.write());
+        rewriteConsistently("1.0.0");
 
         BuildResult historyCheck = runner("agenticReleaseHistoryCheck").build();
         assertThat(historyCheck.task(":agenticReleaseHistoryCheck").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
@@ -225,7 +216,39 @@ class ReleaseVerifyFunctionalTest {
         assertThat(result.getOutput()).contains("v1.0.0", "differs from the working copy", "immutable");
     }
 
+    /**
+     * The realistic AC14 path: the rewrite of the published 1.0.0 is committed with the next release
+     * and tagged v1.1.0, so HEAD is that release's own tag; only v1.0.0's tagged files expose it.
+     */
+    @Test
+    void aRewriteCommittedWithTheNextReleasePassesHistoryCheckButFailsVerify() throws IOException {
+        releaseAndTag("1.0.0");
+        release("1.1.0").build();
+        rewriteConsistently("1.0.0");
+        git.commitAndTag("v1.1.0");
+
+        assertThat(runner("agenticReleaseHistoryCheck").build().task(":agenticReleaseHistoryCheck").getOutcome())
+                .isEqualTo(TaskOutcome.SUCCESS);
+        BuildResult result = verify("1.1.0").buildAndFail();
+
+        assertThat(result.getOutput()).contains("v1.0.0", "differs from the working copy");
+    }
+
     // ------------------------------------------------------------ helpers
+
+    /** Changes {@code version}'s released IR and updates its release.json digest to match. */
+    private void rewriteConsistently(String version) throws IOException {
+        Path ir = releaseDir(version).resolve("api.ir.json");
+        Path manifestFile = releaseDir(version).resolve("release.json");
+        String rewritten = Files.readString(ir).replace("\"Id\"", "\"Identifier\"");
+        Files.writeString(ir, rewritten);
+        ReleaseManifest original = ReleaseManifest.read(Files.readString(manifestFile));
+        Map<String, String> digests = new TreeMap<>(original.digests());
+        digests.put("api.ir.json", ContractRelease.sha256(rewritten.getBytes(StandardCharsets.UTF_8)));
+        Files.writeString(manifestFile, new ReleaseManifest(original.version(), original.apiMajor(),
+                original.irVersion(), original.previous(), original.tagName(), original.policy(), digests,
+                original.contractResources()).write());
+    }
 
     private void order(String members) throws IOException {
         write(ORDER, ORDER_SOURCE.formatted(members));
