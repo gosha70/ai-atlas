@@ -138,8 +138,8 @@ for the authoritative list — abbreviated here by phase.)
 - Origin alignment: `CCT_SPECS_DIR=specs bash <code-copilot-team>/scripts/check-origin-alignment.sh
   release-workflow`, run from this repository's root with the script from the code-copilot-team
   repository, exits **0**: aligned, high, from the record committed in this branch,
-  `specs/release-workflow/origin-alignment-2026-10-01-0803.md`, which lists the additions not yet
-  recorded as owner decisions.
+  `specs/release-workflow/origin-alignment-2026-10-01-0838.md`, written after the fifth round of
+  owner decisions.
 - Review: each phase's commit range (A–G) was reviewed before it was pushed.
 - Local `./gradlew build`: build passed with runtime tests excluded
   (`-x :modules:runtime:test -x :modules:runtime:jacocoTestCoverageVerification`; javadoc and
