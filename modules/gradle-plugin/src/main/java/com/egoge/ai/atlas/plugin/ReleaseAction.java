@@ -16,7 +16,6 @@ import org.gradle.workers.WorkAction;
 import org.gradle.workers.WorkParameters;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
@@ -28,21 +27,11 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
 
     private static final Logger LOGGER = Logging.getLogger(ReleaseAction.class);
 
-    /** The build's contract and the releases, shared with the release check. */
-    public interface ContractParameters extends WorkParameters {
-
-        /**
-         * The IR in the build's class output: the processor's, or, for sources declaring nothing, the
-         * empty contract {@code compileJava} wrote from its effective options.
-         */
-        RegularFileProperty getEmittedIr();
+    /** The release step's inputs. */
+    public interface Parameters extends WorkParameters {
 
         /** The directory of releases. */
         DirectoryProperty getReleasesDir();
-    }
-
-    /** The release step's inputs. */
-    public interface Parameters extends ContractParameters {
 
         /** The main compilation's class output(s), for {@link ClassOutputResources#validate}. */
         ConfigurableFileCollection getClassesDirs();
@@ -122,16 +111,6 @@ public abstract class ReleaseAction implements WorkAction<ReleaseAction.Paramete
         } catch (IllegalArgumentException e) {
             throw new GradleException("[ai-atlas] " + e.getMessage() + ". " + remedy);
         }
-    }
-
-    /** The IR in the build's class output, which compileJava always writes. */
-    static byte[] emitted(ContractParameters parameters) throws IOException {
-        Path ir = parameters.getEmittedIr().get().getAsFile().toPath();
-        if (!Files.isRegularFile(ir)) {
-            throw new GradleException("[ai-atlas] The build's class output has no " + ir + ". Run compileJava"
-                    + " first.");
-        }
-        return Files.readAllBytes(ir);
     }
 
     /**

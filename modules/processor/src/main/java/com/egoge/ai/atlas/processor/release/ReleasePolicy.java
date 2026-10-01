@@ -84,8 +84,7 @@ public final class ReleasePolicy {
      * @param version   the version
      * @param ir        the IR, migrated in memory to the current {@code irVersion}
      * @param published whether the release is backed by a proved tag; only a published release
-     *                  earns deprecation credit (D10.1). Transitional: every release is published
-     *                  until D4 wires the real publication verdict in.
+     *                  earns deprecation credit (D10.1)
      */
     public record Release(ReleaseVersion version, ContractIr ir, boolean published) {
     }

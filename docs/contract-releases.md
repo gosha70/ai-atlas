@@ -188,7 +188,7 @@ next to the Contract IR: its effective `ai.atlas.*` configuration (`apiBasePath`
 **reserved** artifact it produced. The **reserved set** is fixed and small: `api.ir.json`,
 `contract-diff.json`, `mcp-tools.json`, the API-version-properties and deprecation-manifest files
 under `META-INF/ai-atlas/`, the `contract-resources.json` manifest itself, the `openapi.json` alias,
-and `openapi-v<N>.json` **for every API major `N` ≥ 1** that was ever generated. An unlisted file
+and `openapi-v<N>.json` **for any API major `N` ≥ 1**. An unlisted file
 outside this set — another annotation processor's `META-INF/foo/bar.json`, say — is never inspected
 and never fails a release.
 
