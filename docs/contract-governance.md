@@ -513,10 +513,12 @@ contract cannot change without its baseline changing in the same commit.
 ## Releases
 
 The baseline is what the team has accepted, and `atlasAccept` overwrites it. `agenticRelease`
-records what was **shipped**: it snapshots the accepted baseline, byte for byte, as the immutable
-`.atlas/releases/<version>/`, with the OpenAPI document of its major, a changelog section and a
-manifest of digests. It compares each release with the previous one through
-`ContractGate.compareReleases`, which applies this gate's rules to what each release published at its
-own major, and fails a removal that was never released deprecated. `agenticReleaseCheck`, part of
-`check`, verifies the snapshots. The release never writes the baseline, and the gate keeps
-comparing against the baseline. See [Contract releases](contract-releases.md).
+records what was **shipped**: it snapshots the accepted baseline, byte for byte, as the immutable,
+git-tagged `.atlas/releases/<version>/`, with the OpenAPI document of its major, a changelog section
+and a manifest of digests. It compares each release with the previous one through
+`ReleaseComparison.compare`, which applies this gate's rules to what each release published at its
+own major, and fails a removal that was never released deprecated. `agenticReleaseHistoryCheck`,
+part of `check`, verifies the snapshots' internal consistency offline; `agenticReleaseVerify`, not
+part of `check`, proves a tagged commit against the build it was built from. The release never
+writes the baseline, and the gate keeps comparing against the baseline. See
+[Contract releases](contract-releases.md).

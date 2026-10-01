@@ -231,3 +231,41 @@ The `ProcessingEnvironment` is never mocked — tests run actual `javac` compila
 | Channel filtering | AI-only/API-only method exclusion from generators |
 | Return type validation | Wildcard/raw returns, incompatible return type warnings |
 | Edge cases | Interfaces, enums, abstract classes, inner classes |
+
+## Reserved resource paths and the contract-resources manifest
+
+Every compilation (whether or not it declares a contract) writes
+`META-INF/ai-atlas/contract-resources.json`, next to the Contract IR, listing the SHA-256 of every
+**reserved** `META-INF` path it produced, plus its effective `ai.atlas.*` configuration. The
+reserved set is enumerated once, in `com.egoge.ai.atlas.processor.contract.ContractResources`, so
+every other piece of code — the processor's own generators, `compileJava`'s empty-contract writer,
+and the release workflow's validator — shares one definition of "a path ai-atlas owns":
+
+- the fixed paths: `api.ir.json`, `contract-diff.json`, `mcp-tools.json`, the API-version-properties
+  file, the deprecation-manifest file, `contract-resources.json` itself, and the `openapi.json`
+  alias;
+- every versioned OpenAPI document, `openapi-v<N>.json`, for **any** major `N` ≥ 1 that was ever
+  generated for this compilation (`ContractResources.isReserved`).
+
+Any other `META-INF/**` path — another annotation processor's own resource — is not reserved and is
+never inspected by the release workflow (see
+[contract-releases.md](contract-releases.md#the-contract-resources-manifest)).
+
+`ContractResources.Manifest` is the typed form of that JSON: `contract` (`"declared"` or `"empty"`),
+`configuration` (an `EffectiveOptions`) and `artifacts` (a sorted path → digest map), with its own
+canonical `write()`/strict `read()`, versioned by its own `manifestVersion`, independent of the IR's
+`irVersion`. `ContractResources.snapshotted(manifest)` picks the subset a release snapshot actually
+keeps (the IR, the current major's OpenAPI document, `mcp-tools.json`); `ContractResources.required`
+picks the subset a manifest for a given configuration *must* list.
+
+**The plugin calls processor classes directly, not through reflection or a service boundary**: the
+Gradle plugin's release workers (`com.egoge.ai.atlas.plugin.ReleaseAction`,
+`ReleaseHistoryCheckAction`, `ReleaseVerifyAction`) call `ReleasePolicy`, `ReleaseChangelog`,
+`ReleaseComparison`, `ReleaseManifest`, `IrJson` and `ContractGate.diffJson` from this module by
+their ordinary Java API, loaded from the project's `annotationProcessor` classpath in an isolated
+class loader. **Changing any of those signatures breaks the plugin.** This coupling is acceptable
+only because the plugin and processor versions are required to match (`agentic { version }` defaults
+to the plugin's own version): a mismatch is not a silent miscompile, it is reported clearly, naming
+both versions and the fix, by `AgenticPlugin.awaitProcessor` catching the resulting
+`LinkageError`/`ClassNotFoundException`. Treat a signature change in any of those six classes as a
+plugin change too, in the same commit.
