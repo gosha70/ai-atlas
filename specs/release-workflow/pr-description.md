@@ -65,8 +65,9 @@ configuration, but does not change its behaviour).
 
 ## Phases and commits
 
-(`master..feature/release-workflow`, oldest first; see `git log --reverse --oneline master..HEAD`
-for the authoritative list — abbreviated here by phase.)
+(the commits merge `788a650` brought in, oldest first; see
+`git log --reverse --oneline 788a650^1..788a650^2` for the authoritative list — abbreviated here by
+phase.)
 
 - **Pre-expansion** (built from the earlier `d15fe77` draft, before the owner expanded scope to
   `3806e5d`): `b1e59da` docs, `eabb3a8` `agenticReleaseCheck` + `check`, `5945039` `agenticRelease`
