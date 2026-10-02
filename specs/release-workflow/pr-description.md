@@ -1,7 +1,6 @@
-# PR #62: Contract releases (proposed description, not published)
+# PR #62: Contract releases
 
-Proposed PR description, for review before it is published. The CI line is completed from the
-run on the pushed head.
+The description published on PR #62, kept here as the release workflow's delivery record.
 
 ## Summary
 
@@ -12,8 +11,8 @@ a release inspects, channel-aware deprecation credit restricted to tag-proved re
 between an offline internal-consistency check (`agenticReleaseHistoryCheck`, under `check`) and a
 git-aware tag verification (`agenticReleaseVerify`, for the CI tag build).
 
-See [`specs/release-workflow/spec.md`](https://github.com/gosha70/ai-atlas/blob/feature/release-workflow/specs/release-workflow/spec.md) for the full acceptance criteria and the owner's five
-rounds of decisions; [`plan.md`](https://github.com/gosha70/ai-atlas/blob/feature/release-workflow/specs/release-workflow/plan.md) for the design and gap analysis; [`tasks.md`](https://github.com/gosha70/ai-atlas/blob/feature/release-workflow/specs/release-workflow/tasks.md) for
+See [`specs/release-workflow/spec.md`](https://github.com/gosha70/ai-atlas/blob/master/specs/release-workflow/spec.md) for the full acceptance criteria and the owner's five
+rounds of decisions; [`plan.md`](https://github.com/gosha70/ai-atlas/blob/master/specs/release-workflow/plan.md) for the design and gap analysis; [`tasks.md`](https://github.com/gosha70/ai-atlas/blob/master/specs/release-workflow/tasks.md) for
 the task breakdown this PR followed.
 
 ## Scope
@@ -66,8 +65,9 @@ configuration, but does not change its behaviour).
 
 ## Phases and commits
 
-(`master..feature/release-workflow`, oldest first; see `git log --reverse --oneline master..HEAD`
-for the authoritative list — abbreviated here by phase.)
+(the commits merge `788a650` brought in, oldest first; see
+`git log --reverse --oneline 788a650^1..788a650^2` for the authoritative list — abbreviated here by
+phase.)
 
 - **Pre-expansion** (built from the earlier `d15fe77` draft, before the owner expanded scope to
   `3806e5d`): `b1e59da` docs, `eabb3a8` `agenticReleaseCheck` + `check`, `5945039` `agenticRelease`
@@ -133,8 +133,9 @@ for the authoritative list — abbreviated here by phase.)
 
 ## Validation
 
-- CI result (all four builds): pending the push of this range; every earlier phase's head
-  (`6571965`, `caf2d40`, `95cd3a4`, `32b5423`) passed all four builds (ubuntu/macOS × JDK 17/21).
+- CI result: all four builds (ubuntu/macOS × JDK 17/21, full `./gradlew build`) and CodeQL pass on
+  head `58e82f6`; every earlier phase's head (`6571965`, `caf2d40`, `95cd3a4`, `32b5423`) passed
+  all four builds as well.
 - Origin alignment: `CCT_SPECS_DIR=specs bash <code-copilot-team>/scripts/check-origin-alignment.sh
   release-workflow`, run from this repository's root with the script from the code-copilot-team
   repository, exits **0**: aligned, high, from the record committed in this branch,
