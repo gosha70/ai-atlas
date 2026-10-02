@@ -134,7 +134,7 @@ public class AgenticPlugin implements Plugin<Project> {
      * The contract gate (FR-015, FR-016): the baseline and lock options, and the constraints
      * option (FR-020), go to the main {@code compileJava} only, {@code atlasContractCheck} checks an
      * empty contract before {@code classes}, and {@code atlasAccept} writes the baseline. The
-     * projections and collections options go to the main {@code compileJava} and to
+     * projections, REST and collections options go to the main {@code compileJava} and to
      * {@code atlasAcceptCompile}.
      */
     private void configureContract(Project project, AgenticExtension extension) {
@@ -153,6 +153,11 @@ public class AgenticPlugin implements Plugin<Project> {
         ProjectionsArguments projectionsArguments = project.getObjects().newInstance(ProjectionsArguments.class);
         projectionsArguments.getProjections().set(extension.getProjections());
         compileJava.configure(task -> task.getOptions().getCompilerArgumentProviders().add(projectionsArguments));
+        // Nor is the REST option: it decides each operation's mapping, which the IR records
+        RestArguments restArguments = project.getObjects().newInstance(RestArguments.class);
+        restArguments.getRest().set(extension.getRest());
+        compileJava.configure(task -> task.getOptions().getCompilerArgumentProviders().add(restArguments));
+
         // Likewise: atlasAcceptCompile inherits it, as it decides the IR's paging contracts
         CollectionsArguments collectionsArguments = project.getObjects().newInstance(CollectionsArguments.class);
         collectionsArguments.getCollections().set(extension.getCollections());

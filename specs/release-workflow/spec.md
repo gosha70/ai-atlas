@@ -90,7 +90,9 @@ outside the decisions above:
   released bytes and breaks every digest and tag proof.
 - **Recorded configuration:** the effective configuration in `contract-resources.json` includes
   `ai.atlas.collections` alongside the draft's five options, because it changes the IR, the OpenAPI
-  document and the MCP schemas.
+  document and the MCP schemas. `ai.atlas.rest` (PR #63, merged after this workflow) is recorded the same way,
+  because it changes the IR's REST mappings, the OpenAPI document and the controllers; it is a
+  required key like the others, with `manifestVersion` still 1.
 - **Where an empty module's version mismatch is reported:** because the plugin writes the empty
   contract in `compileJava` (OQ-2), a processor version mismatch in a module with no ai-atlas
   declarations is reported by `compileJava`, not `atlasContractCheck`, with the same message.

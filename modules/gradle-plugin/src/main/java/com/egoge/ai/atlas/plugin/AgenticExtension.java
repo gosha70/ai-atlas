@@ -133,6 +133,17 @@ public abstract class AgenticExtension {
     public abstract Property<Boolean> getProjections();
 
     /**
+     * Explicit REST metadata and the opt-in CRUD convention. Unset by default, and then not passed
+     * to the compilation, whose processor defaults to false; a value set here overrides one in
+     * {@code options.compilerArgs}. When true, {@code @AgenticExposed(rest = @Rest(...))} and
+     * {@code @AgenticParam(in)} decide each REST operation's HTTP method, path, parameter locations
+     * and success status, and an entity request body binds a generated, whitelisted input record.
+     * When false, every operation keeps the RPC mapping and any REST declaration fails the
+     * compilation.
+     */
+    public abstract Property<Boolean> getRest();
+
+    /**
      * Collection exposure safety. Unset by default, and then not passed to the compilation, whose
      * processor defaults to false; a value set here overrides one in {@code options.compilerArgs}.
      * When true, a Spring Data {@code Pageable} is bound as {@code page} and {@code size}, a

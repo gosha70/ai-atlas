@@ -120,6 +120,36 @@ public final class ConstraintReader {
         return read(parameter, "parameter", true);
     }
 
+    /**
+     * Whether a request must set an {@code @AgenticField} field when it is an input, as a REST request body's:
+     * Phase 3's requiredness applied to a field, which has no {@code @AgenticParam(required)}. A primitive always
+     * has a value; any other field is required only when a Bean Validation {@code @NotNull}, {@code @NotBlank} or
+     * {@code @NotEmpty} of the default group says so. Reports nothing: {@link #readField} reports its diagnostics.
+     *
+     * @param field the field
+     * @return whether the field is required
+     */
+    public boolean requiredField(VariableElement field) {
+        if (field.asType().getKind().isPrimitive()) {
+            return true;
+        }
+        for (AnnotationMirror mirror : field.getAnnotationMirrors()) {
+            String name = qualifiedName(mirror);
+            if (!name.startsWith(BV_PACKAGE)) {
+                continue;
+            }
+            String simple = name.substring(BV_PACKAGE.length());
+            List<AnnotationMirror> read = simple.endsWith(LIST_SUFFIX) ? annotations(values(mirror).get(A_VALUE)) : List.of(mirror);
+            String constraint = simple.endsWith(LIST_SUFFIX)
+                    ? simple.substring(0, simple.length() - LIST_SUFFIX.length()) : simple;
+            if (Set.of(NOT_NULL, NOT_BLANK, NOT_EMPTY).contains(constraint)
+                    && read.stream().anyMatch(m -> inDefaultGroup(values(m).get(A_GROUPS)))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private ParameterContract read(VariableElement element, String kind, boolean input) {
         String what = kind + " '" + element.getSimpleName() + "'";
         TypeMirror type = element.asType();

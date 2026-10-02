@@ -12,6 +12,7 @@ import com.egoge.ai.atlas.processor.generator.PagingContract.Style;
 import com.egoge.ai.atlas.processor.model.EntityModel;
 import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
+import com.egoge.ai.atlas.processor.rest.RestOperation;
 import com.egoge.ai.atlas.processor.util.VersionSelector;
 
 import javax.annotation.processing.Messager;
@@ -28,6 +29,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -58,7 +60,8 @@ public final class CollectionsOption {
     /** The option's name. */
     public static final String OPTION = "ai.atlas.collections";
 
-    static final String PAGEABLE = PagingContract.DATA_PACKAGE + ".Pageable";
+    /** Spring Data's {@code Pageable}, which a paged operation takes. */
+    public static final String PAGEABLE = PagingContract.DATA_PACKAGE + ".Pageable";
     private static final String PAGE = PagingContract.DATA_PACKAGE + ".Page";
     private static final String SLICE = PagingContract.DATA_PACKAGE + ".Slice";
     private static final Set<String> PAGING_INPUTS = Set.of(PagingContract.PAGE_PARAM, PagingContract.SIZE_PARAM,
@@ -125,10 +128,13 @@ public final class CollectionsOption {
      * @param irOperation the method's recorded IR operation
      * @param qualityKind WARNING, or ERROR under {@code ai.atlas.strict}
      * @param apiEntities the entities as the REST DTOs project them, read only for {@code sortable}
+     * @param parameterIn each parameter's location in the operation's resolved REST mapping, as
+     *                    {@code ai.atlas.rest} decides it, or {@code null} for an operation off the
+     *                    API channel, which has none
      */
     public void check(TypeElement serviceType, ExecutableElement method, MethodModel model,
                       AgenticExposed typeAnnotation, ContractIr.Operation irOperation, Diagnostic.Kind qualityKind,
-                      int apiMajor, Supplier<List<EntityModel>> apiEntities) {
+                      int apiMajor, Supplier<List<EntityModel>> apiEntities, List<String> parameterIn) {
         Messager messager = env.getMessager();
         String where = serviceType.getQualifiedName() + "#" + model.methodName();
         List<? extends VariableElement> params = method.getParameters();
@@ -158,7 +164,8 @@ public final class CollectionsOption {
         TypeMirror shape = ReturnShapes.optionalContent(returned);
         boolean collection = shapes.collection(shape);
         int bound = bound(method, maxResults, where);
-        if (!valid || bound == -2) {
+        if (!valid || bound == -2
+                || parameterIn != null && !checkLocations(where, params, parameterIn, pageable, limit, cursor)) {
             return;
         }
         if (!collection) {
@@ -339,6 +346,30 @@ public final class CollectionsOption {
             }
         }
         return true;
+    }
+
+    /**
+     * An ERROR on each paging input a REST mapping binds from the path or the body; whether there
+     * is none. The generated checks read {@code page} and {@code size} from the query, as OpenAPI
+     * publishes them, and a limit or cursor is a query input on both channels.
+     */
+    private boolean checkLocations(String where, List<? extends VariableElement> params, List<String> parameterIn,
+                                   int pageable, int limit, int cursor) {
+        boolean valid = true;
+        for (int index : new int[] {pageable, limit, cursor}) {
+            if (index < 0 || RestOperation.QUERY.equals(parameterIn.get(index))) {
+                continue;
+            }
+            VariableElement param = params.get(index);
+            String role = index == pageable ? "the Pageable" : index == limit ? "the LIMIT" : "the CURSOR";
+            env.getMessager().printMessage(Diagnostic.Kind.ERROR, PREFIX + where + " binds " + role + " '"
+                    + param.getSimpleName() + "' from the request " + parameterIn.get(index).toLowerCase(Locale.ROOT)
+                    + "; a paging input is a query parameter only. Remove its @AgenticParam(in)"
+                    + (RestOperation.PATH.equals(parameterIn.get(index)) ? " or the {" + param.getSimpleName() + "} path variable"
+                    : ""), param);
+            valid = false;
+        }
+        return valid;
     }
 
     /** An ERROR on {@code sortable} anywhere but a {@code Pageable}; whether there is none. */

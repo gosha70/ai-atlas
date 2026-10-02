@@ -7,7 +7,9 @@ import com.egoge.ai.atlas.annotations.AgenticExposed;
 import com.palantir.javapoet.ClassName;
 
 import javax.annotation.processing.Messager;
+import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.Modifier;
 import javax.lang.model.type.MirroredTypeException;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
@@ -15,6 +17,7 @@ import javax.lang.model.element.TypeElement;
 import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
@@ -26,6 +29,27 @@ import java.util.function.ToIntFunction;
 public final class AttributeResolver {
 
     private static final Set<String> FRAMEWORK_DEFAULT_CHANNELS = Set.of("AI", "API");
+
+    /**
+     * The public methods of a class-level {@code @AgenticExposed} service; warns when it has none.
+     *
+     * @param typeElement the service class
+     * @param messager    receives the warning
+     * @return the methods, in declaration order
+     */
+    public static List<ExecutableElement> publicMethods(TypeElement typeElement, Messager messager) {
+        List<ExecutableElement> methods = typeElement.getEnclosedElements().stream()
+                .filter(e -> e.getKind() == ElementKind.METHOD)
+                .filter(e -> e.getModifiers().contains(Modifier.PUBLIC))
+                .map(e -> (ExecutableElement) e).toList();
+
+        if (methods.isEmpty()) {
+            messager.printMessage(Diagnostic.Kind.WARNING,
+                    "@AgenticExposed on " + typeElement.getSimpleName()
+                            + " has no public methods to expose", typeElement);
+        }
+        return methods;
+    }
 
     private AttributeResolver() {
     }

@@ -16,7 +16,7 @@ class ContractResourcesTest {
 
     private static final String A = "a".repeat(64);
     private static final String B = "b".repeat(64);
-    private static final EffectiveOptions CONFIG = new EffectiveOptions("/api", 2, "2.0.0", true, false, false);
+    private static final EffectiveOptions CONFIG = new EffectiveOptions("/api", 2, "2.0.0", true, false, false, false);
 
     @Test
     void reservedMatcherAcceptsVersionedOpenApiDocuments() {
@@ -53,11 +53,31 @@ class ContractResourcesTest {
 
     @Test
     void theCollectionsOptionIsRecordedAndReadBack() {
-        EffectiveOptions collections = new EffectiveOptions("/api", 1, "1.0.0", false, false, true);
+        EffectiveOptions collections = new EffectiveOptions("/api", 1, "1.0.0", false, false, true, false);
         Manifest manifest = new Manifest("declared", collections, new TreeMap<>());
 
         assertThat(manifest.write()).contains("\"ai.atlas.collections\": true");
         assertThat(Manifest.read(manifest.write()).configuration().collections()).isTrue();
+    }
+
+    @Test
+    void theRestOptionIsRecordedAndReadBack() {
+        EffectiveOptions rest = new EffectiveOptions("/api", 1, "1.0.0", false, false, false, true);
+        Manifest manifest = new Manifest("declared", rest, new TreeMap<>());
+
+        assertThat(manifest.write()).contains("\"ai.atlas.rest\": true");
+        assertThat(Manifest.read(manifest.write()).configuration().rest()).isTrue();
+    }
+
+    @Test
+    void strictReadRejectsAConfigurationWithoutTheRestOption() {
+        // Every recorded option is required, as for the others: no default stands in for a missing one
+        String missing = new Manifest("declared", CONFIG, new TreeMap<>(java.util.Map.of(ContractIr.RESOURCE_PATH, A)))
+                .write().replace(",\n    \"ai.atlas.rest\": false", "");
+
+        assertThat(missing).doesNotContain("ai.atlas.rest");
+        assertThatThrownBy(() -> Manifest.read(missing)).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'ai.atlas.rest' must be a boolean");
     }
 
     @Test
@@ -86,7 +106,8 @@ class ContractResourcesTest {
                     "ai.atlas.collections": false,
                     "ai.atlas.constraints": true,
                     "ai.atlas.openapi.infoVersion": "2.0.0",
-                    "ai.atlas.projections": false
+                    "ai.atlas.projections": false,
+                    "ai.atlas.rest": false
                   },
                   "artifacts": {
                     "META-INF/ai-atlas/api.ir.json": "%s",
@@ -122,7 +143,7 @@ class ContractResourcesTest {
         assertThatThrownBy(() -> Manifest.read(upper)).hasMessageContaining("lowercase SHA-256");
     }
 
-    private static final EffectiveOptions NO_CONSTRAINTS = new EffectiveOptions("/api", 2, "2.0.0", false, false, false);
+    private static final EffectiveOptions NO_CONSTRAINTS = new EffectiveOptions("/api", 2, "2.0.0", false, false, false, false);
 
     @Test
     void requiredAlwaysIncludesTheIr() {
@@ -141,7 +162,7 @@ class ContractResourcesTest {
 
     @Test
     void requiredIncludesMcpToolsWhenConstraintsIsOn() {
-        EffectiveOptions noConstraints = new EffectiveOptions("/api", 1, "1.0.0", false, false, false);
+        EffectiveOptions noConstraints = new EffectiveOptions("/api", 1, "1.0.0", false, false, false, false);
         Manifest withConstraints = new Manifest("declared", CONFIG, new TreeMap<>());
         Manifest withoutConstraints = new Manifest("declared", noConstraints, new TreeMap<>());
 

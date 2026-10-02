@@ -184,7 +184,7 @@ recorded as `"empty"` and no OpenAPI document.
 
 Every compilation (declaring something, or empty) writes `META-INF/ai-atlas/contract-resources.json`
 next to the Contract IR: its effective `ai.atlas.*` configuration (`apiBasePath`, `apiMajor`,
-`collections`, `constraints`, `openApiInfoVersion`, `projections`) and the SHA-256 of every
+`collections`, `constraints`, `openApiInfoVersion`, `projections`, `rest`) and the SHA-256 of every
 **reserved** artifact it produced. The **reserved set** is fixed and small: `api.ir.json`,
 `contract-diff.json`, `mcp-tools.json`, the API-version-properties and deprecation-manifest files
 under `META-INF/ai-atlas/`, the `contract-resources.json` manifest itself, the `openapi.json` alias,

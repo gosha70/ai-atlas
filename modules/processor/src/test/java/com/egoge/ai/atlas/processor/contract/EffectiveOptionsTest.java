@@ -20,7 +20,7 @@ class EffectiveOptionsTest {
     @Test
     void fromArgumentsAppliesTheDefaults() {
         assertThat(EffectiveOptions.fromArguments(Map.of()))
-                .isEqualTo(new EffectiveOptions("/api", 1, "1.0.0", false, false, false));
+                .isEqualTo(new EffectiveOptions("/api", 1, "1.0.0", false, false, false, false));
     }
 
     @Test
@@ -48,6 +48,15 @@ class EffectiveOptionsTest {
         assertThat(EffectiveOptions.fromArguments(Map.of("ai.atlas.collections", "true")).collections()).isTrue();
         assertThat(EffectiveOptions.fromArguments(Map.of()).collections()).isFalse();
         assertThat(EffectiveOptions.fromArguments(Map.of("ai.atlas.collections", "on"))).isNull();
+    }
+
+    @Test
+    void fromArgumentsReadsRest() {
+        // The rest option changes the IR's REST mappings, OpenAPI and the controllers, so it is recorded too
+        assertThat(EffectiveOptions.fromArguments(Map.of("ai.atlas.rest", "true")).rest()).isTrue();
+        assertThat(EffectiveOptions.fromArguments(Map.of("ai.atlas.rest", "FALSE")).rest()).isFalse();
+        assertThat(EffectiveOptions.fromArguments(Map.of()).rest()).isFalse();
+        assertThat(EffectiveOptions.fromArguments(Map.of("ai.atlas.rest", "on"))).isNull();
     }
 
     @Test

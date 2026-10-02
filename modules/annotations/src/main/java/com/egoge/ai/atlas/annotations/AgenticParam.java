@@ -50,4 +50,28 @@ public @interface AgenticParam {
      * a compile error.
      */
     String[] sortable() default {};
+
+    /**
+     * Where a REST request carries the parameter. Requires the processor option
+     * {@code ai.atlas.rest=true}; without it, any value other than {@link In#DEFAULT} is a compile
+     * error. MCP tools are unaffected: they always take the parameter by name.
+     */
+    In in() default In.DEFAULT;
+
+    /** The location of a REST parameter. */
+    enum In {
+        /**
+         * Derived, in this order: the path when a {@code {name}} segment of the operation's path
+         * names the parameter; the body when it is an {@code @AgenticEntity} of an operation with
+         * an explicit or CRUD mapping; otherwise the query. An operation on the RPC mapping never
+         * gets a body by default.
+         */
+        DEFAULT,
+        /** A {@code {name}} segment of the operation's path, which must name the parameter. */
+        PATH,
+        /** A query parameter. */
+        QUERY,
+        /** The JSON request body; at most one parameter per operation. */
+        BODY
+    }
 }

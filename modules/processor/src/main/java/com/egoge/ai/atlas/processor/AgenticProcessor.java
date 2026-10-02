@@ -24,6 +24,7 @@ import com.egoge.ai.atlas.processor.model.FieldModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
+import com.egoge.ai.atlas.processor.rest.RestOption;
 import com.egoge.ai.atlas.processor.util.AttributeResolver;
 import com.egoge.ai.atlas.processor.util.EntityRefResolver;
 import com.egoge.ai.atlas.processor.util.FieldScanner;
@@ -69,7 +70,7 @@ import java.util.Set;
         "ai.atlas.pii.patterns", "ai.atlas.pii.patterns.file",
         "ai.atlas.api.basePath", "ai.atlas.api.major", "ai.atlas.openapi.infoVersion",
         "ai.atlas.strict", "ai.atlas.contract.baseline", "ai.atlas.contract.locked", "ai.atlas.constraints",
-        "ai.atlas.projections", "ai.atlas.collections"
+        "ai.atlas.projections", "ai.atlas.rest", "ai.atlas.collections"
 })
 public class AgenticProcessor extends AbstractProcessor {
 
@@ -81,6 +82,7 @@ public class AgenticProcessor extends AbstractProcessor {
     public static final String OPT_CONTRACT_LOCKED = "ai.atlas.contract.locked";
     public static final String OPT_CONSTRAINTS = "ai.atlas.constraints";
     public static final String OPT_PROJECTIONS = "ai.atlas.projections";
+    public static final String OPT_REST = "ai.atlas.rest";
     public static final String OPT_COLLECTIONS = CollectionsOption.OPTION;
     private final Map<String, EntityModel> entityRegistry = new HashMap<>();
     private final Set<String> dtoSkippedKeys = new HashSet<>();
@@ -100,6 +102,7 @@ public class AgenticProcessor extends AbstractProcessor {
     private Diagnostic.Kind qualityKind;
     private ConstraintsOption constraints;
     private ProjectionsOption projections;
+    private RestOption rest;
     private CollectionsOption collections;
     private ResourceRecorder resourceRecorder;
 
@@ -124,6 +127,9 @@ public class AgenticProcessor extends AbstractProcessor {
             // every other reserved artifact, for contract-resources.json (D2.4) to list it (C4, ClassOutputResources).
             contractIr = new IrBuilder(resourceRecorder, projections::channels, projections.enabled(),
                     collections != null ? collections::bound : operationId -> ContractIr.Bound.NONE);
+            rest = RestOption.resolve(OPT_REST, processingEnv, apiBasePath, apiMajor, projections::channels,
+                    projections.enabled());
+            versionConfigValid &= rest != null;
         }
     }
 
@@ -149,7 +155,7 @@ public class AgenticProcessor extends AbstractProcessor {
             ContractProjection projection = contractIr.project(apiBasePath, apiMajor);
             if (!openApiGenerated && (!entityRegistry.isEmpty() || !serviceRegistry.isEmpty())) {
                 OpenApiGenerator.generate(projections.openApiEntities(entityRegistry),
-                        serviceRegistry, projection.operationIds(),
+                        serviceRegistry, projection.operationIds(), rest::operation, rest.generatedInputRecords(),
                         apiBasePath, apiMajor, openApiInfoVersion, constraints.surfaces(projection),
                         collections.contracts(), processingEnv.getFiler(), processingEnv.getMessager());
                 openApiGenerated = true;
@@ -162,12 +168,12 @@ public class AgenticProcessor extends AbstractProcessor {
                 apiVersionPropertiesGenerated = true;
             }
             if (!deprecationManifestGenerated) {
-                DeprecationManifestGenerator.generate(serviceRegistry, apiBasePath, apiMajor,
+                DeprecationManifestGenerator.generate(serviceRegistry, rest::operation, apiBasePath, apiMajor,
                         processingEnv.getFiler(), processingEnv.getMessager());
                 deprecationManifestGenerated = true;
             }
             resourceRecorder.writeManifest(new EffectiveOptions(apiBasePath, apiMajor, openApiInfoVersion,
-                    constraints.enabled(), projections.enabled(), collections.enabled()));
+                    constraints.enabled(), projections.enabled(), collections.enabled(), rest.enabled()));
             return false;
         }
 
@@ -212,6 +218,7 @@ public class AgenticProcessor extends AbstractProcessor {
 
             var scanned = contractIr.addEntity(typeElement, FieldScanner.scanAll(typeElement, processingEnv, projections.enabled()));
             projections.recordEntity(typeElement, scanned, processingEnv.getMessager());
+            rest.recordEntity(typeElement, scanned);
             roundEntities.put(typeElement, scanned);
         }
         ContractProjection projection = contractIr.project(apiBasePath, apiMajor);
@@ -322,7 +329,8 @@ public class AgenticProcessor extends AbstractProcessor {
             String qName = entry.getKey();
             discoveredServiceNames.add(qName);
             List<ExecutableElement> methods = typeLevelTypes.contains(qName)
-                    ? publicMethods(entry.getValue()) : methodsByType.get(qName);
+                    ? AttributeResolver.publicMethods(entry.getValue(), processingEnv.getMessager())
+                    : methodsByType.get(qName);
             List<String> operationIds = recordOperations(entry.getValue(), methods);
             if (!operationIds.isEmpty()) {
                 recorded.put(entry.getValue(), operationIds);
@@ -339,23 +347,8 @@ public class AgenticProcessor extends AbstractProcessor {
     /** Every discovered {@code @AgenticExposed} service (qualified, processing order) — recorded before method processing, so fully-filtered and no-public-method services are included. Read by the driver; never emitted to the class output. */
     public List<String> discoveredServices() { return List.copyOf(discoveredServiceNames); }
 
-    /** The public methods of a class-level {@code @AgenticExposed} service; warns when it has none. */
-    private List<ExecutableElement> publicMethods(TypeElement typeElement) {
-        List<ExecutableElement> methods = typeElement.getEnclosedElements().stream()
-                .filter(e -> e.getKind() == ElementKind.METHOD)
-                .filter(e -> e.getModifiers().contains(javax.lang.model.element.Modifier.PUBLIC))
-                .map(e -> (ExecutableElement) e).toList();
-
-        if (methods.isEmpty()) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
-                    "@AgenticExposed on " + typeElement.getSimpleName()
-                            + " has no public methods to expose", typeElement);
-        }
-        return methods;
-    }
-
     /**
-     * Validates each method and records the valid ones in the IR (FR-001).
+     * Validates each method, resolves its REST mapping, and records the valid ones in the IR (FR-001).
      *
      * @return the IR identities of the valid methods, in declaration order
      */
@@ -364,17 +357,22 @@ public class AgenticProcessor extends AbstractProcessor {
         List<String> operationIds = new ArrayList<>();
         for (ExecutableElement method : methods) {
             MethodModel methodModel = buildMethodModel(method, typeAnnotation);
-            String operationId = methodModel != null ? contractIr.addOperation(serviceType, method, typeAnnotation) : null;
+            var restOperation = methodModel != null
+                    ? rest.resolve(serviceType, method, methodModel.channels(), entityRegistry) : RestOption.INVALID;
+            String operationId = restOperation != RestOption.INVALID
+                    ? contractIr.addOperation(serviceType, method, typeAnnotation, restOperation) : null;
             if (operationId != null) {
                 operationIds.add(operationId);
-                restMappings.record(serviceType, method, methodModel, apiBasePath, apiMajor);
+                rest.record(operationId, restOperation);
+                restMappings.record(serviceType, method, methodModel, restOperation, apiBasePath, apiMajor);
                 toolNames.record(serviceType, method, methodModel, apiMajor);
                 QualityDiagnostics.reportMissingDescription(qualityKind, processingEnv.getMessager(),
                         serviceType, method, methodModel, typeAnnotation, apiMajor);
                 QualityDiagnostics.reportMissingHints(qualityKind, processingEnv.getMessager(), serviceType, method,
                         methodModel, constraints.enabled() ? contractIr.operation(operationId).hints() : null, apiMajor);
                 collections.check(serviceType, method, methodModel, typeAnnotation, contractIr.operation(operationId),
-                        qualityKind, apiMajor, () -> projections.openApiEntities(entityRegistry));
+                        qualityKind, apiMajor, () -> projections.openApiEntities(entityRegistry),
+                        restOperation != null ? restOperation.parameterIn() : null);
             }
         }
         return operationIds;
@@ -388,8 +386,9 @@ public class AgenticProcessor extends AbstractProcessor {
         serviceRegistry.add(model);
         McpToolGenerator.generate(projections.toolModel(model, entityRegistry), generatedPackage, apiMajor, constraints.surfaces(projection),
                 collections.contracts(), processingEnv.getFiler(), processingEnv.getMessager());
+        rest.generateInputRecords(model, true);
         RestControllerGenerator.generate(model, generatedPackage, apiBasePath, apiMajor, constraints.surfaces(projection),
-                collections.contracts(), processingEnv.getFiler(), processingEnv.getMessager());
+                rest::operation, collections.contracts(), processingEnv.getFiler(), processingEnv.getMessager());
     }
 
     private MethodModel buildMethodModel(ExecutableElement method, AgenticExposed typeAnnotation) {
