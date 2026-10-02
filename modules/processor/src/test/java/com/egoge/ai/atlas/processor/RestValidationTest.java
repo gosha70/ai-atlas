@@ -175,16 +175,29 @@ class RestValidationTest {
     }
 
     @Test
-    void routesThatMatchTheSameRequestsWithNeitherMoreSpecificAreAnError() {
+    void routesThatMatchTheSameRequestsAndThatSpringRanksEqualAreAnError() {
         Compilation compilation = compileService(List.of(REST_ON), "@AgenticExposed(rest = @Rest(resource = \"orders\"))", """
                 @AgenticExposed(rest = @Rest(method = HttpMethod.GET, path = "/{id}/items")) public void a(Long id) { }
-                    @AgenticExposed(rest = @Rest(method = HttpMethod.GET, path = "/open/{kind}")) public void b(String kind) { }""");
+                    @AgenticExposed(rest = @Rest(method = HttpMethod.GET, path = "/items/{kind}")) public void b(String kind) { }""");
 
         assertThat(errors(compilation))
                 .anyMatch(e -> e.contains("REST mapping GET /api/v1/orders/{id}/items of shop.BadService#a(Long) matches the"
-                        + " same requests as GET /api/v1/orders/open/{kind} of shop.BadService#b(String), and neither is more"
-                        + " specific"))
-                .anyMatch(e -> e.contains("REST mapping GET /api/v1/orders/open/{kind} of shop.BadService#b(String) matches"));
+                        + " same requests as GET /api/v1/orders/items/{kind} of shop.BadService#b(String) with as many"
+                        + " variables and a path as long"))
+                .anyMatch(e -> e.contains("REST mapping GET /api/v1/orders/items/{kind} of shop.BadService#b(String) matches"));
+    }
+
+    @Test
+    void crossedRoutesThatSpringRanksApartAreANoteNamingTheOneItPrefers() {
+        Compilation compilation = compileService(List.of(REST_ON), "@AgenticExposed(rest = @Rest(resource = \"orders\"))", """
+                @AgenticExposed(rest = @Rest(method = HttpMethod.GET, path = "/{id}/items")) public void a(Long id) { }
+                    @AgenticExposed(rest = @Rest(method = HttpMethod.GET, path = "/active/{region}")) public void b(String region) { }""");
+
+        assertThat(compilation.status()).isEqualTo(Compilation.Status.SUCCESS);
+        assertThat(messages(compilation, Diagnostic.Kind.NOTE)).anyMatch(n -> n.contains(
+                "REST mapping GET /api/v1/orders/active/{region} of shop.BadService#b(String) matches some of the same"
+                        + " requests as GET /api/v1/orders/{id}/items of shop.BadService#a(Long). Spring routes them to"
+                        + " GET /api/v1/orders/active/{region}"));
     }
 
     @Test

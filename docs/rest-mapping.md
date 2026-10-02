@@ -272,11 +272,12 @@ Every error names the declaration: the method, the parameter, the class or the f
 | A required field not eligible for the API channel, or an entity-reference field, in an input record | ERROR |
 | Any REST declaration while `ai.atlas.rest` is off | ERROR |
 | Two routes that match after `{var}` names are normalised: `/{id}` and `/{orderId}` collide, as in Spring. Reported on each method, naming the others with their parameter types, such as `S#findById(Long)`, so overloads are told apart | ERROR |
-| Two routes that match the same requests while neither is more specific, such as `/{id}/items` and `/open/{kind}` | ERROR |
+| Two routes that match the same requests and that Spring ranks equal: as many variables and a path as long, each variable counting as one character, such as `/{id}/items` and `/items/{kind}`. Spring fails a request both match | ERROR |
 | `@Rest` or `@AgenticParam(in)` on a method that is not on the API channel, which has no REST mapping | WARNING |
 | `@AgenticField(input = false)` while `ai.atlas.rest` is off | WARNING |
 | `@Rest(status)` alone moving an `@AgenticEntity` parameter from the query to the body | WARNING |
 | A literal route beside a variable one, such as `GET /orders/active` next to `GET /orders/{id}`. Spring routes the literal first, which clients may not expect | NOTE |
+| Two routes that match some of the same requests and that Spring ranks apart, such as `/{id}/items` and `/active/{region}`. Spring routes those requests to the route with fewer variables or, as many, the longer path, which clients may not expect | NOTE |
 
 Routes in different modules are not checked against each other, as for MCP tool names.
 

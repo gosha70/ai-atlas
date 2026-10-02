@@ -12,6 +12,7 @@ import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -28,17 +29,25 @@ import java.util.stream.Collectors;
  *   <li>an ERROR on each method whose route another method shares, variable names aside, as Spring
  *       matches them: {@code /{id}} and {@code /{orderId}} are one route. The generated controllers
  *       would otherwise fail at application startup with an ambiguous mapping;</li>
- *   <li>an ERROR on each of two routes that match the same requests while neither is more
- *       specific, such as {@code /{a}/items} and {@code /orders/{b}}: Spring cannot choose between
- *       them at request time;</li>
- *   <li>a NOTE on a route with a literal segment where another has a variable, such as
- *       {@code /orders/active} beside {@code /orders/{id}}: Spring prefers the literal, which clients
- *       may not expect.</li>
+ *   <li>an ERROR on each of two routes that match the same requests and that Spring ranks equal,
+ *       such as {@code /{a}/items} and {@code /items/{b}}: Spring prefers the route with fewer
+ *       variables, then the longer one, counting each variable as one character, and fails a request
+ *       both match when they tie on both;</li>
+ *   <li>a NOTE on two routes that match the same requests and that Spring ranks apart, such as
+ *       {@code /orders/active} beside {@code /orders/{id}}, or {@code /{id}/items} beside
+ *       {@code /active/{region}}: Spring routes a request both match to the one it ranks first, which
+ *       clients may not expect.</li>
  * </ul>
  */
 public final class RestMappingRegistry {
 
     private static final String VARIABLE = "{}";
+    /**
+     * Spring's ranking of two route keys a request both match, most specific first: fewer variables,
+     * then the longer path, each variable counting as one character. Zero is a tie Spring fails on.
+     */
+    static final Comparator<String> SPECIFICITY = Comparator.comparingInt(RestMappingRegistry::variables)
+            .thenComparing(Comparator.comparingInt(RestMappingRegistry::normalizedLength).reversed());
     /** A package qualifier, left out of a declaration's parameter types. */
     private static final Pattern QUALIFIER = Pattern.compile("\\b(?:[a-z_$][\\w$]*\\.)+(?=[A-Za-z_$])");
 
@@ -118,8 +127,13 @@ public final class RestMappingRegistry {
                     case FIRST_LITERAL -> noteLiteral(messager, first, second);
                     case SECOND_LITERAL -> noteLiteral(messager, second, first);
                     default -> {
-                        ambiguous(messager, first, second);
-                        ambiguous(messager, second, first);
+                        int rank = SPECIFICITY.compare(a, b);
+                        if (rank == 0) {
+                            ambiguous(messager, first, second);
+                            ambiguous(messager, second, first);
+                        } else {
+                            notePreferred(messager, rank < 0 ? first : second, rank < 0 ? second : first);
+                        }
                     }
                 }
             }
@@ -133,11 +147,29 @@ public final class RestMappingRegistry {
                 literal.element());
     }
 
+    private static void notePreferred(Messager messager, Site preferred, Site other) {
+        messager.printMessage(Diagnostic.Kind.NOTE, "[ai-atlas] REST mapping " + preferred.route() + " of "
+                + preferred.declaration() + " matches some of the same requests as " + other.route() + " of "
+                + other.declaration() + ". Spring routes them to " + preferred.route() + ", which has fewer"
+                + " variables or, as many, the longer path", preferred.element());
+    }
+
     private static void ambiguous(Messager messager, Site site, Site other) {
         messager.printMessage(Diagnostic.Kind.ERROR, "[ai-atlas] REST mapping " + site.route() + " of "
                 + site.declaration() + " matches the same requests as " + other.route() + " of "
-                + other.declaration() + ", and neither is more specific, so Spring cannot choose between them;"
-                + " change one @Rest path", site.element());
+                + other.declaration() + " with as many variables and a path as long, each variable counting as"
+                + " one character, so Spring cannot choose between them; change one @Rest path", site.element());
+    }
+
+    /** The number of variables in a route key. */
+    private static int variables(String key) {
+        return key.split(Pattern.quote(VARIABLE), -1).length - 1;
+    }
+
+    /** A route key's path length as Spring ranks it, each variable counting as one character. */
+    private static int normalizedLength(String key) {
+        String path = key.substring(key.indexOf(' ') + 1);
+        return path.length() - variables(key) * (VARIABLE.length() - 1);
     }
 
     /** How two distinct routes of the same HTTP method overlap. */
@@ -148,8 +180,8 @@ public final class RestMappingRegistry {
         FIRST_LITERAL,
         /** Every differing segment is a literal in the second route and a variable in the first. */
         SECOND_LITERAL,
-        /** Both have a literal where the other has a variable. */
-        AMBIGUOUS
+        /** Both have a literal where the other has a variable, so Spring ranks them by variables and length. */
+        CROSSED
     }
 
     private static Overlap overlap(String a, String b) {
@@ -180,7 +212,7 @@ public final class RestMappingRegistry {
             }
         }
         if (firstLiteral && secondLiteral) {
-            return Overlap.AMBIGUOUS;
+            return Overlap.CROSSED;
         }
         return firstLiteral ? Overlap.FIRST_LITERAL : secondLiteral ? Overlap.SECOND_LITERAL : Overlap.NONE;
     }
