@@ -164,6 +164,47 @@ class RestCollectionsInterplayTest {
     }
 
     @Test
+    void aCrudFindAllTakingAPageableIsTheResourcesPagedGet() throws Exception {
+        String service = """
+                package shop;
+                import com.egoge.ai.atlas.annotations.*;
+                import com.egoge.ai.atlas.annotations.AgenticExposed.*;
+                import org.springframework.data.domain.*;
+                import java.util.List;
+                @AgenticExposed(description = "Order operations", returnType = Order.class,
+                        rest = @Rest(style = RestStyle.CRUD, resource = "orders"))
+                public class OrderService {
+                    public static Pageable lastPageable;
+                    public static String lastStatus;
+                    public Page<Order> findAll(Pageable pageable) {
+                        lastPageable = pageable;
+                        List<Order> all = Order.all();
+                        int from = (int) Math.min(pageable.getOffset(), all.size());
+                        return new PageImpl<>(all.subList(from, Math.min(from + pageable.getPageSize(), all.size())),
+                                pageable, all.size());
+                    }
+                    public List<Order> list(Pageable pageable, String status) {
+                        lastStatus = status;
+                        return Order.all();
+                    }
+                }
+                """;
+        Compilation compilation = compile(BOTH, ORDER_SRC, service);
+        RestTestSupport.assertValidOpenApi(compilation);
+
+        MockMvc mvc = mvc(new GeneratedClasses(compilation));
+        MockHttpServletResponse page = call(mvc, get("/api/v1/orders"), "page", "1", "size", "2");
+        assertThat(page.getStatus()).as(page.getErrorMessage()).isEqualTo(200);
+        assertThat(JSON.readTree(page.getContentAsString()).path("content").findValuesAsText("id"))
+                .containsExactly("3", "4");
+        // Any other parameter beside the Pageable matches no rule: the RPC mapping below the resource
+        assertThat(call(mvc, post("/api/v1/orders/list"), "status", "NEW").getStatus()).isEqualTo(200);
+        JsonNode paths = openApi(compilation).path("paths");
+        assertThat(paths.path("/api/v1/orders").has("get")).isTrue();
+        assertThat(paths.path("/api/v1/orders/list").has("post")).isTrue();
+    }
+
+    @Test
     void openApiPublishesThePathParameterAndTheBoundedPagingParameters() throws Exception {
         Compilation compilation = compile(BOTH, ORDER_SRC, SERVICE);
         RestTestSupport.assertValidOpenApi(compilation);

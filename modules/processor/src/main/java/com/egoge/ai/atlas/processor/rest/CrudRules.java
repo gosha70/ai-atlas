@@ -3,6 +3,7 @@
  */
 package com.egoge.ai.atlas.processor.rest;
 
+import com.egoge.ai.atlas.processor.generator.CollectionsOption;
 import com.egoge.ai.atlas.processor.util.ReturnedTypes;
 
 import javax.lang.model.element.ElementKind;
@@ -51,7 +52,8 @@ final class CrudRules {
     static Rule match(String name, List<? extends VariableElement> params, boolean isVoid, Types types) {
         int n = params.size();
         return switch (name) {
-            case "findAll", "list" -> n == 0 ? new Rule(RestOperation.GET, "", RestOperation.DEFAULT_STATUS) : null;
+            case "findAll", "list" -> n == 0 || n == 1 && pageable(params.get(0).asType())
+                    ? new Rule(RestOperation.GET, "", RestOperation.DEFAULT_STATUS) : null;
             case "findById", "getById" -> n == 1 && scalar(params.get(0).asType())
                     ? new Rule(RestOperation.GET, variable(params.get(0)), RestOperation.DEFAULT_STATUS) : null;
             case "create" -> n == 1 && entity(params.get(0).asType(), types)
@@ -67,6 +69,12 @@ final class CrudRules {
 
     private static String variable(VariableElement param) {
         return "/{" + param.getSimpleName() + "}";
+    }
+
+    /** Spring Data's {@code Pageable}, whose page, size and sort a paged list reads from the query. */
+    private static boolean pageable(TypeMirror type) {
+        return type instanceof DeclaredType declared
+                && ((TypeElement) declared.asElement()).getQualifiedName().contentEquals(CollectionsOption.PAGEABLE);
     }
 
     /** An {@code @AgenticEntity} or a subtype of one. */

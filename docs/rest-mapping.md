@@ -134,7 +134,7 @@ matches the method name **and** the parameter shape; a *scalar* is as above, and
 
 | Method | Parameters | Mapping | Status |
 |---|---|---|---|
-| `findAll`, `list` | none | `GET /<resource>` | 200 |
+| `findAll`, `list` | none, or one Spring Data `Pageable` | `GET /<resource>`, paging in the query | 200 |
 | `findById`, `getById` | one scalar `p` | `GET /<resource>/{p}` | 200 |
 | `create` | one entity | `POST /<resource>`, the entity in the body | 201 |
 | `update` | a scalar `p`, then an entity | `PUT /<resource>/{p}`, the entity in the body | 200 |

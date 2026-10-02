@@ -60,7 +60,8 @@ public final class CollectionsOption {
     /** The option's name. */
     public static final String OPTION = "ai.atlas.collections";
 
-    static final String PAGEABLE = PagingContract.DATA_PACKAGE + ".Pageable";
+    /** Spring Data's {@code Pageable}, which a paged operation takes. */
+    public static final String PAGEABLE = PagingContract.DATA_PACKAGE + ".Pageable";
     private static final String PAGE = PagingContract.DATA_PACKAGE + ".Page";
     private static final String SLICE = PagingContract.DATA_PACKAGE + ".Slice";
     private static final Set<String> PAGING_INPUTS = Set.of(PagingContract.PAGE_PARAM, PagingContract.SIZE_PARAM,
