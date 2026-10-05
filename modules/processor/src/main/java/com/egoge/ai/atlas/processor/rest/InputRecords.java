@@ -190,7 +190,10 @@ final class InputRecords {
      * How a body type reaches an {@code @AgenticEntity}, or a subtype of one, that Jackson would
      * bind in full: through a type argument, a map key or value, an array component, a record
      * component, a field, a setter's or constructor's parameter, or a supertype, transitively.
-     * Members of JDK types are not followed, only their type arguments; each type is visited once, so cycles end.
+     * Members of JDK types are not followed, only their type arguments. Each type is visited once,
+     * and a declaration's members are followed once per erasure and set of
+     * {@link ReturnedTypes#declarations}, so the walk ends, even on a type that grows through its own
+     * supertype.
      *
      * @return {@code "the @AgenticEntity X through T.a.b"}, or {@code null} when none is reached
      */
@@ -198,6 +201,7 @@ final class InputRecords {
         Deque<Map.Entry<TypeMirror, String>> pending = new ArrayDeque<>();
         pending.add(Map.entry(type, display(type, types)));
         Set<String> seen = new HashSet<>();
+        Map<String, List<Set<String>>> followed = new HashMap<>();
         while (!pending.isEmpty()) {
             Map.Entry<TypeMirror, String> next = pending.removeFirst();
             TypeMirror current = next.getKey();
@@ -232,9 +236,12 @@ final class InputRecords {
                 pending.add(Map.entry(argument, via + "<" + display(argument, types) + ">"));
             }
             TypeElement element = (TypeElement) declared.asElement();
-            if (jdk(element)) {
+            Set<String> declarations = ReturnedTypes.declarations(current);
+            List<Set<String>> sets = followed.computeIfAbsent(types.erasure(current).toString(), k -> new ArrayList<>());
+            if (jdk(element) || sets.stream().anyMatch(set -> set.containsAll(declarations))) {
                 continue;
             }
+            sets.add(declarations);
             // A superclass's private fields are not among the members, but Jackson may bind them
             for (TypeMirror supertype : types.directSupertypes(current)) {
                 pending.add(Map.entry(supertype, via));

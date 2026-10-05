@@ -6,6 +6,7 @@ package com.egoge.ai.atlas.processor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.testing.compile.Compilation;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.util.List;
 
@@ -57,6 +58,7 @@ class RestRequestBodyTest {
     }
 
     @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD) // An expanding container must not stall
     void openApiDescribesEachAcceptedBodyInTheShapeJacksonBinds() throws Exception {
         String service = """
                 package shop;
@@ -112,6 +114,9 @@ class RestRequestBodyTest {
                     @AgenticExposed(description = "t", rest = @Rest(method = HttpMethod.POST, path = "/t"))
                     public void t(@AgenticParam(in = In.BODY) Tree body) { }
                     public static class Tree extends ArrayList<Tree> { }
+                    @AgenticExposed(description = "u", rest = @Rest(method = HttpMethod.POST, path = "/u"))
+                    public void u(@AgenticParam(in = In.BODY) Grow<String> body) { }
+                    public static class Grow<T> extends ArrayList<Grow<List<T>>> { }
                 }
                 """;
         Compilation compilation = compile(List.of(REST_ON), ORDER, service);
@@ -147,6 +152,34 @@ class RestRequestBodyTest {
                 .isEqualTo("{\"type\":\"array\",\"items\":{\"type\":\"string\",\"enum\":[\"LOW\",\"HIGH\"]}}");
         // A collection of itself ends in an object instead of nesting without end
         assertThat(body(paths, "t")).isEqualTo("{\"type\":\"array\",\"items\":{\"type\":\"object\"}}");
+        // So does one whose element grows through its own supertype: Grow<List<String>>, then without end
+        assertThat(body(paths, "u")).isEqualTo("{\"type\":\"array\",\"items\":{\"type\":\"object\"}}");
+    }
+
+    @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void anEntityReachedThroughAnExpandingGenericIsStillAnErrorAndTheCheckEnds() {
+        String service = """
+                package shop;
+                import com.egoge.ai.atlas.annotations.*;
+                import com.egoge.ai.atlas.annotations.AgenticExposed.*;
+                import com.egoge.ai.atlas.annotations.AgenticParam.In;
+                import java.util.*;
+                @AgenticExposed(rest = @Rest(resource = "things"))
+                public class ThingService {
+                    public static class Grow<T> extends ArrayList<Grow<List<T>>> { }
+                    public static class Node<T> { public Node<List<T>> next; public T value; public Order order; }
+                    @AgenticExposed(description = "a", rest = @Rest(method = HttpMethod.POST, path = "/a"))
+                    public void a(@AgenticParam(in = In.BODY) Grow<Order> body) { }
+                    @AgenticExposed(description = "b", rest = @Rest(method = HttpMethod.POST, path = "/b"))
+                    public void b(@AgenticParam(in = In.BODY) Node<String> body) { }
+                }
+                """;
+        Compilation compilation = compileUnchecked(List.of(REST_ON), ORDER, service);
+
+        assertThat(errors(compilation))
+                .anyMatch(e -> e.contains("The request body 'body' of 'a'") && e.contains("reaches the @AgenticEntity Order"))
+                .anyMatch(e -> e.contains("The request body 'body' of 'b'") && e.contains("reaches the @AgenticEntity Order"));
     }
 
     private static String body(JsonNode paths, String operation) {

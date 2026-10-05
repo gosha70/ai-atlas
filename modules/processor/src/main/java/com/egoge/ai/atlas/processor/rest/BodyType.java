@@ -13,10 +13,9 @@ import javax.lang.model.type.TypeMirror;
 import javax.lang.model.type.WildcardType;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * The JSON shape of a request body that is not an {@code @AgenticEntity}, classified from its
@@ -43,11 +42,18 @@ public record BodyType(BodyType items, String javaType, List<String> enumValues)
 
     /** Classifies {@code type}, a body parameter's type. */
     static BodyType of(TypeMirror type, Types types, Elements elements) {
-        return of(type, types, elements, new HashSet<>());
+        return of(type, types, elements, new HashMap<>());
     }
 
-    /** {@code containers} holds the containers being classified, so a self-nesting type ends in an object. */
-    private static BodyType of(TypeMirror type, Types types, Elements elements, Set<String> containers) {
+    /**
+     * {@code containers} maps each container declaration being classified, by erasure, to the length
+     * of its instance's name. A declaration met again is classified only when this instance is
+     * strictly shorter, as one reached through written type arguments is ({@code List<List<UUID>>},
+     * then {@code List<UUID>}); one repeated or grown through its own supertype, such as
+     * {@code Tree<T> extends ArrayList<Tree<List<T>>>}, ends in an object. A compilation declares
+     * finitely many types, and each one's length can shrink only finitely often, so this terminates.
+     */
+    private static BodyType of(TypeMirror type, Types types, Elements elements, Map<String, Integer> containers) {
         type = bound(type);
         if (type instanceof DeclaredType declared) {
             String name = ((TypeElement) declared.asElement()).getQualifiedName().toString();
@@ -61,10 +67,18 @@ public record BodyType(BodyType items, String javaType, List<String> enumValues)
         TypeElement collection = elements.getTypeElement(COLLECTION);
         boolean array = type instanceof ArrayType
                 || collection != null && types.isAssignable(types.erasure(type), types.erasure(collection.asType()));
-        if (array && containers.add(type.toString())) {
+        String declaration = types.erasure(type).toString();
+        Integer outer = containers.get(declaration);
+        int length = type.toString().length();
+        if (array && (outer == null || length < outer)) {
+            containers.put(declaration, length);
             TypeMirror element = ReturnedTypes.elementType(type, types);
             BodyType items = element == null ? UNCONSTRAINED : of(element, types, elements, containers);
-            containers.remove(type.toString());
+            if (outer == null) {
+                containers.remove(declaration);
+            } else {
+                containers.put(declaration, outer);
+            }
             return new BodyType(items, null, null);
         }
         if (type instanceof DeclaredType declared) {
