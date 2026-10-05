@@ -426,6 +426,10 @@ public final class OpenApiGenerator {
       return new Schema<>().type("number");
     }
     Schema<?> scalar = mapJavaTypeToSchema(type);
+    if (Endpoint.integral(type) && !"integer".equals(scalar.getType())) {
+      // byte and short, and their boxes, which the type mapping leaves as its string default
+      return new Schema<>().type("integer");
+    }
     return "string".equals(scalar.getType()) ? new Schema<>().type("object") : scalar;
   }
 

@@ -89,6 +89,16 @@ class RestRequestBodyTest {
                     public void h(@AgenticParam(in = In.BODY) List body) { }
                     @AgenticExposed(description = "i", rest = @Rest(method = HttpMethod.POST, path = "/i"))
                     public void i(@AgenticParam(in = In.BODY) Character body) { }
+                    @AgenticExposed(description = "j", rest = @Rest(method = HttpMethod.POST, path = "/j"))
+                    public void j(@AgenticParam(in = In.BODY) short body) { }
+                    @AgenticExposed(description = "k", rest = @Rest(method = HttpMethod.POST, path = "/k"))
+                    public void k(@AgenticParam(in = In.BODY) List<Byte> body) { }
+                    @AgenticExposed(description = "l", rest = @Rest(method = HttpMethod.POST, path = "/l"))
+                    public void l(@AgenticParam(in = In.BODY) Optional<Integer> body) { }
+                    @AgenticExposed(description = "m", rest = @Rest(method = HttpMethod.POST, path = "/m"))
+                    public void m(@AgenticParam(in = In.BODY) Optional<List<UUID>> body) { }
+                    @AgenticExposed(description = "n", rest = @Rest(method = HttpMethod.POST, path = "/n"))
+                    public void n(@AgenticParam(in = In.BODY) OptionalLong body) { }
                 }
                 """;
         Compilation compilation = compile(List.of(REST_ON), ORDER, service);
@@ -107,6 +117,13 @@ class RestRequestBodyTest {
         assertThat(body(paths, "g")).isEqualTo("{\"type\":\"object\"}");
         assertThat(body(paths, "h")).isEqualTo("{\"type\":\"array\",\"items\":{}}");
         assertThat(body(paths, "i")).isEqualTo("{\"type\":\"string\"}");
+        // Every integral kind is an integer, byte and short included
+        assertThat(body(paths, "j")).isEqualTo("{\"type\":\"integer\"}");
+        assertThat(body(paths, "k")).isEqualTo("{\"type\":\"array\",\"items\":{\"type\":\"integer\"}}");
+        // An Optional has the shape of the value Spring and Jackson unwrap
+        assertThat(body(paths, "l")).isEqualTo("{\"type\":\"integer\",\"format\":\"int32\"}");
+        assertThat(body(paths, "m")).isEqualTo("{\"type\":\"array\",\"items\":{\"type\":\"string\"}}");
+        assertThat(body(paths, "n")).isEqualTo("{\"type\":\"integer\",\"format\":\"int64\"}");
     }
 
     private static String body(JsonNode paths, String operation) {

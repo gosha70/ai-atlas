@@ -248,6 +248,12 @@ These are compile errors:
   The error names the path, such as `shop.PlaceRequest.order`; hold the entity's fields in the
   command record instead. Members of JDK types are not followed, only their type arguments.
 
+Any other body is described in OpenAPI in the shape Jackson binds: an enum as a string with its
+constants; an array or a `java.util.Collection` as an array of its element; every integral type,
+`byte` and `short` included, as an integer; an `Optional` (or `OptionalInt`, `OptionalLong`,
+`OptionalDouble`) as the value it wraps; and any other type, a generic one such as `Box<String>`
+included, as an object.
+
 MCP tools keep taking the method's parameters: input records are REST-only.
 
 ## Validation
