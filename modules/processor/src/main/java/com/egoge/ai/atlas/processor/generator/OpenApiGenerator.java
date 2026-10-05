@@ -12,6 +12,7 @@ import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ReturnKind;
+import com.egoge.ai.atlas.processor.rest.BodyType;
 import com.egoge.ai.atlas.processor.rest.InputRecord;
 import com.egoge.ai.atlas.processor.rest.RestOperation;
 import com.egoge.ai.atlas.processor.util.VersionSelector;
@@ -331,7 +332,7 @@ public final class OpenApiGenerator {
       if (RestOperation.BODY.equals(in)) {
         boolean required = irOperation == null || ConstraintSurfaces.parameter(irOperation, i, param).required();
         operation.requestBody(new RequestBody().required(required)
-            .content(jsonContent(bodySchema(param.typeName(), rest))));
+            .content(jsonContent(bodySchema(rest))));
         continue;
       }
       boolean path = RestOperation.PATH.equals(in);
@@ -358,11 +359,11 @@ public final class OpenApiGenerator {
       operation.addParametersItem(parameter);
     }
 
-    // Response, under the status the controller declares; a 204 carries no content
+    // Response, under the status the controller declares; a 204 or 205 carries no content
     int status = rest.status();
     ApiResponse success = new ApiResponse().description(status == 201 ? "Created"
-        : status == RestOperation.NO_CONTENT ? "No Content" : "Success");
-    Content content = status == RestOperation.NO_CONTENT ? null
+        : RestOperation.NO_CONTENT_STATUSES.getOrDefault(status, "Success"));
+    Content content = RestOperation.NO_CONTENT_STATUSES.containsKey(status) ? null
         : paging != null ? PagedOpenApi.responseContent(method, paging) : buildResponseContent(method);
     if (content != null) {
       success.content(content);
@@ -397,26 +398,35 @@ public final class OpenApiGenerator {
   }
 
   /**
-   * The schema of a request body: a reference to the input record an entity body binds; else a
-   * scalar's schema, an array of a collection's scalars, or an object.
+   * The schema of a request body: a reference to the input record an entity body binds; else the
+   * shape the mapping classified from the body's type, an array for an array or a collection, an
+   * enum as a string with its constants, a scalar as its JSON type, anything else an object.
    */
-  private static Schema<?> bodySchema(TypeName type, RestOperation rest) {
+  private static Schema<?> bodySchema(RestOperation rest) {
     if (rest.inputRecord() != null) {
       return new Schema<>().$ref("#/components/schemas/" + rest.inputRecord().simpleName());
     }
-    if (isScalar(type) || STRING_BODIES.contains(type.toString())) {
-      return mapJavaTypeToSchema(type.toString());
+    BodyType body = rest.bodyType();
+    Schema<?> single = body.javaType() == null ? new Schema<>() : bodyValueSchema(body);
+    return body.array() ? new ArraySchema().items(single) : single;
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"}) // swagger-models setEnum() requires raw Schema cast
+  private static Schema<?> bodyValueSchema(BodyType body) {
+    String type = body.javaType();
+    if (body.enumValues() != null) {
+      Schema<?> schema = new Schema<>().type("string");
+      ((Schema) schema).setEnum(body.enumValues());
+      return schema;
     }
-    if (BIG_DECIMAL.equals(type.toString()) || BIG_INTEGER.equals(type.toString())) {
+    if (STRING.toString().equals(type) || STRING_BODIES.contains(type)) {
+      return new Schema<>().type("string");
+    }
+    if (BIG_DECIMAL.equals(type) || BIG_INTEGER.equals(type)) {
       return new Schema<>().type("number");
     }
-    TypeName elementType = type instanceof ArrayTypeName array ? array.componentType()
-        : type instanceof ParameterizedTypeName parameterized && parameterized.typeArguments().size() == 1
-            ? parameterized.typeArguments().get(0) : null;
-    if (elementType != null && (isScalar(elementType) || elementType.equals(STRING))) {
-      return new ArraySchema().items(mapJavaTypeToSchema(elementType.toString()));
-    }
-    return new Schema<>().type("object");
+    Schema<?> scalar = mapJavaTypeToSchema(type);
+    return "string".equals(scalar.getType()) ? new Schema<>().type("object") : scalar;
   }
 
   /** Response content matching what the generated controller returns; {@code null} for void. */

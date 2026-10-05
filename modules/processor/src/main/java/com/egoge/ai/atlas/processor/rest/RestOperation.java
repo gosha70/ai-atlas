@@ -24,9 +24,10 @@ import java.util.Map;
  *                    declaration order
  * @param inputRecord the whitelisted input record the body binds when the body parameter is an
  *                    {@code @AgenticEntity}, or {@code null}
+ * @param bodyType    the JSON shape of a body that is not an {@code @AgenticEntity}, or {@code null}
  */
 public record RestOperation(String httpMethod, String resource, String path, int status,
-                            List<String> parameterIn, ClassName inputRecord) {
+                            List<String> parameterIn, ClassName inputRecord, BodyType bodyType) {
 
     /** A path parameter. */
     public static final String PATH = "PATH";
@@ -44,6 +45,8 @@ public record RestOperation(String httpMethod, String resource, String path, int
     public static final int DEFAULT_STATUS = 200;
     /** {@code 204 No Content}. */
     public static final int NO_CONTENT = 204;
+    /** The statuses whose response carries no content (RFC 9110 §15.3.5, §15.3.6), by reason phrase. */
+    public static final Map<Integer, String> NO_CONTENT_STATUSES = Map.of(NO_CONTENT, "No Content", 205, "Reset Content");
 
     /** The 2xx statuses Spring's {@code HttpStatus} names, the only ones a generated controller can declare. */
     static final Map<Integer, String> SUCCESS_STATUSES = Map.of(
@@ -58,7 +61,7 @@ public record RestOperation(String httpMethod, String resource, String path, int
     /** The RPC mapping: GET without parameters and POST with them, at {@code /<resource>/<rpcPath>}, every parameter in the query. */
     static RestOperation rpc(String resource, String methodKebab, int parameterCount) {
         return new RestOperation(parameterCount == 0 ? GET : POST, resource, "/" + methodKebab, DEFAULT_STATUS,
-                Collections.nCopies(parameterCount, QUERY), null);
+                Collections.nCopies(parameterCount, QUERY), null, null);
     }
 
     /** The route below the major, {@code /<resource><path>}, as the Contract IR records it. */

@@ -171,7 +171,8 @@ a `void` `DELETE`; else `200`.
 - The controller declares `@ResponseStatus(HttpStatus.X)` for a status other than 200, and the
   OpenAPI document describes that one success response. Error responses (4xx and 5xx) are not
   described.
-- `204 No Content` on a method that returns a value is a compile error. A `void` operation with any
+- `204 No Content` or `205 Reset Content` on a method that returns a value is a compile error:
+  neither response carries content, so OpenAPI describes none for them. A `void` operation with any
   other status answers with an empty body.
 - A `201 Created` carries no `Location` header: AI-ATLAS cannot know the created resource's URI.
 
@@ -212,7 +213,8 @@ public record OrderInput(Long id, String status) {
   is ignored. It is never set on the entity.
 - **Creating the entity.** `toEntity()` uses an accessible no-argument constructor and a setter for
   each component. Failing that, it uses an accessible constructor taking every component in
-  declaration order. An entity with neither, or an abstract one, is a compile error naming the
+  declaration order, each parameter named as its component, so a constructor that takes the same
+  types in another order can never swap two values. An entity with neither, or an abstract one, is a compile error naming the
   missing setters and the constructor it would take.
 - **Requiredness.** The OpenAPI schema of `<Entity>Input` lists its required components: primitives
   and fields with `@NotNull`, `@NotBlank` or `@NotEmpty`. The record **enforces** that list,
@@ -265,7 +267,7 @@ Every error names the declaration: the method, the parameter, the class or the f
 | With `ai.atlas.collections` on, a paging input bound from the path or the body: a Spring Data `Pageable`, or an `@AgenticParam(paging = LIMIT \| CURSOR)` parameter, declared `in = PATH` or `in = BODY` or named by a `{var}`. Paging inputs are query parameters only, as the generated `page`/`size` checks and OpenAPI read them (see [Collection exposure safety](collection-safety.md)) | ERROR |
 | A `String` body, an entity subtype body, a collection of entities, an `Optional` of an entity, or a body type that reaches an entity through its type arguments or properties | ERROR |
 | A status outside the 2xx codes Spring's `HttpStatus` names | ERROR |
-| `204` on a method that returns a value | ERROR |
+| `204` or `205` on a method that returns a value | ERROR |
 | `method`, `path` or `status` on a class; `style` or `resource` on a method | ERROR |
 | A resource that is not one path segment, or a `.` or `..` path or resource segment | ERROR |
 | An entity body whose input record cannot create the entity, or whose name another type takes | ERROR |
@@ -274,6 +276,7 @@ Every error names the declaration: the method, the parameter, the class or the f
 | Two routes that match after `{var}` names are normalised: `/{id}` and `/{orderId}` collide, as in Spring. Reported on each method, naming the others with their parameter types, such as `S#findById(Long)`, so overloads are told apart | ERROR |
 | Two routes that match the same requests and that Spring ranks equal: as many variables and a path as long, each variable counting as one character, such as `/{id}/items` and `/items/{kind}`. Spring fails a request both match | ERROR |
 | `@Rest` or `@AgenticParam(in)` on a method that is not on the API channel, which has no REST mapping | WARNING |
+| `@Rest` on a service none of whose operations is on the API channel. Its `style` and `resource` are still checked | WARNING |
 | `@AgenticField(input = false)` while `ai.atlas.rest` is off | WARNING |
 | `@Rest(status)` alone moving an `@AgenticEntity` parameter from the query to the body | WARNING |
 | A literal route beside a variable one, such as `GET /orders/active` next to `GET /orders/{id}`. Spring routes the literal first, which clients may not expect | NOTE |

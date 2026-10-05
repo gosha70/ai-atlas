@@ -117,7 +117,7 @@ final class InputRecords {
     }
 
     /** The outcome of checking a body parameter. */
-    record Body(boolean valid, ClassName inputRecord) {
+    record Body(boolean valid, ClassName inputRecord, BodyType bodyType) {
     }
 
     /**
@@ -136,7 +136,7 @@ final class InputRecords {
         if (charSequence != null && types.isAssignable(type, charSequence.asType())) {
             messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + subject + " is a " + type + ", which Spring reads"
                     + " as raw text, not JSON. Wrap it in a record, or declare it in the query", body);
-            return new Body(false, null);
+            return new Body(false, null, null);
         }
         TypeElement entity = ReturnedTypes.entityOf(type, types);
         if (entity != null) {
@@ -144,16 +144,16 @@ final class InputRecords {
                 messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + subject + " is " + type + ", a subtype of the"
                         + " @AgenticEntity " + entity.getSimpleName() + ", which a request body cannot bind through a"
                         + " whitelist. Declare the parameter as " + entity.getSimpleName(), body);
-                return new Body(false, null);
+                return new Body(false, null, null);
             }
             InputRecord input = inputRecord(entity, registry);
             if (input == null) {
                 messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + subject + " cannot bind the @AgenticEntity "
                         + entity.getSimpleName() + ", which has no valid input record; see the errors on "
                         + entity.getSimpleName(), body);
-                return new Body(false, null);
+                return new Body(false, null, null);
             }
-            return new Body(true, input.name());
+            return new Body(true, input.name(), null);
         }
         TypeMirror element = type.getKind() == TypeKind.DECLARED || type.getKind() == TypeKind.ARRAY
                 ? ReturnedTypes.elementType(type, types) : null;
@@ -162,7 +162,7 @@ final class InputRecords {
             messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + subject + " is " + type + ", a collection of the"
                     + " @AgenticEntity " + elementEntity.getSimpleName() + ", which a request body cannot bind"
                     + " through a whitelist. Take one " + elementEntity.getSimpleName() + " per request", body);
-            return new Body(false, null);
+            return new Body(false, null, null);
         }
         if (type instanceof DeclaredType declared && declared.getTypeArguments().size() == 1
                 && ((TypeElement) declared.asElement()).getQualifiedName().contentEquals(OPTIONAL)) {
@@ -172,7 +172,7 @@ final class InputRecords {
                         + " binds as the @AgenticEntity " + optionalEntity.getSimpleName() + " itself, not through a"
                         + " whitelist. Declare the parameter as " + optionalEntity.getSimpleName() + ", with"
                         + " @AgenticParam(required = Requiredness.OPTIONAL) for an optional body", body);
-                return new Body(false, null);
+                return new Body(false, null, null);
             }
         }
         String reached = reachedEntity(type, types);
@@ -181,9 +181,9 @@ final class InputRecords {
                     + reached + ". Jackson would bind every property of it, not only its whitelisted"
                     + " @AgenticFields. Take the entity itself as the body, or hold its fields in the body type"
                     + " rather than the entity", body);
-            return new Body(false, null);
+            return new Body(false, null, null);
         }
-        return new Body(true, null);
+        return new Body(true, null, BodyType.of(type, types, env.getElementUtils()));
     }
 
     /**
@@ -367,7 +367,7 @@ final class InputRecords {
                 + (missing.isEmpty() ? "" : " (missing: " + String.join(", ", missing) + ")")
                 + ", or an accessible constructor taking ("
                 + fields.stream().map(f -> f.typeName() + " " + f.name()).collect(Collectors.joining(", "))
-                + ") in that order", entity);
+                + ") in that order, each parameter named as its field", entity);
         return null;
     }
 
@@ -414,7 +414,11 @@ final class InputRecords {
         return setters;
     }
 
-    /** Whether the entity has an accessible constructor taking each field, in order. */
+    /**
+     * Whether the entity has an accessible constructor taking each field, in order, each parameter
+     * named as its field: matching types alone would let {@code (String last, String first)} take
+     * {@code first, last} and swap them.
+     */
     private boolean hasMatchingConstructor(TypeElement entity, List<FieldModel> fields, String packageName) {
         Types types = env.getTypeUtils();
         for (ExecutableElement constructor : ElementFilter.constructorsIn(entity.getEnclosedElements())) {
@@ -426,7 +430,8 @@ final class InputRecords {
             for (int i = 0; i < params.size(); i++) {
                 TypeMirror fieldType = entityFields.get(entity.getQualifiedName() + "#" + fields.get(i).name())
                         .element().asType();
-                matches &= types.isAssignable(fieldType, params.get(i).asType());
+                matches &= params.get(i).getSimpleName().contentEquals(fields.get(i).name())
+                        && types.isAssignable(fieldType, params.get(i).asType());
             }
             if (matches) {
                 return true;

@@ -71,7 +71,7 @@ import java.util.regex.Pattern;
 public final class RestOption {
 
     /** The API channel. */
-    private static final String API = "API";
+    public static final String API = "API";
     private static final String PREFIX = "[ai-atlas] ";
     // A constant string, not the annotation enum: initialising the processor loads no annotation class
     private static final String CRUD = "CRUD";
@@ -80,7 +80,7 @@ public final class RestOption {
     private static final Pattern RESOURCE = Pattern.compile("[A-Za-z0-9._~-]+");
 
     /** What {@link #resolve(TypeElement, ExecutableElement, Set, Map)} returns for an invalid method. */
-    public static final RestOperation INVALID = new RestOperation("", "", "", 0, List.of(), null);
+    public static final RestOperation INVALID = new RestOperation("", "", "", 0, List.of(), null, null);
 
     private final boolean enabled;
     private final String option;
@@ -275,6 +275,7 @@ public final class RestOption {
         }
 
         ClassName inputRecord = null;
+        BodyType bodyType = null;
         long bodies = in.stream().filter(RestOperation.BODY::equals).count();
         if (bodies > 1) {
             messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + "'" + methodName + "' has " + bodies
@@ -291,6 +292,7 @@ public final class RestOption {
             InputRecords.Body checked = inputs.checkBody(body, methodName, registry);
             valid &= checked.valid();
             inputRecord = checked.inputRecord();
+            bodyType = checked.bodyType();
         }
 
         int status;
@@ -308,13 +310,41 @@ public final class RestOption {
                     + "' must be a 2xx success status Spring's HttpStatus names, one of "
                     + new TreeSet<>(RestOperation.SUCCESS_STATUSES.keySet()), method);
             valid = false;
-        } else if (status == RestOperation.NO_CONTENT && !isVoid) {
-            messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + "'" + methodName + "' returns "
-                    + method.getReturnType() + " but its status is 204 No Content, which carries no body."
-                    + " Declare another status, or return void", method);
+        } else if (RestOperation.NO_CONTENT_STATUSES.containsKey(status) && !isVoid) {
+            messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + "'" + methodName + "' returns " + method.getReturnType()
+                    + " but its status is " + status + " " + RestOperation.NO_CONTENT_STATUSES.get(status) + ", which"
+                    + " carries no body. Declare another status, or return void", method);
             valid = false;
         }
-        return valid ? new RestOperation(httpMethod, resource, path, status, in, inputRecord) : null;
+        return valid ? new RestOperation(httpMethod, resource, path, status, in, inputRecord, bodyType) : null;
+    }
+
+    /**
+     * Checks a service's class-level {@code @Rest} once, whether or not any of its operations is on
+     * the API channel: {@link #map} checks it only through an API operation, so on a service with
+     * none it would otherwise never be validated, nor rejected with the option off.
+     *
+     * @param service      the service class
+     * @param apiOperation whether any of its operations is on the API channel
+     */
+    public void checkService(TypeElement service, boolean apiOperation) {
+        RestDeclaration classRest = RestDeclaration.of(service);
+        if (classRest == null || apiOperation) {
+            return;
+        }
+        String name = service.getSimpleName().toString();
+        if (!enabled) {
+            env.getMessager().printMessage(Diagnostic.Kind.ERROR, PREFIX + "REST metadata on class " + name
+                    + " requires " + option + "=true, and has no effect: no operation of " + name + " is on the API"
+                    + " channel. Remove the declaration", service);
+            return;
+        }
+        if (validateClassLevel(service, classRest)) {
+            env.getMessager().printMessage(Diagnostic.Kind.WARNING, PREFIX + "REST metadata on class " + name
+                    + " has no effect: no operation of " + name + " is on the API channel, so none has a REST"
+                    + " mapping. Add API to an operation's @AgenticExposed(channels), or remove the declaration",
+                    service);
+        }
     }
 
     /**

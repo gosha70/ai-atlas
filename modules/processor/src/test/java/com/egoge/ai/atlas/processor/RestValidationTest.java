@@ -83,6 +83,13 @@ class RestValidationTest {
                 Arguments.of("204 with a body", null,
                         "@AgenticExposed(rest = @Rest(status = 204)) public long a() { return 0; }",
                         "'a' returns long but its status is 204 No Content, which carries no body"),
+                Arguments.of("205 with a body", null,
+                        "@AgenticExposed(rest = @Rest(status = 205)) public long a() { return 0; }",
+                        "'a' returns long but its status is 205 Reset Content, which carries no body"),
+                Arguments.of("class-level metadata on a service with no API operation, malformed",
+                        "@AgenticExposed(rest = @Rest(method = HttpMethod.GET))",
+                        "@AgenticExposed(description = \"x\", channels = Channel.AI) public void a() { }",
+                        "@Rest(method, path, status) on class BadService"),
                 Arguments.of("204 on a CRUD delete returning a value, declared", CRUD,
                         "@AgenticExposed(rest = @Rest(status = 204)) public boolean delete(Long id) { return true; }",
                         "'delete' returns boolean but its status is 204 No Content"),
@@ -227,6 +234,16 @@ class RestValidationTest {
                 .anyMatch(w -> w.contains("REST metadata on 'b' has no effect: it is not on the API channel"));
     }
 
+    @Test
+    void classLevelMetadataOnAServiceWithNoApiOperationIsAWarning() {
+        Compilation compilation = compileService(List.of(REST_ON), CRUD,
+                "@AgenticExposed(description = \"x\", channels = Channel.AI) public void a() { }");
+
+        assertThat(compilation.status()).isEqualTo(Compilation.Status.SUCCESS);
+        assertThat(messages(compilation, Diagnostic.Kind.WARNING)).anyMatch(w -> w.contains(
+                "REST metadata on class BadService has no effect: no operation of BadService is on the API channel"));
+    }
+
     static Stream<Arguments> declarationsWhileOff() {
         return Stream.of(
                 Arguments.of(null, "@AgenticExposed(rest = @Rest(method = HttpMethod.DELETE, path = \"/{id}\")) public void a(Long id) { }",
@@ -235,6 +252,9 @@ class RestValidationTest {
                 Arguments.of(CRUD, "public void deleteById(Long id) { }",
                         "REST metadata on 'deleteById' requires ai.atlas.rest=true. Without it the operation is still"
                                 + " served at POST /api/v1/bad-service/delete-by-id"),
+                Arguments.of(CRUD, "@AgenticExposed(description = \"x\", channels = Channel.AI) public void a() { }",
+                        "REST metadata on class BadService requires ai.atlas.rest=true, and has no effect: no operation"
+                                + " of BadService is on the API channel"),
                 Arguments.of(null, "public void a(@AgenticParam(in = In.QUERY) Long id) { }",
                         "REST metadata on 'a' requires ai.atlas.rest=true. Without it the operation is still served at"
                                 + " POST /api/v1/bad-service/a"),

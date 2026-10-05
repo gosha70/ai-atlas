@@ -355,8 +355,10 @@ public class AgenticProcessor extends AbstractProcessor {
     private List<String> recordOperations(TypeElement serviceType, List<ExecutableElement> methods) {
         AgenticExposed typeAnnotation = serviceType.getAnnotation(AgenticExposed.class);
         List<String> operationIds = new ArrayList<>();
+        boolean apiOperation = false;
         for (ExecutableElement method : methods) {
             MethodModel methodModel = buildMethodModel(method, typeAnnotation);
+            apiOperation |= methodModel != null && methodModel.channels().contains(RestOption.API);
             var restOperation = methodModel != null
                     ? rest.resolve(serviceType, method, methodModel.channels(), entityRegistry) : RestOption.INVALID;
             String operationId = restOperation != RestOption.INVALID
@@ -375,6 +377,7 @@ public class AgenticProcessor extends AbstractProcessor {
                         restOperation != null ? restOperation.parameterIn() : null);
             }
         }
+        rest.checkService(serviceType, apiOperation);
         return operationIds;
     }
 
