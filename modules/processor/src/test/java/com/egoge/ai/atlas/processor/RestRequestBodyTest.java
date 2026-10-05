@@ -99,6 +99,19 @@ class RestRequestBodyTest {
                     public void m(@AgenticParam(in = In.BODY) Optional<List<UUID>> body) { }
                     @AgenticExposed(description = "n", rest = @Rest(method = HttpMethod.POST, path = "/n"))
                     public void n(@AgenticParam(in = In.BODY) OptionalLong body) { }
+                    @AgenticExposed(description = "o", rest = @Rest(method = HttpMethod.POST, path = "/o"))
+                    public void o(@AgenticParam(in = In.BODY) BigInteger body) { }
+                    @AgenticExposed(description = "p", rest = @Rest(method = HttpMethod.POST, path = "/p"))
+                    public void p(@AgenticParam(in = In.BODY) Optional<List<BigInteger>> body) { }
+                    @AgenticExposed(description = "q", rest = @Rest(method = HttpMethod.POST, path = "/q"))
+                    public void q(@AgenticParam(in = In.BODY) List<List<UUID>> body) { }
+                    @AgenticExposed(description = "r", rest = @Rest(method = HttpMethod.POST, path = "/r"))
+                    public void r(@AgenticParam(in = In.BODY) UUID[][] body) { }
+                    @AgenticExposed(description = "s", rest = @Rest(method = HttpMethod.POST, path = "/s"))
+                    public void s(@AgenticParam(in = In.BODY) Optional<List<Optional<Priority>>> body) { }
+                    @AgenticExposed(description = "t", rest = @Rest(method = HttpMethod.POST, path = "/t"))
+                    public void t(@AgenticParam(in = In.BODY) Tree body) { }
+                    public static class Tree extends ArrayList<Tree> { }
                 }
                 """;
         Compilation compilation = compile(List.of(REST_ON), ORDER, service);
@@ -124,6 +137,16 @@ class RestRequestBodyTest {
         assertThat(body(paths, "l")).isEqualTo("{\"type\":\"integer\",\"format\":\"int32\"}");
         assertThat(body(paths, "m")).isEqualTo("{\"type\":\"array\",\"items\":{\"type\":\"string\"}}");
         assertThat(body(paths, "n")).isEqualTo("{\"type\":\"integer\",\"format\":\"int64\"}");
+        assertThat(body(paths, "o")).isEqualTo("{\"type\":\"integer\"}");
+        assertThat(body(paths, "p")).isEqualTo("{\"type\":\"array\",\"items\":{\"type\":\"integer\"}}");
+        // Nested containers keep every level's shape
+        String uuids = "{\"type\":\"array\",\"items\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}";
+        assertThat(body(paths, "q")).isEqualTo(uuids);
+        assertThat(body(paths, "r")).isEqualTo(uuids);
+        assertThat(body(paths, "s"))
+                .isEqualTo("{\"type\":\"array\",\"items\":{\"type\":\"string\",\"enum\":[\"LOW\",\"HIGH\"]}}");
+        // A collection of itself ends in an object instead of nesting without end
+        assertThat(body(paths, "t")).isEqualTo("{\"type\":\"array\",\"items\":{\"type\":\"object\"}}");
     }
 
     private static String body(JsonNode paths, String operation) {

@@ -13,56 +13,73 @@ import javax.lang.model.type.TypeMirror;
 import javax.lang.model.type.WildcardType;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The JSON shape of a request body that is not an {@code @AgenticEntity}, classified from its
  * compile-time type so the OpenAPI document describes what Jackson binds: an array or a
- * {@code java.util.Collection} is a JSON array, an enum is a string with its constants, and an
- * {@code Optional} (or {@code OptionalInt}, {@code OptionalLong}, {@code OptionalDouble}) has the
- * shape of the value it wraps, as Spring and Jackson unwrap it.
+ * {@code java.util.Collection} is a JSON array of its element's shape, an enum is a string with its
+ * constants, and an {@code Optional} (or {@code OptionalInt}, {@code OptionalLong},
+ * {@code OptionalDouble}) has the shape of the value it wraps, as Spring and Jackson unwrap it.
+ * Containers are classified recursively, so {@code List<List<UUID>>} is an array of arrays of strings.
  *
- * @param array      whether the body is an array or a collection
- * @param javaType   the body's type, or for an array its element type, as a qualified or primitive
- *                   name; {@code null} for a raw collection, whose elements are unconstrained
+ * @param items      the shape of each element when this is an array or a collection, else {@code null}
+ * @param javaType   when not an array, the type as a qualified or primitive name; {@code null} for
+ *                   the elements of a raw collection, which are unconstrained
  * @param enumValues the constants of that type when it is an enum, else {@code null}
  */
-public record BodyType(boolean array, String javaType, List<String> enumValues) {
+public record BodyType(BodyType items, String javaType, List<String> enumValues) {
 
     private static final String COLLECTION = "java.util.Collection";
     private static final String OPTIONAL = "java.util.Optional";
     /** The primitive optionals, by the primitive each wraps. */
     private static final Map<String, String> PRIMITIVE_OPTIONALS = Map.of(
             "java.util.OptionalInt", "int", "java.util.OptionalLong", "long", "java.util.OptionalDouble", "double");
+    /** The elements of a raw collection. */
+    private static final BodyType UNCONSTRAINED = new BodyType(null, null, null);
 
     /** Classifies {@code type}, a body parameter's type. */
     static BodyType of(TypeMirror type, Types types, Elements elements) {
+        return of(type, types, elements, new HashSet<>());
+    }
+
+    /** {@code containers} holds the containers being classified, so a self-nesting type ends in an object. */
+    private static BodyType of(TypeMirror type, Types types, Elements elements, Set<String> containers) {
+        type = bound(type);
         if (type instanceof DeclaredType declared) {
             String name = ((TypeElement) declared.asElement()).getQualifiedName().toString();
             if (PRIMITIVE_OPTIONALS.containsKey(name)) {
-                return new BodyType(false, PRIMITIVE_OPTIONALS.get(name), null);
+                return new BodyType(null, PRIMITIVE_OPTIONALS.get(name), null);
             }
             if (OPTIONAL.equals(name) && declared.getTypeArguments().size() == 1) {
-                TypeMirror value = declared.getTypeArguments().get(0);
-                return of(value instanceof WildcardType wildcard && wildcard.getExtendsBound() != null
-                        ? wildcard.getExtendsBound() : value, types, elements);
+                return of(declared.getTypeArguments().get(0), types, elements, containers);
             }
         }
         TypeElement collection = elements.getTypeElement(COLLECTION);
         boolean array = type instanceof ArrayType
                 || collection != null && types.isAssignable(types.erasure(type), types.erasure(collection.asType()));
-        TypeMirror single = array ? ReturnedTypes.elementType(type, types) : type;
-        if (single == null) {
-            return new BodyType(true, null, null);
+        if (array && containers.add(type.toString())) {
+            TypeMirror element = ReturnedTypes.elementType(type, types);
+            BodyType items = element == null ? UNCONSTRAINED : of(element, types, elements, containers);
+            containers.remove(type.toString());
+            return new BodyType(items, null, null);
         }
-        if (single instanceof DeclaredType declared) {
+        if (type instanceof DeclaredType declared) {
             TypeElement element = (TypeElement) declared.asElement();
             List<String> constants = element.getKind() != ElementKind.ENUM ? null
                     : element.getEnclosedElements().stream().filter(e -> e.getKind() == ElementKind.ENUM_CONSTANT)
                             .map(e -> e.getSimpleName().toString()).toList();
-            return new BodyType(array, element.getQualifiedName().toString(), constants);
+            return new BodyType(null, element.getQualifiedName().toString(), constants);
         }
-        return new BodyType(array, single.toString(), null);
+        return new BodyType(null, type.toString(), null);
+    }
+
+    /** A wildcard's upper bound, such as {@code X} for {@code ? extends X}; any other type itself. */
+    private static TypeMirror bound(TypeMirror type) {
+        return type instanceof WildcardType wildcard && wildcard.getExtendsBound() != null
+                ? wildcard.getExtendsBound() : type;
     }
 }

@@ -12,7 +12,6 @@ import com.egoge.ai.atlas.processor.model.ServiceModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.MethodModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ParameterModel;
 import com.egoge.ai.atlas.processor.model.ServiceModel.ReturnKind;
-import com.egoge.ai.atlas.processor.rest.BodyType;
 import com.egoge.ai.atlas.processor.rest.InputRecord;
 import com.egoge.ai.atlas.processor.rest.RestOperation;
 import com.egoge.ai.atlas.processor.util.VersionSelector;
@@ -50,7 +49,6 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -68,11 +66,7 @@ public final class OpenApiGenerator {
   static final String APPLICATION_JSON = "application/json";
   private static final String TEXT_PLAIN = "text/plain";
   static final ClassName STRING = ClassName.get(String.class);
-  private static final String BIG_DECIMAL = "java.math.BigDecimal";
-  private static final String BIG_INTEGER = "java.math.BigInteger";
-  /** Body types JSON carries as a string; a {@code String} body itself is a compile error. */
-  private static final Set<String> STRING_BODIES = Set.of("java.util.UUID", "java.lang.Character",
-      "char");
+  static final String BIG_DECIMAL = "java.math.BigDecimal";
   /** Class-output-relative directory the OpenAPI specs are written to. */
   public static final String RESOURCE_DIR = "META-INF/openapi/";
   /** Unversioned alias emitted alongside the versioned spec. */
@@ -332,7 +326,7 @@ public final class OpenApiGenerator {
       if (RestOperation.BODY.equals(in)) {
         boolean required = irOperation == null || ConstraintSurfaces.parameter(irOperation, i, param).required();
         operation.requestBody(new RequestBody().required(required)
-            .content(jsonContent(bodySchema(rest))));
+            .content(jsonContent(BodySchemas.bodySchema(rest))));
         continue;
       }
       boolean path = RestOperation.PATH.equals(in);
@@ -395,42 +389,6 @@ public final class OpenApiGenerator {
       return new Schema<>().type("number");
     }
     return schema;
-  }
-
-  /**
-   * The schema of a request body: a reference to the input record an entity body binds; else the
-   * shape the mapping classified from the body's type, an array for an array or a collection, an
-   * enum as a string with its constants, a scalar as its JSON type, anything else an object.
-   */
-  private static Schema<?> bodySchema(RestOperation rest) {
-    if (rest.inputRecord() != null) {
-      return new Schema<>().$ref("#/components/schemas/" + rest.inputRecord().simpleName());
-    }
-    BodyType body = rest.bodyType();
-    Schema<?> single = body.javaType() == null ? new Schema<>() : bodyValueSchema(body);
-    return body.array() ? new ArraySchema().items(single) : single;
-  }
-
-  @SuppressWarnings({"rawtypes", "unchecked"}) // swagger-models setEnum() requires raw Schema cast
-  private static Schema<?> bodyValueSchema(BodyType body) {
-    String type = body.javaType();
-    if (body.enumValues() != null) {
-      Schema<?> schema = new Schema<>().type("string");
-      ((Schema) schema).setEnum(body.enumValues());
-      return schema;
-    }
-    if (STRING.toString().equals(type) || STRING_BODIES.contains(type)) {
-      return new Schema<>().type("string");
-    }
-    if (BIG_DECIMAL.equals(type) || BIG_INTEGER.equals(type)) {
-      return new Schema<>().type("number");
-    }
-    Schema<?> scalar = mapJavaTypeToSchema(type);
-    if (Endpoint.integral(type) && !"integer".equals(scalar.getType())) {
-      // byte and short, and their boxes, which the type mapping leaves as its string default
-      return new Schema<>().type("integer");
-    }
-    return "string".equals(scalar.getType()) ? new Schema<>().type("object") : scalar;
   }
 
   /** Response content matching what the generated controller returns; {@code null} for void. */
