@@ -88,6 +88,45 @@ class RestJacksonBodyTest {
                         }
                         """, "which Jackson deserializes through @JsonDeserialize(using = shop.Custom.Reader) on"
                         + " shop.Custom.value"),
+                Arguments.of("Converted", "(Order) body.value", "{\"value\":" + ORDER_JSON + "}", """
+                        public class Converted {
+                            @JsonDeserialize(converter = ToOrder.class) public Object value;
+                            public static class ToOrder
+                                    extends com.fasterxml.jackson.databind.util.StdConverter<Map<String, Object>, Order> {
+                                @Override public Order convert(Map<String, Object> map) {
+                                    Order order = new Order();
+                                    order.setSsn((String) map.get("ssn"));
+                                    return order;
+                                }
+                            }
+                        }
+                        """, "which Jackson deserializes through @JsonDeserialize(converter = shop.Converted.ToOrder) on"
+                        + " shop.Converted.value"),
+                Arguments.of("ContentConverted", "(Order) body.values.get(0)", "{\"values\":[\"SECRET\"]}", """
+                        public class ContentConverted {
+                            @JsonDeserialize(contentConverter = ToOrder.class) public List<Object> values;
+                            public static class ToOrder extends com.fasterxml.jackson.databind.util.StdConverter<String, Order> {
+                                @Override public Order convert(String ssn) {
+                                    Order order = new Order();
+                                    order.setSsn(ssn);
+                                    return order;
+                                }
+                            }
+                        }
+                        """, "which Jackson deserializes through @JsonDeserialize(contentConverter ="),
+                Arguments.of("Bundled", "(Order) body.value", "{\"value\":" + ORDER_JSON + "}", """
+                        public class Bundled {
+                            @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)
+                            @JacksonAnnotationsInside @JsonDeserialize(as = Order.class) public @interface AsOrder { }
+                            @AsOrder public Object value;
+                        }
+                        """, "reaches the @AgenticEntity Order through shop.Bundled.value @JsonDeserialize(as)"),
+                Arguments.of("Fallback", "(Order) body.value", "{\"value\":" + ORDER_JSON + "}", """
+                        public class Fallback {
+                            @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "t", defaultImpl = Order.class)
+                            public Object value;
+                        }
+                        """, "reaches the @AgenticEntity Order through shop.Fallback.value @JsonTypeInfo(defaultImpl)"),
                 Arguments.of("Typed", "(Order) body.value", "{\"value\":{\"@class\":\"shop.Order\","
                         + ORDER_JSON.substring(1) + "}", """
                         public class Typed { @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS) public Object value; }
@@ -113,6 +152,23 @@ class RestJacksonBodyTest {
         assertThat(compilation.status()).isEqualTo(Compilation.Status.FAILURE);
         assertThat(errors(compilation)).anyMatch(e -> e.contains("The request body 'body' of 'place' ")
                 && e.contains(message));
+    }
+
+    @Test
+    void aCustomTypeResolverOrValueInstantiatorIsAnError() {
+        String resolved = JACKSON + """
+                @JsonTypeResolver(com.fasterxml.jackson.databind.jsontype.impl.StdTypeResolverBuilder.class)
+                public class Resolved { public Object value; }
+                """;
+        String instantiated = JACKSON + """
+                @JsonValueInstantiator(com.fasterxml.jackson.databind.deser.std.StdValueInstantiator.class)
+                public class Instantiated { public Object value; }
+                """;
+
+        assertThat(errors(compileUnchecked(List.of(REST_ON), ORDER, resolved, service("Resolved", "null"))))
+                .anyMatch(e -> e.contains("which Jackson deserializes through @JsonTypeResolver on shop.Resolved"));
+        assertThat(errors(compileUnchecked(List.of(REST_ON), ORDER, instantiated, service("Instantiated", "null"))))
+                .anyMatch(e -> e.contains("which Jackson deserializes through @JsonValueInstantiator on shop.Instantiated"));
     }
 
     @Test

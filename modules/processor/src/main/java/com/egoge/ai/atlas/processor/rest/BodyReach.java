@@ -38,11 +38,13 @@ import java.util.Set;
  * component, a field, a setter's, constructor's or {@code @JsonCreator} factory's parameter, a
  * {@code @JsonSetter}, {@code @JsonProperty} or {@code @JsonAnySetter} method's value, a supertype,
  * or a class a Jackson annotation names ({@code @JsonDeserialize(as, contentAs, keyAs, builder)},
- * {@code @JsonSubTypes}), transitively. A Jackson annotation that lets the deserialized class be
- * chosen out of the processor's sight ({@code @JsonDeserialize(using, contentUsing, keyUsing)},
- * {@code @JsonTypeInfo} with class-name or custom ids, {@code @JsonTypeIdResolver}) cannot be
- * checked, so it is reported too. Annotations are read by name: the processor has no Jackson
- * dependency.
+ * {@code @JsonSubTypes}, {@code @JsonTypeInfo(defaultImpl)}), transitively. A Jackson annotation
+ * that lets the deserialized class be chosen out of the processor's sight cannot be checked, so it
+ * is reported too: any other {@code @JsonDeserialize} class attribute, such as {@code using} or
+ * {@code converter}; {@code @JsonTypeInfo} with class-name or custom ids; {@code @JsonTypeIdResolver},
+ * {@code @JsonTypeResolver} and {@code @JsonValueInstantiator}. Annotation bundles marked
+ * {@code @JacksonAnnotationsInside} are expanded, as Jackson does. Annotations are read by name: the
+ * processor has no Jackson dependency.
  *
  * <p>Members of JDK types are not followed, only their type arguments. Each type is visited once,
  * and a declaration's members are followed once per erasure and set of
@@ -54,19 +56,20 @@ final class BodyReach {
     private static final String DATABIND = "com.fasterxml.jackson.databind.annotation.";
     private static final String ANNOTATION = "com.fasterxml.jackson.annotation.";
     private static final String JSON_DESERIALIZE = DATABIND + "JsonDeserialize";
-    private static final String JSON_TYPE_ID_RESOLVER = DATABIND + "JsonTypeIdResolver";
+    /** Annotations that plug in code choosing or creating the deserialized class out of sight. */
+    private static final Set<String> OPAQUE = Set.of(DATABIND + "JsonTypeIdResolver", DATABIND + "JsonTypeResolver",
+            DATABIND + "JsonValueInstantiator");
     private static final String JSON_SUB_TYPES = ANNOTATION + "JsonSubTypes";
     private static final String JSON_TYPE_INFO = ANNOTATION + "JsonTypeInfo";
     private static final String JSON_CREATOR = ANNOTATION + "JsonCreator";
+    private static final String BUNDLE = ANNOTATION + "JacksonAnnotationsInside";
     /** Annotations that make an instance method of any name a property's setter. */
     private static final Set<String> SETTERS = Set.of(ANNOTATION + "JsonSetter", ANNOTATION + "JsonProperty",
             ANNOTATION + "JsonAnySetter");
     /** {@code @JsonDeserialize} attributes naming a class Jackson deserializes. */
     private static final Set<String> TARGETS = Set.of("as", "contentAs", "keyAs", "builder");
-    /** {@code @JsonDeserialize} attributes naming a deserializer, whose result the processor cannot see. */
-    private static final Set<String> DESERIALIZERS = Set.of("using", "contentUsing", "keyUsing");
-    /** A deserializer attribute's "none" value. */
-    private static final String NO_DESERIALIZER = "JsonDeserializer.None";
+    /** The suffix of a class attribute's "none" value, such as {@code JsonDeserializer.None}. */
+    private static final String NONE = ".None";
     /** {@code @JsonTypeInfo(use)} values whose type ids name any class, or are resolved out of sight. */
     private static final Set<String> OPEN_TYPE_IDS = Set.of("CLASS", "MINIMAL_CLASS", "CUSTOM");
 
@@ -218,23 +221,26 @@ final class BodyReach {
      * @return the annotation, when one lets the class be chosen out of the processor's sight
      */
     private Reach annotations(Element annotated, String at) {
-        for (AnnotationMirror mirror : annotated.getAnnotationMirrors()) {
-            String name = ((TypeElement) mirror.getAnnotationType().asElement()).getQualifiedName().toString();
-            Map<? extends ExecutableElement, ? extends AnnotationValue> values = mirror.getElementValues();
-            if (JSON_TYPE_ID_RESOLVER.equals(name)) {
-                return new Reach("@JsonTypeIdResolver on " + at, false);
+        for (AnnotationMirror mirror : effective(annotated)) {
+            String name = name(mirror);
+            if (OPAQUE.contains(name)) {
+                return new Reach("@" + mirror.getAnnotationType().asElement().getSimpleName() + " on " + at, false);
             }
-            for (var entry : values.entrySet()) {
+            for (var entry : mirror.getElementValues().entrySet()) {
                 String attribute = entry.getKey().getSimpleName().toString();
                 Object value = entry.getValue().getValue();
                 if (JSON_DESERIALIZE.equals(name) && TARGETS.contains(attribute) && value instanceof TypeMirror target) {
                     pending.add(Map.entry(target, at + " @JsonDeserialize(" + attribute + ")"));
-                } else if (JSON_DESERIALIZE.equals(name) && DESERIALIZERS.contains(attribute)
-                        && !value.toString().endsWith(NO_DESERIALIZER)) {
+                } else if (JSON_DESERIALIZE.equals(name) && value instanceof TypeMirror code
+                        && !code.toString().endsWith(NONE)) {
+                    // using, contentUsing, keyUsing, converter, contentConverter, and any later one
                     return new Reach("@JsonDeserialize(" + attribute + " = " + value + ") on " + at, false);
                 } else if (JSON_TYPE_INFO.equals(name) && "use".equals(attribute)
                         && OPEN_TYPE_IDS.contains(value.toString())) {
                     return new Reach("@JsonTypeInfo(use = " + value + ") on " + at, false);
+                } else if (JSON_TYPE_INFO.equals(name) && "defaultImpl".equals(attribute)
+                        && value instanceof TypeMirror target) {
+                    pending.add(Map.entry(target, at + " @JsonTypeInfo(defaultImpl)"));
                 } else if (JSON_SUB_TYPES.equals(name) && "value".equals(attribute) && value instanceof List<?> list) {
                     for (Object type : list) {
                         if (((AnnotationValue) type).getValue() instanceof AnnotationMirror subtype) {
@@ -253,8 +259,31 @@ final class BodyReach {
     }
 
     private static boolean annotated(Element element, String annotation) {
-        return element.getAnnotationMirrors().stream().anyMatch(mirror ->
-                ((TypeElement) mirror.getAnnotationType().asElement()).getQualifiedName().contentEquals(annotation));
+        return effective(element).stream().anyMatch(mirror -> name(mirror).equals(annotation));
+    }
+
+    /**
+     * The annotations Jackson reads on {@code element}: those present, and those inside each
+     * {@code @JacksonAnnotationsInside} bundle, recursively; each bundle is expanded once.
+     */
+    private static List<AnnotationMirror> effective(Element element) {
+        List<AnnotationMirror> effective = new ArrayList<>();
+        Set<String> expanded = new HashSet<>();
+        Deque<AnnotationMirror> pending = new ArrayDeque<>(element.getAnnotationMirrors());
+        while (!pending.isEmpty()) {
+            AnnotationMirror mirror = pending.removeFirst();
+            effective.add(mirror);
+            Element type = mirror.getAnnotationType().asElement();
+            if (type.getAnnotationMirrors().stream().anyMatch(inner -> name(inner).equals(BUNDLE))
+                    && expanded.add(name(mirror))) {
+                pending.addAll(type.getAnnotationMirrors());
+            }
+        }
+        return effective;
+    }
+
+    private static String name(AnnotationMirror mirror) {
+        return ((TypeElement) mirror.getAnnotationType().asElement()).getQualifiedName().toString();
     }
 
     /** A type as a path through types names it: a declared type without its type arguments. */

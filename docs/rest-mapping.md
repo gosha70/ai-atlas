@@ -250,11 +250,13 @@ These are compile errors:
   The walk also follows what Jackson binds beyond the Java types: a `@JsonCreator` factory's
   parameters, a `@JsonSetter`, `@JsonProperty` or `@JsonAnySetter` method's value, a wildcard's
   bound declared on its type parameter (`Unsafe<?>` of `Unsafe<T extends Order>`), and the classes
-  `@JsonDeserialize(as, contentAs, keyAs, builder)` and `@JsonSubTypes` name, so
-  `@JsonDeserialize(as = Order.class) Object value` reaches `Order`;
+  `@JsonDeserialize(as, contentAs, keyAs, builder)`, `@JsonSubTypes` and
+  `@JsonTypeInfo(defaultImpl)` name, so `@JsonDeserialize(as = Order.class) Object value` reaches
+  `Order`. Annotation bundles marked `@JacksonAnnotationsInside` are expanded, as Jackson does;
 - a body type whose Jackson annotations let the deserialized class be chosen out of the
-  processor's sight: `@JsonDeserialize(using, contentUsing, keyUsing)`, `@JsonTypeInfo` with
-  `CLASS`, `MINIMAL_CLASS` or `CUSTOM` ids, or `@JsonTypeIdResolver`. Name the classes with
+  processor's sight: any other `@JsonDeserialize` class attribute, such as `using` or
+  `converter`; `@JsonTypeInfo` with `CLASS`, `MINIMAL_CLASS` or `CUSTOM` ids; or
+  `@JsonTypeIdResolver`, `@JsonTypeResolver` or `@JsonValueInstantiator`. Name the classes with
   `@JsonDeserialize(as)` or `@JsonSubTypes` instead. Mix-ins and modules registered on the
   `ObjectMapper` at runtime are outside what the processor can read.
 
