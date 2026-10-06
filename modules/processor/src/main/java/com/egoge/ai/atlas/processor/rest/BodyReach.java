@@ -37,12 +37,16 @@ import java.util.Set;
  * would bind in full: through a type argument, a map key or value, an array component, a record
  * component, a field, a setter's, constructor's or {@code @JsonCreator} factory's parameter, a
  * {@code @JsonSetter}, {@code @JsonProperty} or {@code @JsonAnySetter} method's value, a supertype,
- * or a class a Jackson annotation names ({@code @JsonDeserialize(as, contentAs, keyAs, builder)},
- * {@code @JsonSubTypes}, {@code @JsonTypeInfo(defaultImpl)}), transitively. A Jackson annotation
- * that lets the deserialized class be chosen out of the processor's sight cannot be checked, so it
- * is reported too: any other {@code @JsonDeserialize} class attribute, such as {@code using} or
- * {@code converter}; {@code @JsonTypeInfo} with class-name or custom ids; {@code @JsonTypeIdResolver},
- * {@code @JsonTypeResolver} and {@code @JsonValueInstantiator}. Annotation bundles marked
+ * a setterless {@code Collection} or {@code Map} getter Jackson fills, an implicit {@code valueOf} or
+ * {@code fromString} factory's parameter, or a class a Jackson annotation names
+ * ({@code @JsonDeserialize(as, contentAs, keyAs)}, {@code @JsonSubTypes},
+ * {@code @JsonTypeInfo(defaultImpl)}), transitively. It fails closed on Jackson's annotations: one
+ * that lets code choose or fill the deserialized value out of the processor's sight cannot be
+ * checked, so it is reported too. That is any other {@code @JsonDeserialize} class attribute, such
+ * as {@code using}, {@code converter} or {@code builder}; {@code @JsonTypeInfo} with class-name or
+ * custom ids; {@code @JsonIdentityInfo} with a custom resolver; and every Jackson annotation neither
+ * acted on here nor known to leave the bound class alone, such as {@code @JacksonInject},
+ * {@code @JsonMerge}, {@code @JsonTypeIdResolver} or one a later Jackson adds. Annotation bundles marked
  * {@code @JacksonAnnotationsInside} are expanded, as Jackson does. Annotations are read by name: the
  * processor has no Jackson dependency.
  *
@@ -56,18 +60,46 @@ final class BodyReach {
     private static final String DATABIND = "com.fasterxml.jackson.databind.annotation.";
     private static final String ANNOTATION = "com.fasterxml.jackson.annotation.";
     private static final String JSON_DESERIALIZE = DATABIND + "JsonDeserialize";
-    /** Annotations that plug in code choosing or creating the deserialized class out of sight. */
-    private static final Set<String> OPAQUE = Set.of(DATABIND + "JsonTypeIdResolver", DATABIND + "JsonTypeResolver",
-            DATABIND + "JsonValueInstantiator");
     private static final String JSON_SUB_TYPES = ANNOTATION + "JsonSubTypes";
     private static final String JSON_TYPE_INFO = ANNOTATION + "JsonTypeInfo";
     private static final String JSON_CREATOR = ANNOTATION + "JsonCreator";
+    private static final String JSON_PROPERTY = ANNOTATION + "JsonProperty";
+    private static final String JSON_IDENTITY_INFO = ANNOTATION + "JsonIdentityInfo";
     private static final String BUNDLE = ANNOTATION + "JacksonAnnotationsInside";
     /** Annotations that make an instance method of any name a property's setter. */
-    private static final Set<String> SETTERS = Set.of(ANNOTATION + "JsonSetter", ANNOTATION + "JsonProperty",
+    private static final Set<String> SETTERS = Set.of(ANNOTATION + "JsonSetter", JSON_PROPERTY,
             ANNOTATION + "JsonAnySetter");
-    /** {@code @JsonDeserialize} attributes naming a class Jackson deserializes. */
-    private static final Set<String> TARGETS = Set.of("as", "contentAs", "keyAs", "builder");
+    /** The Jackson annotations the walk acts on. */
+    private static final Set<String> HANDLED = Set.of(JSON_DESERIALIZE, JSON_SUB_TYPES, JSON_TYPE_INFO, JSON_CREATOR,
+            JSON_PROPERTY, JSON_IDENTITY_INFO, BUNDLE, ANNOTATION + "JsonSetter", ANNOTATION + "JsonAnySetter");
+    /**
+     * The Jackson annotations that cannot change which class a body binds or what fills it. Any
+     * other Jackson annotation, such as {@code @JacksonInject} or {@code @JsonMerge}, whose values
+     * code chooses, or one a later Jackson adds, cannot be checked.
+     */
+    private static final Set<String> INERT = Set.of(ANNOTATION + "JacksonAnnotation",
+            ANNOTATION + "JacksonAnnotationValue", ANNOTATION + "JsonAlias", ANNOTATION + "JsonAnyGetter",
+            ANNOTATION + "JsonAutoDetect", ANNOTATION + "JsonBackReference", ANNOTATION + "JsonClassDescription",
+            ANNOTATION + "JsonEnumDefaultValue", ANNOTATION + "JsonFilter", ANNOTATION + "JsonFormat",
+            ANNOTATION + "JsonGetter", ANNOTATION + "JsonIdentityReference", ANNOTATION + "JsonIgnore",
+            ANNOTATION + "JsonIgnoreProperties", ANNOTATION + "JsonIgnoreType", ANNOTATION + "JsonInclude",
+            ANNOTATION + "JsonIncludeProperties", ANNOTATION + "JsonKey", ANNOTATION + "JsonManagedReference",
+            ANNOTATION + "JsonPropertyDescription", ANNOTATION + "JsonPropertyOrder", ANNOTATION + "JsonRawValue",
+            ANNOTATION + "JsonRootName", ANNOTATION + "JsonTypeId", ANNOTATION + "JsonTypeName",
+            ANNOTATION + "JsonUnwrapped", ANNOTATION + "JsonValue", ANNOTATION + "JsonView",
+            DATABIND + "JacksonStdImpl", DATABIND + "JsonSerialize", DATABIND + "JsonNaming", DATABIND + "JsonAppend",
+            DATABIND + "EnumNaming");
+    /** The only {@code @JsonIdentityInfo(resolver)} that resolves ids to objects the body already holds. */
+    private static final String DEFAULT_ID_RESOLVER = ANNOTATION + "SimpleObjectIdResolver";
+    /** Static factories Jackson may use as creators without {@code @JsonCreator}. */
+    private static final Set<String> IMPLICIT_FACTORIES = Set.of("valueOf", "fromString");
+    private static final String COLLECTION = "java.util.Collection";
+    private static final String MAP = "java.util.Map";
+    /**
+     * {@code @JsonDeserialize} attributes naming a class Jackson deserializes. Any other class
+     * attribute, {@code builder} included, names code whose result cannot be checked.
+     */
+    private static final Set<String> TARGETS = Set.of("as", "contentAs", "keyAs");
     /** The suffix of a class attribute's "none" value, such as {@code JsonDeserializer.None}. */
     private static final String NONE = ".None";
     /** {@code @JsonTypeInfo(use)} values whose type ids name any class, or are resolved out of sight. */
@@ -189,7 +221,14 @@ final class BodyReach {
                 pending.add(Map.entry(types.asMemberOf(declared, member), at));
             } else if (member instanceof ExecutableElement method) {
                 List<? extends VariableElement> params = method.getParameters();
-                boolean creator = isStatic && annotated(method, JSON_CREATOR);
+                boolean creator = isStatic && (annotated(method, JSON_CREATOR)
+                        || IMPLICIT_FACTORIES.contains(memberName) && params.size() == 1);
+                if (!isStatic && params.isEmpty() && mutableContainer(method.getReturnType())
+                        && (memberName.startsWith("get") || annotated(method, JSON_PROPERTY))) {
+                    // Jackson fills a setterless Collection or Map through its getter
+                    pending.add(Map.entry(((ExecutableType) types.asMemberOf(declared, method)).getReturnType(),
+                            at + "()"));
+                }
                 boolean setter = !isStatic && !params.isEmpty() && (memberName.startsWith("set") && params.size() == 1
                         || SETTERS.stream().anyMatch(name -> annotated(method, name)));
                 if (creator || setter) {
@@ -223,8 +262,10 @@ final class BodyReach {
     private Reach annotations(Element annotated, String at) {
         for (AnnotationMirror mirror : effective(annotated)) {
             String name = name(mirror);
-            if (OPAQUE.contains(name)) {
-                return new Reach("@" + mirror.getAnnotationType().asElement().getSimpleName() + " on " + at, false);
+            String simpleName = "@" + mirror.getAnnotationType().asElement().getSimpleName();
+            if ((name.startsWith(ANNOTATION) || name.startsWith(DATABIND)) && !HANDLED.contains(name)
+                    && !INERT.contains(name)) {
+                return new Reach(simpleName + " on " + at, false);
             }
             for (var entry : mirror.getElementValues().entrySet()) {
                 String attribute = entry.getKey().getSimpleName().toString();
@@ -238,6 +279,9 @@ final class BodyReach {
                 } else if (JSON_TYPE_INFO.equals(name) && "use".equals(attribute)
                         && OPEN_TYPE_IDS.contains(value.toString())) {
                     return new Reach("@JsonTypeInfo(use = " + value + ") on " + at, false);
+                } else if (JSON_IDENTITY_INFO.equals(name) && "resolver".equals(attribute)
+                        && !value.toString().equals(DEFAULT_ID_RESOLVER)) {
+                    return new Reach("@JsonIdentityInfo(resolver = " + value + ") on " + at, false);
                 } else if (JSON_TYPE_INFO.equals(name) && "defaultImpl".equals(attribute)
                         && value instanceof TypeMirror target) {
                     pending.add(Map.entry(target, at + " @JsonTypeInfo(defaultImpl)"));
@@ -256,6 +300,12 @@ final class BodyReach {
             }
         }
         return null;
+    }
+
+    /** Whether {@code type} is a {@code Collection} or a {@code Map}, which Jackson fills in place. */
+    private boolean mutableContainer(TypeMirror type) {
+        return List.of(COLLECTION, MAP).stream().map(elements::getTypeElement).anyMatch(container -> container != null
+                && types.isAssignable(types.erasure(type), types.erasure(container.asType())));
     }
 
     private static boolean annotated(Element element, String annotation) {

@@ -248,15 +248,19 @@ These are compile errors:
   The error names the path, such as `shop.PlaceRequest.order`; hold the entity's fields in the
   command record instead. Members of JDK types are not followed, only their type arguments.
   The walk also follows what Jackson binds beyond the Java types: a `@JsonCreator` factory's
-  parameters, a `@JsonSetter`, `@JsonProperty` or `@JsonAnySetter` method's value, a wildcard's
+  parameters, an implicit `valueOf` or `fromString` factory's parameter, a `@JsonSetter`,
+  `@JsonProperty` or `@JsonAnySetter` method's value, a setterless `Collection` or `Map` getter
+  that Jackson fills, a wildcard's
   bound declared on its type parameter (`Unsafe<?>` of `Unsafe<T extends Order>`), and the classes
-  `@JsonDeserialize(as, contentAs, keyAs, builder)`, `@JsonSubTypes` and
+  `@JsonDeserialize(as, contentAs, keyAs)`, `@JsonSubTypes` and
   `@JsonTypeInfo(defaultImpl)` name, so `@JsonDeserialize(as = Order.class) Object value` reaches
   `Order`. Annotation bundles marked `@JacksonAnnotationsInside` are expanded, as Jackson does;
-- a body type whose Jackson annotations let the deserialized class be chosen out of the
-  processor's sight: any other `@JsonDeserialize` class attribute, such as `using` or
-  `converter`; `@JsonTypeInfo` with `CLASS`, `MINIMAL_CLASS` or `CUSTOM` ids; or
-  `@JsonTypeIdResolver`, `@JsonTypeResolver` or `@JsonValueInstantiator`. Name the classes with
+- a body type whose Jackson annotations let code choose or fill the deserialized value out of the
+  processor's sight. The check fails closed: any other `@JsonDeserialize` class attribute, such
+  as `using`, `converter` or `builder`; `@JsonTypeInfo` with `CLASS`, `MINIMAL_CLASS` or `CUSTOM`
+  ids; `@JsonIdentityInfo` with a custom `resolver`; and any Jackson annotation it neither follows
+  nor knows to leave the bound class alone, such as `@JacksonInject`, `@JsonMerge`,
+  `@JsonTypeIdResolver`, `@JsonValueInstantiator` or one a later Jackson adds. Name the classes with
   `@JsonDeserialize(as)` or `@JsonSubTypes` instead. Mix-ins and modules registered on the
   `ObjectMapper` at runtime are outside what the processor can read.
 

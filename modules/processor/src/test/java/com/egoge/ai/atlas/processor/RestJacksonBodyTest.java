@@ -127,6 +127,29 @@ class RestJacksonBodyTest {
                             public Object value;
                         }
                         """, "reaches the @AgenticEntity Order through shop.Fallback.value @JsonTypeInfo(defaultImpl)"),
+                Arguments.of("Built", "(Order) body.value", "{\"ssn\":\"SECRET\"}", """
+                        @JsonDeserialize(builder = Built.Maker.class)
+                        public class Built {
+                            public Object value;
+                            public static class Maker {
+                                private String ssn;
+                                public Maker withSsn(String ssn) { this.ssn = ssn; return this; }
+                                public Built build() {
+                                    Order order = new Order();
+                                    order.setSsn(ssn);
+                                    Built built = new Built();
+                                    built.value = order;
+                                    return built;
+                                }
+                            }
+                        }
+                        """, "which Jackson deserializes through @JsonDeserialize(builder = shop.Built.Maker) on shop.Built"),
+                Arguments.of("Held", "body.getValues().get(0)", "{\"values\":[" + ORDER_JSON + "]}", """
+                        public class Held {
+                            @SuppressWarnings("rawtypes") private final List raw = new ArrayList();
+                            @SuppressWarnings("unchecked") @JsonProperty public List<Order> getValues() { return raw; }
+                        }
+                        """, "reaches the @AgenticEntity Order through shop.Held.getValues()"),
                 Arguments.of("Typed", "(Order) body.value", "{\"value\":{\"@class\":\"shop.Order\","
                         + ORDER_JSON.substring(1) + "}", """
                         public class Typed { @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS) public Object value; }
@@ -154,6 +177,37 @@ class RestJacksonBodyTest {
                 && e.contains(message));
     }
 
+    static Stream<Arguments> uncheckable() {
+        return Stream.of(
+                Arguments.of("Injected", """
+                        public class Injected { @JacksonInject("order") public Object value; }
+                        """, "which Jackson deserializes through @JacksonInject on shop.Injected.value"),
+                Arguments.of("Merged", """
+                        public class Merged { @JsonMerge public Object value = new Order(); }
+                        """, "which Jackson deserializes through @JsonMerge on shop.Merged.value"),
+                Arguments.of("Resolved", """
+                        @JsonIdentityInfo(generator = ObjectIdGenerators.IntSequenceGenerator.class, resolver = Resolved.R.class)
+                        public class Resolved {
+                            public Object value;
+                            public static class R extends SimpleObjectIdResolver { }
+                        }
+                        """, "which Jackson deserializes through @JsonIdentityInfo(resolver = shop.Resolved.R) on shop.Resolved"),
+                Arguments.of("Valued", """
+                        public class Valued {
+                            public Object value;
+                            public static Valued valueOf(Order order) { Valued valued = new Valued(); valued.value = order; return valued; }
+                        }
+                        """, "reaches the @AgenticEntity Order through shop.Valued.valueOf()"));
+    }
+
+    /** Annotations whose value code chooses, and an implicit factory, each without a request to show it. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("uncheckable")
+    void anAnnotationWhoseValueCodeChoosesIsAnError(String type, String wrapper, String message) {
+        assertThat(errors(compileUnchecked(List.of(REST_ON), ORDER, JACKSON + wrapper, service(type, "null"))))
+                .anyMatch(e -> e.contains("The request body 'body' of 'place' ") && e.contains(message));
+    }
+
     @Test
     void aCustomTypeResolverOrValueInstantiatorIsAnError() {
         String resolved = JACKSON + """
@@ -179,6 +233,9 @@ class RestJacksonBodyTest {
                     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "t")
                     @JsonSubTypes(@JsonSubTypes.Type(value = Note.class, name = "n")) public Object detail;
                     @JsonSetter("label") public void rename(String label) { }
+                    @JsonIgnore public Object scratch;
+                    @JsonAlias("when") @JsonFormat(pattern = "yyyy-MM-dd") public String date;
+                    @JsonIgnoreProperties(ignoreUnknown = true) public Note note;
                     public static class Note { public String text; }
                 }
                 """;
