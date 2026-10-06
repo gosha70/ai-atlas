@@ -72,6 +72,13 @@ class ContractResourcesProcessorTest {
     }
 
     @Test
+    void theRestOptionIsRecorded() {
+        assertThat(manifestOf(compile(fixture().sources(), MAJOR + "1")).configuration().rest()).isFalse();
+        assertThat(manifestOf(compile(fixture().sources(), MAJOR + "1", "-Aai.atlas.rest=true"))
+                .configuration().rest()).isTrue();
+    }
+
+    @Test
     void majorTwoListsTheVersionedDocumentAndTheAlias() {
         Compilation compilation = compile(fixture().sources(), MAJOR + "2");
 

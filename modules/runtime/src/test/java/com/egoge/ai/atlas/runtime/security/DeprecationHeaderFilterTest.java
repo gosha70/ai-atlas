@@ -126,6 +126,79 @@ class DeprecationHeaderFilterTest {
         assertThat(response.getHeader("Deprecation")).isEqualTo("true");
     }
 
+    /**
+     * Route templates of {@code ai.atlas.rest} mappings: {@code DELETE /orders/{id}} is deprecated;
+     * the literal {@code GET /orders/active} and the template {@code GET /orders/{id}} are not, and
+     * {@code GET /orders/{id}/lines} and the less specific {@code GET /{resource}/{key}} are.
+     */
+    private static final String TEMPLATE_MANIFEST_JSON = """
+            {
+              "apiMajor":1,
+              "basePath":"/api",
+              "endpoints":[
+                {"method":"DELETE","path":"/api/v1/orders/{id}","deprecated":true,"deprecatedSince":1,"replacement":"cancel"},
+                {"method":"GET","path":"/api/v1/orders/{id}","deprecated":false,"deprecatedSince":0,"replacement":""},
+                {"method":"GET","path":"/api/v1/orders/active","deprecated":false,"deprecatedSince":0,"replacement":""},
+                {"method":"GET","path":"/api/v1/orders/{id}/lines","deprecated":true,"deprecatedSince":1,"replacement":""},
+                {"method":"GET","path":"/api/v1/{resource}/{key}","deprecated":true,"deprecatedSince":1,"replacement":""}
+              ]
+            }
+            """;
+
+    @Test
+    void templatedRoute_matchesRequestsWithAnyVariableValue() throws Exception {
+        writeManifestToTestClasspath(TEMPLATE_MANIFEST_JSON);
+        try {
+            DeprecationHeaderFilter templated = new DeprecationHeaderFilter("");
+
+            assertThat(deprecation(templated, "DELETE", "/api/v1/orders/42")).isEqualTo("true");
+            assertThat(deprecation(templated, "DELETE", "/api/v1/orders/abc-7")).isEqualTo("true");
+            assertThat(deprecation(templated, "GET", "/api/v1/orders/42")).isNull();
+            assertThat(deprecation(templated, "GET", "/api/v1/orders/42/lines")).isEqualTo("true");
+            assertThat(deprecation(templated, "DELETE", "/api/v1/orders/42/lines")).isNull();
+            assertThat(deprecation(templated, "DELETE", "/api/v1/orders")).isNull();
+        } finally {
+            writeManifestToTestClasspath(MANIFEST_JSON);
+        }
+    }
+
+    @Test
+    void templatedRoute_yieldsToALiteralOrMoreSpecificRoute() throws Exception {
+        writeManifestToTestClasspath(TEMPLATE_MANIFEST_JSON);
+        try {
+            DeprecationHeaderFilter templated = new DeprecationHeaderFilter("");
+
+            // The literal route matches exactly, as Spring routes it; neither template applies
+            assertThat(deprecation(templated, "GET", "/api/v1/orders/active")).isNull();
+            // Both GET templates match; /api/v1/orders/{id} is the more specific, as in Spring
+            assertThat(deprecation(templated, "GET", "/api/v1/orders/42")).isNull();
+            // Only the less specific one matches
+            assertThat(deprecation(templated, "GET", "/api/v1/customers/42")).isEqualTo("true");
+        } finally {
+            writeManifestToTestClasspath(MANIFEST_JSON);
+        }
+    }
+
+    @Test
+    void templatedRoute_contextPathStrippedBeforeMatching() throws Exception {
+        writeManifestToTestClasspath(TEMPLATE_MANIFEST_JSON);
+        try {
+            MockHttpServletRequest request = new MockHttpServletRequest("DELETE", "/app/api/v1/orders/42");
+            request.setContextPath("/app");
+            new DeprecationHeaderFilter("").doFilter(request, response, chain);
+
+            assertThat(response.getHeader("Deprecation")).isEqualTo("true");
+        } finally {
+            writeManifestToTestClasspath(MANIFEST_JSON);
+        }
+    }
+
+    private static String deprecation(DeprecationHeaderFilter filter, String method, String path) throws Exception {
+        MockHttpServletResponse result = new MockHttpServletResponse();
+        filter.doFilter(new MockHttpServletRequest(method, path), result, new MockFilterChain());
+        return result.getHeader("Deprecation");
+    }
+
     // ---- Helpers ----
 
     private static Path resolveManifestPath() throws Exception {

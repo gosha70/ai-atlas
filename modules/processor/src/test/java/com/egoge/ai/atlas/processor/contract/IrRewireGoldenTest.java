@@ -49,6 +49,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *
  * <p>With {@code ai.atlas.projections=true} and no {@code @AgenticField(channels)} declared, every
  * case must generate the same snapshot: the channel projections agree, so no AI record appears.
+ * Likewise with {@code ai.atlas.rest=true} and no REST metadata declared: every operation keeps the
+ * RPC mapping.
  *
  * <p>With {@code ai.atlas.collections=true} and no paging contract or bound declared, every case
  * must generate the same snapshot too: the flag only adds WARNINGs.
@@ -141,6 +143,17 @@ class IrRewireGoldenTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("fixtureCases")
+    void fixtureOutputWithRestOnAndNoDeclarationMatchesTheGoldenSnapshot(GoldenCase goldenCase) throws IOException {
+        Map<String, String> options = new TreeMap<>(goldenCase.options());
+        options.put(AgenticProcessor.OPT_REST, "true");
+        Map<String, String> actual = compileFixture(new GoldenCase(goldenCase.name(), goldenCase.fixture(), options,
+                goldenCase.expectSuccess(), goldenCase.laterRound()));
+
+        verify(goldenCase.name(), actual);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("fixtureCases")
     void fixtureOutputWithCollectionsOnAndNoDeclarationMatchesTheGoldenSnapshot(GoldenCase goldenCase)
             throws IOException {
         Map<String, String> options = new TreeMap<>(goldenCase.options());
@@ -179,6 +192,11 @@ class IrRewireGoldenTest {
     @Test
     void demoOutputWithProjectionsOnMatchesTheGoldenSnapshot(@TempDir Path outputDir) throws IOException {
         verify(DEMO_CASE, generateDemo(outputDir, Map.of(AgenticProcessor.OPT_PROJECTIONS, "true")));
+    }
+
+    @Test
+    void demoOutputWithRestOnMatchesTheGoldenSnapshot(@TempDir Path outputDir) throws IOException {
+        verify(DEMO_CASE, generateDemo(outputDir, Map.of(AgenticProcessor.OPT_REST, "true")));
     }
 
     @Test

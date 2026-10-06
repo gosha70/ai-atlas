@@ -163,4 +163,97 @@ public @interface AgenticExposed {
      * {@link #NO_MAX_RESULTS}, is a declaration, and one below 1 is a compile error.
      */
     int maxResults() default NO_MAX_RESULTS;
+
+    /**
+     * The REST mapping of the operation. Requires the processor option {@code ai.atlas.rest=true};
+     * without it, any value other than the default is a compile error, because the operation would
+     * still be served at its RPC route.
+     *
+     * <p>The default, an empty {@code @Rest}, keeps the RPC mapping: {@code GET} without
+     * parameters, {@code POST} with them, at {@code /<service-kebab>/<method-kebab>}, every
+     * argument a query parameter and every success a 200. On a method, {@code @Rest} may set only
+     * {@link Rest#method()}, {@link Rest#path()} and {@link Rest#status()}; on a class, only
+     * {@link Rest#style()} and {@link Rest#resource()}. Each attribute a method declares wins over
+     * the CRUD convention, attribute by attribute.
+     *
+     * <p>Example usage:
+     * <pre>{@code
+     * @AgenticExposed(rest = @Rest(style = RestStyle.CRUD, resource = "orders"))
+     * public class OrderService {
+     *     public Order findById(Long id) { ... }                    // GET /orders/{id}
+     *
+     *     @AgenticExposed(rest = @Rest(method = HttpMethod.PATCH, path = "/{id}/status"))
+     *     public Order changeStatus(Long id, String status) { ... } // id in the path, status in the query
+     * }
+     * }</pre>
+     */
+    Rest rest() default @Rest;
+
+    /** The HTTP method of a REST mapping. */
+    enum HttpMethod {
+        /** Not declared: the CRUD rule the method matches, else GET without parameters and POST with them. */
+        UNSET,
+        /** {@code GET}. */
+        GET,
+        /** {@code POST}. */
+        POST,
+        /** {@code PUT}. */
+        PUT,
+        /** {@code PATCH}. */
+        PATCH,
+        /** {@code DELETE}. */
+        DELETE
+    }
+
+    /** How a service maps the operations that declare no explicit REST mapping. */
+    enum RestStyle {
+        /** Not declared: {@link #RPC}. */
+        INHERIT,
+        /** {@code /<method-kebab>} below the resource, GET without parameters and POST with them. */
+        RPC,
+        /**
+         * The five documented CRUD rules for the methods whose name and parameters match one, and
+         * {@link #RPC} for every other method.
+         */
+        CRUD
+    }
+
+    /**
+     * REST metadata of an operation or, for {@link #style()} and {@link #resource()}, of a service.
+     * Every attribute's default means "not declared".
+     */
+    @Documented
+    @Target({})
+    @Retention(RetentionPolicy.RUNTIME)
+    @interface Rest {
+
+        /** Method level only: the HTTP method. {@link HttpMethod#UNSET} (default) derives it. */
+        HttpMethod method() default HttpMethod.UNSET;
+
+        /**
+         * Method level only: the path below the service's resource, such as {@code "/{id}"} or
+         * {@code "/{id}/items"}; {@code ""} is the resource itself. Each segment is a literal of
+         * letters, digits, {@code .}, {@code _}, {@code ~} or {@code -}, or a {@code {name}}
+         * variable binding the method parameter of that name. The default, a single NUL
+         * character, derives the path.
+         */
+        String path() default "\0";
+
+        /**
+         * Method level only: the success status, a 2xx code Spring's {@code HttpStatus} names.
+         * {@code 0} (default) derives it: the CRUD rule's status, else 204 for a {@code void}
+         * DELETE, else 200.
+         */
+        int status() default 0;
+
+        /** Class level only: how the service's undeclared operations are mapped. */
+        RestStyle style() default RestStyle.INHERIT;
+
+        /**
+         * Class level only: the resource, one path segment every operation of the service is
+         * mapped below. Empty (default) keeps the service's kebab-case name, as the RPC mapping
+         * has it; nothing is pluralized.
+         */
+        String resource() default "";
+    }
 }

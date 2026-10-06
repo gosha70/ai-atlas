@@ -35,8 +35,8 @@ class ClassOutputResourcesTest {
     // "empty" fixtures need only api.ir.json listed (required() adds nothing else for an empty
     // contract with constraints off); "declared" fixtures with constraints on also require the
     // major's OpenAPI document and mcp-tools.json, matching ContractResources.required.
-    private static final EffectiveOptions CONFIG_EMPTY = new EffectiveOptions("/api", 1, "1.0.0", false, false, false);
-    private static final EffectiveOptions CONFIG_DECLARED = new EffectiveOptions("/api", 1, "1.0.0", true, false, false);
+    private static final EffectiveOptions CONFIG_EMPTY = new EffectiveOptions("/api", 1, "1.0.0", false, false, false, false);
+    private static final EffectiveOptions CONFIG_DECLARED = new EffectiveOptions("/api", 1, "1.0.0", true, false, false, false);
     private static final byte[] IR_BYTES = "{\"irVersion\": 1}\n".getBytes(StandardCharsets.UTF_8);
     private static final byte[] OPENAPI_BYTES = "{\"openapi\": \"3.0.3\"}\n".getBytes(StandardCharsets.UTF_8);
     private static final byte[] MCP_TOOLS_BYTES = "{\"tools\": []}\n".getBytes(StandardCharsets.UTF_8);

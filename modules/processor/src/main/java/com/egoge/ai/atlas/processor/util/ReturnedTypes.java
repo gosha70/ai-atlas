@@ -16,6 +16,7 @@ import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 
 /** What a method's declared return type holds: its element type, and the entity it is or extends. */
 public final class ReturnedTypes {
@@ -71,5 +72,37 @@ public final class ReturnedTypes {
             pending.addAll(types.directSupertypes(current));
         }
         return null;
+    }
+
+    /**
+     * The declarations {@code type} mentions at any depth, by qualified name, and its type variables
+     * by name. A type walk can follow a declaration's members once per erasure and set of these:
+     * whatever an instance reaches through its members comes from the members' declared types or from
+     * the declarations of its type arguments. Following them for every instance would not end on a
+     * type that grows through its own supertype, such as {@code Grow<T> extends ArrayList<Grow<List<T>>>}.
+     */
+    public static Set<String> declarations(TypeMirror type) {
+        Set<String> declarations = new TreeSet<>();
+        Deque<TypeMirror> pending = new ArrayDeque<>(List.of(type));
+        while (!pending.isEmpty()) {
+            TypeMirror current = pending.pop();
+            if (current instanceof ArrayType array) {
+                pending.push(array.getComponentType());
+            } else if (current instanceof WildcardType wildcard) {
+                if (wildcard.getExtendsBound() != null) {
+                    pending.push(wildcard.getExtendsBound());
+                }
+                if (wildcard.getSuperBound() != null) {
+                    pending.push(wildcard.getSuperBound());
+                }
+            } else if (current instanceof DeclaredType declared) {
+                declarations.add(((TypeElement) declared.asElement()).getQualifiedName().toString());
+                declared.getTypeArguments().forEach(pending::push);
+            } else {
+                // A type variable by name only: its bound may mention itself
+                declarations.add(current.toString());
+            }
+        }
+        return declarations;
     }
 }

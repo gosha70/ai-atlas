@@ -181,4 +181,16 @@ public @interface AgenticField {
      * array, or {@code INHERIT} mixed with explicit values, is a compile error.
      */
     AgenticExposed.Channel[] channels() default { AgenticExposed.Channel.INHERIT };
+
+    /**
+     * Whether a REST request body may set this field. When the entity is the body of an operation,
+     * the generated controller binds a whitelisted input record ({@code <Entity>Input}) of the
+     * entity's {@code @AgenticField}s instead of the entity, and {@code false} leaves this field out
+     * of it: use it for fields the caller must not set, such as an {@code id}. A field without
+     * {@code @AgenticField} is never bound from a request.
+     *
+     * <p>Only meaningful with the processor option {@code ai.atlas.rest=true}, which adds request
+     * bodies; a compile warning is emitted when it is set while the option is off.
+     */
+    boolean input() default true;
 }

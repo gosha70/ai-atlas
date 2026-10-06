@@ -315,9 +315,9 @@ class RestOpenApiConsistencyTest {
         assertThat(errors).allSatisfy(error -> assertThat(error.getMessage(null))
                 .contains("POST /api/v1/order-service/find"));
         assertThat(errors).anySatisfy(error -> assertThat(error.getMessage(null))
-                .contains("of a.OrderService#find is also mapped by b.OrderService#find"));
+                .contains("of a.OrderService#find(Long) is also mapped by b.OrderService#find(Long)"));
         assertThat(errors).anySatisfy(error -> assertThat(error.getMessage(null))
-                .contains("of b.OrderService#find is also mapped by a.OrderService#find"));
+                .contains("of b.OrderService#find(Long) is also mapped by a.OrderService#find(Long)"));
     }
 
     // --- helpers ---

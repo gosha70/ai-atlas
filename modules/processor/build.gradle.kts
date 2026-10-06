@@ -27,6 +27,10 @@ dependencies {
     // Spring dependencies for compile-testing (generated code must compile)
     testImplementation(platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.spring.boot.get()}"))
     testImplementation("org.springframework:spring-web")
+    // ai.atlas.rest: dispatch real requests to the generated controllers with MockMvc (test only)
+    testImplementation("org.springframework:spring-webmvc")
+    testImplementation("org.springframework:spring-test")
+    testImplementation("jakarta.servlet:jakarta.servlet-api")
     testImplementation(libs.spring.ai.mcp.server)
     // Spring Data paging types, and MockMvc to call generated controllers as Spring MVC would with Spring
     // Data's Pageable resolver; the processor reads Pageable, Page and Slice by name only
