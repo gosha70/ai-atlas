@@ -24,6 +24,7 @@ import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.ExecutableType;
+import javax.lang.model.type.IntersectionType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.type.TypeVariable;
@@ -223,17 +224,26 @@ final class InputRecords {
                 pending.add(Map.entry(variable.getUpperBound(), via));
                 continue;
             }
-            if (!(current instanceof DeclaredType declared)) {
+            if (current instanceof IntersectionType intersection) {
+                intersection.getBounds().forEach(bound -> pending.add(Map.entry(bound, via)));
                 continue;
             }
+            if (!(current instanceof DeclaredType written)) {
+                continue;
+            }
+            // Capture gives each wildcard its effective bound, its declared parameter's included:
+            // Unsafe<?> of Unsafe<T extends Order> binds an Order
+            DeclaredType declared = written.getTypeArguments().stream().anyMatch(WildcardType.class::isInstance)
+                    ? (DeclaredType) types.capture(written) : written;
             if (current != type) {
                 TypeElement entity = ReturnedTypes.entityOf(current, types);
                 if (entity != null) {
                     return "the @AgenticEntity " + entity.getSimpleName() + " through " + via;
                 }
             }
-            for (TypeMirror argument : declared.getTypeArguments()) {
-                pending.add(Map.entry(argument, via + "<" + display(argument, types) + ">"));
+            for (int i = 0; i < declared.getTypeArguments().size(); i++) {
+                pending.add(Map.entry(declared.getTypeArguments().get(i),
+                        via + "<" + display(written.getTypeArguments().get(i), types) + ">"));
             }
             TypeElement element = (TypeElement) declared.asElement();
             Set<String> declarations = ReturnedTypes.declarations(current);

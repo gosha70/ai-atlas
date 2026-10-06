@@ -272,6 +272,12 @@ class RestInputRecordTest {
                         "reaches the @AgenticEntity Order through java.util.Map<shop.Order>"),
                 Arguments.of("java.util.Map<String, List<Order>>", "body.get(\"a\").get(0)", "{\"a\":[" + order + "]}",
                         null, "reaches the @AgenticEntity Order through"),
+                Arguments.of("Unsafe<?>", "body.value", "{\"value\":" + order + "}", """
+                        package shop;
+                        public class Unsafe<T extends Order> {
+                            @com.fasterxml.jackson.databind.annotation.JsonDeserialize(as = Order.class) public T value;
+                        }
+                        """, "reaches the @AgenticEntity Order through"),
                 Arguments.of("PlaceRequest", "body.order()", "{\"note\":\"n\",\"order\":" + order + "}", """
                         package shop;
                         public record PlaceRequest(Order order, String note) { }
