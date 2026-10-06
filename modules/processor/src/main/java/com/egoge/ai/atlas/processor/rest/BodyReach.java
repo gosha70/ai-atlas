@@ -100,8 +100,18 @@ final class BodyReach {
      * attribute, {@code builder} included, names code whose result cannot be checked.
      */
     private static final Set<String> TARGETS = Set.of("as", "contentAs", "keyAs");
-    /** The suffix of a class attribute's "none" value, such as {@code JsonDeserializer.None}. */
-    private static final String NONE = ".None";
+    /**
+     * The exact "none" sentinel of each reviewed {@code @JsonDeserialize} code attribute. Any other
+     * class, a user class named {@code None} included, and any value of an attribute not listed here
+     * names code whose result cannot be checked.
+     */
+    private static final Map<String, String> NONE = Map.of(
+            "using", "com.fasterxml.jackson.databind.JsonDeserializer.None",
+            "contentUsing", "com.fasterxml.jackson.databind.JsonDeserializer.None",
+            "keyUsing", "com.fasterxml.jackson.databind.KeyDeserializer.None",
+            "converter", "com.fasterxml.jackson.databind.util.Converter.None",
+            "contentConverter", "com.fasterxml.jackson.databind.util.Converter.None",
+            "builder", "java.lang.Void");
     /** {@code @JsonTypeInfo(use)} values whose type ids name any class, or are resolved out of sight. */
     private static final Set<String> OPEN_TYPE_IDS = Set.of("CLASS", "MINIMAL_CLASS", "CUSTOM");
 
@@ -273,7 +283,7 @@ final class BodyReach {
                 if (JSON_DESERIALIZE.equals(name) && TARGETS.contains(attribute) && value instanceof TypeMirror target) {
                     pending.add(Map.entry(target, at + " @JsonDeserialize(" + attribute + ")"));
                 } else if (JSON_DESERIALIZE.equals(name) && value instanceof TypeMirror code
-                        && !code.toString().endsWith(NONE)) {
+                        && !qualifiedName(code).equals(NONE.get(attribute))) {
                     // using, contentUsing, keyUsing, converter, contentConverter, and any later one
                     return new Reach("@JsonDeserialize(" + attribute + " = " + value + ") on " + at, false);
                 } else if (JSON_TYPE_INFO.equals(name) && "use".equals(attribute)
@@ -306,6 +316,12 @@ final class BodyReach {
     private boolean mutableContainer(TypeMirror type) {
         return List.of(COLLECTION, MAP).stream().map(elements::getTypeElement).anyMatch(container -> container != null
                 && types.isAssignable(types.erasure(type), types.erasure(container.asType())));
+    }
+
+    /** A class literal's qualified name, as an annotation value gives it. */
+    private static String qualifiedName(TypeMirror type) {
+        return type instanceof DeclaredType declared
+                ? ((TypeElement) declared.asElement()).getQualifiedName().toString() : type.toString();
     }
 
     private static boolean annotated(Element element, String annotation) {

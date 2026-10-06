@@ -150,6 +150,18 @@ class RestJacksonBodyTest {
                             @SuppressWarnings("unchecked") @JsonProperty public List<Order> getValues() { return raw; }
                         }
                         """, "reaches the @AgenticEntity Order through shop.Held.getValues()"),
+                Arguments.of("NamedNone", "(Order) body.value", "{\"value\":" + ORDER_JSON + "}", """
+                        public class NamedNone {
+                            @JsonDeserialize(using = NamedNone.None.class) public Object value;
+                            public static class None extends com.fasterxml.jackson.databind.JsonDeserializer<Object> {
+                                @Override public Object deserialize(com.fasterxml.jackson.core.JsonParser parser,
+                                        com.fasterxml.jackson.databind.DeserializationContext context) throws java.io.IOException {
+                                    return parser.readValueAs(Order.class);
+                                }
+                            }
+                        }
+                        """, "which Jackson deserializes through @JsonDeserialize(using = shop.NamedNone.None) on"
+                        + " shop.NamedNone.value"),
                 Arguments.of("Typed", "(Order) body.value", "{\"value\":{\"@class\":\"shop.Order\","
                         + ORDER_JSON.substring(1) + "}", """
                         public class Typed { @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS) public Object value; }
@@ -236,6 +248,8 @@ class RestJacksonBodyTest {
                     @JsonIgnore public Object scratch;
                     @JsonAlias("when") @JsonFormat(pattern = "yyyy-MM-dd") public String date;
                     @JsonIgnoreProperties(ignoreUnknown = true) public Note note;
+                    @JsonDeserialize(using = com.fasterxml.jackson.databind.JsonDeserializer.None.class,
+                            converter = com.fasterxml.jackson.databind.util.Converter.None.class) public String plain;
                     public static class Note { public String text; }
                 }
                 """;
