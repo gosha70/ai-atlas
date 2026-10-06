@@ -16,29 +16,20 @@ import com.palantir.javapoet.ClassName;
 import javax.annotation.processing.Messager;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
-import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
-import javax.lang.model.type.ExecutableType;
-import javax.lang.model.type.IntersectionType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
-import javax.lang.model.type.TypeVariable;
-import javax.lang.model.type.WildcardType;
 import javax.lang.model.util.ElementFilter;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Deque;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -176,119 +167,22 @@ final class InputRecords {
                 return new Body(false, null, null);
             }
         }
-        String reached = reachedEntity(type, types);
-        if (reached != null) {
+        BodyReach.Reach reach = BodyReach.of(type, types, env.getElementUtils());
+        if (reach != null && reach.entity()) {
             messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + subject + " is " + type + ", which reaches "
-                    + reached + ". Jackson would bind every property of it, not only its whitelisted"
+                    + reach.description() + ". Jackson would bind every property of it, not only its whitelisted"
                     + " @AgenticFields. Take the entity itself as the body, or hold its fields in the body type"
                     + " rather than the entity", body);
             return new Body(false, null, null);
         }
-        return new Body(true, null, BodyType.of(type, types, env.getElementUtils()));
-    }
-
-    /**
-     * How a body type reaches an {@code @AgenticEntity}, or a subtype of one, that Jackson would
-     * bind in full: through a type argument, a map key or value, an array component, a record
-     * component, a field, a setter's or constructor's parameter, or a supertype, transitively.
-     * Members of JDK types are not followed, only their type arguments. Each type is visited once,
-     * and a declaration's members are followed once per erasure and set of
-     * {@link ReturnedTypes#declarations}, so the walk ends, even on a type that grows through its own
-     * supertype.
-     *
-     * @return {@code "the @AgenticEntity X through T.a.b"}, or {@code null} when none is reached
-     */
-    private String reachedEntity(TypeMirror type, Types types) {
-        Deque<Map.Entry<TypeMirror, String>> pending = new ArrayDeque<>();
-        pending.add(Map.entry(type, display(type, types)));
-        Set<String> seen = new HashSet<>();
-        Map<String, List<Set<String>>> followed = new HashMap<>();
-        while (!pending.isEmpty()) {
-            Map.Entry<TypeMirror, String> next = pending.removeFirst();
-            TypeMirror current = next.getKey();
-            String via = next.getValue();
-            if (!seen.add(current.toString())) {
-                continue;
-            }
-            if (current instanceof ArrayType array) {
-                pending.add(Map.entry(array.getComponentType(), via + "[]"));
-                continue;
-            }
-            if (current instanceof WildcardType wildcard) {
-                if (wildcard.getExtendsBound() != null) {
-                    pending.add(Map.entry(wildcard.getExtendsBound(), via));
-                }
-                continue;
-            }
-            if (current instanceof TypeVariable variable) {
-                pending.add(Map.entry(variable.getUpperBound(), via));
-                continue;
-            }
-            if (current instanceof IntersectionType intersection) {
-                intersection.getBounds().forEach(bound -> pending.add(Map.entry(bound, via)));
-                continue;
-            }
-            if (!(current instanceof DeclaredType written)) {
-                continue;
-            }
-            // Capture gives each wildcard its effective bound, its declared parameter's included:
-            // Unsafe<?> of Unsafe<T extends Order> binds an Order
-            DeclaredType declared = written.getTypeArguments().stream().anyMatch(WildcardType.class::isInstance)
-                    ? (DeclaredType) types.capture(written) : written;
-            if (current != type) {
-                TypeElement entity = ReturnedTypes.entityOf(current, types);
-                if (entity != null) {
-                    return "the @AgenticEntity " + entity.getSimpleName() + " through " + via;
-                }
-            }
-            for (int i = 0; i < declared.getTypeArguments().size(); i++) {
-                pending.add(Map.entry(declared.getTypeArguments().get(i),
-                        via + "<" + display(written.getTypeArguments().get(i), types) + ">"));
-            }
-            TypeElement element = (TypeElement) declared.asElement();
-            Set<String> declarations = ReturnedTypes.declarations(current);
-            List<Set<String>> sets = followed.computeIfAbsent(types.erasure(current).toString(), k -> new ArrayList<>());
-            if (jdk(element) || sets.stream().anyMatch(set -> set.containsAll(declarations))) {
-                continue;
-            }
-            sets.add(declarations);
-            // A superclass's private fields are not among the members, but Jackson may bind them
-            for (TypeMirror supertype : types.directSupertypes(current)) {
-                pending.add(Map.entry(supertype, via));
-            }
-            for (Element member : env.getElementUtils().getAllMembers(element)) {
-                if (member.getModifiers().contains(Modifier.STATIC)) {
-                    continue;
-                }
-                String memberName = member.getSimpleName().toString();
-                if (member.getKind() == ElementKind.FIELD || member.getKind() == ElementKind.RECORD_COMPONENT) {
-                    pending.add(Map.entry(types.asMemberOf(declared, member), via + "." + memberName));
-                } else if (member.getKind() == ElementKind.METHOD && memberName.startsWith("set")
-                        && ((ExecutableElement) member).getParameters().size() == 1) {
-                    ExecutableType setter = (ExecutableType) types.asMemberOf(declared, member);
-                    pending.add(Map.entry(setter.getParameterTypes().get(0), via + "." + memberName + "()"));
-                }
-            }
-            for (ExecutableElement constructor : ElementFilter.constructorsIn(element.getEnclosedElements())) {
-                ExecutableType creator = (ExecutableType) types.asMemberOf(declared, constructor);
-                for (int i = 0; i < creator.getParameterTypes().size(); i++) {
-                    pending.add(Map.entry(creator.getParameterTypes().get(i),
-                            via + "(" + constructor.getParameters().get(i).getSimpleName() + ")"));
-                }
-            }
+        if (reach != null) {
+            messager.printMessage(Diagnostic.Kind.ERROR, PREFIX + subject + " is " + type + ", which Jackson"
+                    + " deserializes through " + reach.description() + ": the class it creates is chosen out of"
+                    + " the processor's sight, so it cannot be checked not to bind an @AgenticEntity past its"
+                    + " whitelist. Name the classes with @JsonDeserialize(as) or @JsonSubTypes instead", body);
+            return new Body(false, null, null);
         }
-        return null;
-    }
-
-    /** A type as a path through types names it: a declared type without its type arguments. */
-    private static String display(TypeMirror type, Types types) {
-        return type instanceof DeclaredType ? types.erasure(type).toString() : type.toString();
-    }
-
-    /** A type of the JDK, whose members a request body does not bind as properties. */
-    private boolean jdk(TypeElement element) {
-        String name = env.getElementUtils().getPackageOf(element).getQualifiedName().toString();
-        return name.startsWith("java.") || name.startsWith("javax.") || name.startsWith("jdk.");
+        return new Body(true, null, BodyType.of(type, types, env.getElementUtils()));
     }
 
     /**
