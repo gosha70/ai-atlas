@@ -101,6 +101,8 @@ public final class IrBuilder {
     private final Function<String, Bound> bounds;
     private final Map<String, EntityModel> entities = new TreeMap<>();
     private final Map<String, Operation> operations = new TreeMap<>();
+    /** The method each operation was recorded from, by its identity, for the diagnostics of {@link #write}. */
+    private final Map<String, ExecutableElement> methods = new HashMap<>();
     /** {@code entity#field} of every field declared {@code openEnum = true}. */
     private final Set<String> openEnums = new HashSet<>();
     /** The effective constraints of each recorded field, by {@code entity#field} (FR-002). */
@@ -310,6 +312,7 @@ public final class IrBuilder {
                 AttributeResolver.resolveDescription(methodAnnotation, typeAnnotation, methodName),
                 rest, parameters, returns, hints(methodAnnotation, typeAnnotation), lifecycle);
         operations.put(operation.id(), operation);
+        methods.put(operation.id(), method);
         return operation.id();
     }
 
@@ -340,7 +343,10 @@ public final class IrBuilder {
 
     /**
      * Writes the document to {@link ContractIr#RESOURCE_PATH} in the class output, once per
-     * compilation; later calls do nothing (FR-003).
+     * compilation; later calls do nothing (FR-003). Every operation must pass {@link IrConsistency},
+     * as every document read from disk must: an operation whose slots contradict each other is an
+     * ERROR on its method, naming the operation and the contradiction, and nothing is written, so
+     * the processor never writes an IR it would refuse to read.
      *
      * @param apiBasePath the configured REST base path
      * @param apiMajor    the configured major
@@ -350,10 +356,25 @@ public final class IrBuilder {
             return;
         }
         written = true;
+        ContractIr ir = build(apiBasePath, apiMajor);
+        boolean consistent = true;
+        for (Operation op : ir.operations()) {
+            try {
+                IrConsistency.check(op);
+            } catch (IllegalArgumentException e) {
+                env.getMessager().printMessage(Diagnostic.Kind.ERROR, "[ai-atlas] The Contract IR the processor"
+                        + " built is inconsistent: " + e.getMessage() + ". This is a defect in ai-atlas; please"
+                        + " report it", methods.get(op.id()));
+                consistent = false;
+            }
+        }
+        if (!consistent) {
+            return;
+        }
         try {
             var resource = env.getFiler().createResource(StandardLocation.CLASS_OUTPUT, "", ContractIr.RESOURCE_PATH);
             try (OutputStream out = resource.openOutputStream()) {
-                out.write(IrJson.writeBytes(build(apiBasePath, apiMajor)));
+                out.write(IrJson.writeBytes(ir));
             }
         } catch (IOException e) {
             env.getMessager().printMessage(Diagnostic.Kind.ERROR,
