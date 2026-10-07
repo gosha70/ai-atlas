@@ -169,17 +169,84 @@ class RestRequestBodyTest {
                 public class ThingService {
                     public static class Grow<T> extends ArrayList<Grow<List<T>>> { }
                     public static class Node<T> { public Node<List<T>> next; public T value; public Order order; }
+                    // Each capture of a wildcard, and each method type variable bounded by a class one, is a new variable
+                    public static class Chain<T> { public Chain<? extends T> next; public String note; }
+                    public static class Link<T> { public <U extends T> void setNext(Link<U> next) { } public String note; }
+                    public static class Ranked<T extends Comparable<T>> { public Ranked<? super T> next; public String note; }
                     @AgenticExposed(description = "a", rest = @Rest(method = HttpMethod.POST, path = "/a"))
                     public void a(@AgenticParam(in = In.BODY) Grow<Order> body) { }
                     @AgenticExposed(description = "b", rest = @Rest(method = HttpMethod.POST, path = "/b"))
                     public void b(@AgenticParam(in = In.BODY) Node<String> body) { }
+                    @AgenticExposed(description = "c", rest = @Rest(method = HttpMethod.POST, path = "/c"))
+                    public void c(@AgenticParam(in = In.BODY) Chain<?> body) { }
+                    @AgenticExposed(description = "d", rest = @Rest(method = HttpMethod.POST, path = "/d"))
+                    public void d(@AgenticParam(in = In.BODY) Link<String> body) { }
+                    @AgenticExposed(description = "e", rest = @Rest(method = HttpMethod.POST, path = "/e"))
+                    public void e(@AgenticParam(in = In.BODY) Ranked<?> body) { }
+                    @AgenticExposed(description = "f", rest = @Rest(method = HttpMethod.POST, path = "/f"))
+                    public void f(@AgenticParam(in = In.BODY) Chain<? extends Order> body) { }
                 }
                 """;
         Compilation compilation = compileUnchecked(List.of(REST_ON), ORDER, service);
 
         assertThat(errors(compilation))
                 .anyMatch(e -> e.contains("The request body 'body' of 'a'") && e.contains("reaches the @AgenticEntity Order"))
-                .anyMatch(e -> e.contains("The request body 'body' of 'b'") && e.contains("reaches the @AgenticEntity Order"));
+                .anyMatch(e -> e.contains("The request body 'body' of 'b'") && e.contains("reaches the @AgenticEntity Order"))
+                .noneMatch(e -> e.contains("of 'c'") || e.contains("of 'd'") || e.contains("of 'e'"))
+                .anyMatch(e -> e.contains("The request body 'body' of 'f'") && e.contains("reaches the @AgenticEntity Order"));
+    }
+
+    @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void bodiesThatReachNoEntityStillCompile() {
+        String service = """
+                package shop;
+                import com.egoge.ai.atlas.annotations.*;
+                import com.egoge.ai.atlas.annotations.AgenticExposed.*;
+                import com.egoge.ai.atlas.annotations.AgenticParam.In;
+                import com.fasterxml.jackson.annotation.*;
+                import java.math.BigDecimal;
+                import java.time.LocalDate;
+                import java.util.*;
+                @AgenticExposed(rest = @Rest(resource = "things"))
+                public class ThingService {
+                    public enum Priority { LOW, HIGH }
+                    public record Scalars(String name, int count, long total, boolean on, BigDecimal price, LocalDate due,
+                            Priority priority, List<String> tags, Map<String, String> labels) { }
+                    /** A Lombok-style DTO: private fields, a no-argument and an all-argument constructor, getters, setters. */
+                    public static class Dto {
+                        private String name;
+                        private List<String> tags = new ArrayList<>();
+                        private Map<String, String> labels = new HashMap<>();
+                        private Priority priority;
+                        public Dto() { }
+                        public Dto(String name, List<String> tags, Map<String, String> labels, Priority priority) {
+                            this.name = name; this.tags = tags; this.labels = labels; this.priority = priority;
+                        }
+                        public String getName() { return name; }
+                        public void setName(String name) { this.name = name; }
+                        public List<String> getTags() { return tags; }
+                        public Map<String, String> getLabels() { return labels; }
+                        public Priority getPriority() { return priority; }
+                        public void setPriority(Priority priority) { this.priority = priority; }
+                        @JsonGetter("aliases") public List<String> aliases() { return tags; }
+                        @JsonGetter("extra") public Map<String, LocalDate> extra() { return new HashMap<>(); }
+                        public <T> void setAny(T any) { }
+                        public <T extends CharSequence> void setText(T text) { }
+                        public <T extends Comparable<T>> void setRank(List<T> rank) { }
+                        @JsonCreator public static <T extends Number> Dto of(@JsonProperty("n") T n) { return new Dto(); }
+                    }
+                    @AgenticExposed(description = "a", rest = @Rest(method = HttpMethod.POST, path = "/a"))
+                    public void a(@AgenticParam(in = In.BODY) Scalars body) { }
+                    @AgenticExposed(description = "b", rest = @Rest(method = HttpMethod.POST, path = "/b"))
+                    public void b(@AgenticParam(in = In.BODY) Dto body) { }
+                    @AgenticExposed(description = "c", rest = @Rest(method = HttpMethod.POST, path = "/c"))
+                    public void c(@AgenticParam(in = In.BODY) List<Dto> body) { }
+                    @AgenticExposed(description = "d", rest = @Rest(method = HttpMethod.POST, path = "/d"))
+                    public void d(@AgenticParam(in = In.BODY) Map<String, String> body) { }
+                }
+                """;
+        compile(List.of(REST_ON), ORDER, service);
     }
 
     private static String body(JsonNode paths, String operation) {

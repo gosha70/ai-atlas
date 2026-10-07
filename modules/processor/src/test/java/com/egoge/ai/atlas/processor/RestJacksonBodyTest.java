@@ -165,7 +165,91 @@ class RestJacksonBodyTest {
                 Arguments.of("Typed", "(Order) body.value", "{\"value\":{\"@class\":\"shop.Order\","
                         + ORDER_JSON.substring(1) + "}", """
                         public class Typed { @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS) public Object value; }
-                        """, "which Jackson deserializes through @JsonTypeInfo(use = CLASS) on shop.Typed.value"));
+                        """, "which Jackson deserializes through @JsonTypeInfo(use = CLASS) on shop.Typed.value"),
+                // Every value of a multi-parameter factory is bound, not only the last as for a setter
+                Arguments.of("Pair", "(Order) body.kept", "{\"order\":" + ORDER_JSON + ",\"note\":\"n\"}", """
+                        public class Pair {
+                            public Object kept;
+                            @JsonCreator public static Pair of(@JsonProperty("order") Order order,
+                                    @JsonProperty("note") String note) { Pair pair = new Pair(); pair.kept = order; return pair; }
+                        }
+                        """, "reaches the @AgenticEntity Order through shop.Pair.of()"),
+                // A getter Jackson fills that only @JsonProperty, not its name, makes a property
+                Arguments.of("Listed", "body.values().get(0)", "{\"values\":[" + ORDER_JSON + "]}", """
+                        public class Listed {
+                            private final List<Object> raw = new ArrayList<>();
+                            @SuppressWarnings({"unchecked", "rawtypes"})
+                            @JsonProperty("values") public List<Order> values() { return (List) raw; }
+                        }
+                        """, "reaches the @AgenticEntity Order through shop.Listed.values()"),
+                Arguments.of("GotList", "body.orders().get(0)", "{\"orders\":[" + ORDER_JSON + "]}", """
+                        public class GotList {
+                            private final List<Object> raw = new ArrayList<>();
+                            @SuppressWarnings({"unchecked", "rawtypes"})
+                            @JsonGetter("orders") public List<Order> orders() { return (List) raw; }
+                        }
+                        """, "reaches the @AgenticEntity Order through shop.GotList.orders()"),
+                Arguments.of("GotMap", "body.m().get(\"o\")", "{\"m\":{\"o\":" + ORDER_JSON + "}}", """
+                        public class GotMap {
+                            private final Map<String, Object> raw = new HashMap<>();
+                            @SuppressWarnings({"unchecked", "rawtypes"})
+                            @JsonGetter("m") public Map<String, Order> m() { return (Map) raw; }
+                        }
+                        """, "reaches the @AgenticEntity Order through shop.GotMap.m()"),
+                // Jackson infers a property from other annotations too: @JsonView makes put a setter
+                Arguments.of("Viewed", "(Order) body.kept", "{\"put\":" + ORDER_JSON + "}", """
+                        public class Viewed {
+                            public Object kept;
+                            @JsonView(Object.class) public void put(Order order) { kept = order; }
+                        }
+                        """, "reaches the @AgenticEntity Order through shop.Viewed.put()"),
+                Arguments.of("Formatted", "body.orders().get(0)", "{\"orders\":[" + ORDER_JSON + "]}", """
+                        public class Formatted {
+                            private final List<Object> raw = new ArrayList<>();
+                            @SuppressWarnings({"unchecked", "rawtypes"})
+                            @JsonFormat public List<Order> orders() { return (List) raw; }
+                        }
+                        """, "reaches the @AgenticEntity Order through shop.Formatted.orders()"),
+                // Two method type variables of one name are two variables, in either order
+                Arguments.of("GenericSetters", "(Order) body.kept", "{\"b\":" + ORDER_JSON + "}", """
+                        public class GenericSetters {
+                            public Object kept;
+                            public <T> void setA(T a) { }
+                            public <T extends Order> void setB(T b) { kept = b; }
+                        }
+                        """, "reaches the @AgenticEntity Order through shop.GenericSetters.setB()"),
+                Arguments.of("GenericSettersSwapped", "(Order) body.kept", "{\"b\":" + ORDER_JSON + "}", """
+                        public class GenericSettersSwapped {
+                            public Object kept;
+                            public <T extends Order> void setB(T b) { kept = b; }
+                            public <T> void setA(T a) { }
+                        }
+                        """, "reaches the @AgenticEntity Order through shop.GenericSettersSwapped.setB()"),
+                Arguments.of("GenericLists", "(Order) body.kept.get(0)", "{\"b\":[" + ORDER_JSON + "]}", """
+                        public class GenericLists {
+                            public List<?> kept;
+                            public <T> void setA(List<T> a) { }
+                            public <T extends Order> void setB(List<T> b) { kept = b; }
+                        }
+                        """, "reaches the @AgenticEntity Order through shop.GenericLists.setB()"),
+                Arguments.of("GenericFactory", "(Order) body.kept", "{\"b\":" + ORDER_JSON + "}", """
+                        public class GenericFactory {
+                            public Object kept;
+                            public <T> void setA(T a) { }
+                            @JsonCreator public static <T extends Order> GenericFactory of(@JsonProperty("b") T b) {
+                                GenericFactory made = new GenericFactory();
+                                made.kept = b;
+                                return made;
+                            }
+                        }
+                        """, "reaches the @AgenticEntity Order through shop.GenericFactory.of()"),
+                Arguments.of("GenericConstructor", "(Order) body.kept", "{\"b\":" + ORDER_JSON + "}", """
+                        public class GenericConstructor {
+                            public Object kept;
+                            public <T> void setA(T a) { }
+                            @JsonCreator public <T extends Order> GenericConstructor(@JsonProperty("b") T b) { kept = b; }
+                        }
+                        """, "reaches the @AgenticEntity Order through shop.GenericConstructor(b)"));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -209,7 +293,23 @@ class RestJacksonBodyTest {
                             public Object value;
                             public static Valued valueOf(Order order) { Valued valued = new Valued(); valued.value = order; return valued; }
                         }
-                        """, "reaches the @AgenticEntity Order through shop.Valued.valueOf()"));
+                        """, "reaches the @AgenticEntity Order through shop.Valued.valueOf()"),
+                Arguments.of("InjectedFactory", """
+                        public class InjectedFactory {
+                            public Object value;
+                            @JsonCreator public static InjectedFactory of(@JacksonInject("order") Object order) {
+                                InjectedFactory made = new InjectedFactory();
+                                made.value = order;
+                                return made;
+                            }
+                        }
+                        """, "which Jackson deserializes through @JacksonInject on shop.InjectedFactory.of()"),
+                Arguments.of("InjectedConstructor", """
+                        public class InjectedConstructor {
+                            public final Object value;
+                            @JsonCreator public InjectedConstructor(@JacksonInject("order") Object value) { this.value = value; }
+                        }
+                        """, "which Jackson deserializes through @JacksonInject on shop.InjectedConstructor(value)"));
     }
 
     /** Annotations whose value code chooses, and an implicit factory, each without a request to show it. */
@@ -235,6 +335,23 @@ class RestJacksonBodyTest {
                 .anyMatch(e -> e.contains("which Jackson deserializes through @JsonTypeResolver on shop.Resolved"));
         assertThat(errors(compileUnchecked(List.of(REST_ON), ORDER, instantiated, service("Instantiated", "null"))))
                 .anyMatch(e -> e.contains("which Jackson deserializes through @JsonValueInstantiator on shop.Instantiated"));
+    }
+
+    /** Ignored, serialization-only and READ_ONLY methods take no input, so an entity they mention is not reached. */
+    @Test
+    void ignoredAndSerializationOnlyMethodsAreNotInputs() {
+        String command = JACKSON + """
+                public class Outgoing {
+                    public String note;
+                    @JsonIgnore public void ignored(Order order) { }
+                    @JsonIgnore public void setSecret(Order order) { }
+                    @JsonIgnore public List<Order> getHidden() { return List.of(); }
+                    @JsonAnyGetter public Map<String, Order> outgoing() { return Map.of(); }
+                    @JsonProperty(access = JsonProperty.Access.READ_ONLY) public List<Order> orders() { return List.of(); }
+                    @JsonProperty(access = JsonProperty.Access.READ_ONLY) public void assign(Order order) { }
+                }
+                """;
+        compile(List.of(REST_ON), ORDER, command, service("Outgoing", "null"));
     }
 
     @Test

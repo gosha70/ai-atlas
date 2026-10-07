@@ -8,12 +8,16 @@ import com.egoge.ai.atlas.annotations.AgenticEntity;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.IntersectionType;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.TypeVariable;
 import javax.lang.model.type.WildcardType;
 import javax.lang.model.util.Types;
 import java.util.ArrayDeque;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -75,8 +79,9 @@ public final class ReturnedTypes {
     }
 
     /**
-     * The declarations {@code type} mentions at any depth, by qualified name, and its type variables
-     * by name. A type walk can follow a declaration's members once per erasure and set of these:
+     * The declarations {@code type} mentions at any depth, by qualified name, a type variable's
+     * through its bound: two variables of one name are told apart by what they bound, never by the
+     * name. A type walk can follow a declaration's members once per erasure and set of these:
      * whatever an instance reaches through its members comes from the members' declared types or from
      * the declarations of its type arguments. Following them for every instance would not end on a
      * type that grows through its own supertype, such as {@code Grow<T> extends ArrayList<Grow<List<T>>>}.
@@ -84,9 +89,17 @@ public final class ReturnedTypes {
     public static Set<String> declarations(TypeMirror type) {
         Set<String> declarations = new TreeSet<>();
         Deque<TypeMirror> pending = new ArrayDeque<>(List.of(type));
+        Set<TypeMirror> variables = Collections.newSetFromMap(new IdentityHashMap<>());
         while (!pending.isEmpty()) {
             TypeMirror current = pending.pop();
-            if (current instanceof ArrayType array) {
+            if (current instanceof TypeVariable variable) {
+                // Each variable once: its bound may mention itself
+                if (variables.add(variable)) {
+                    pending.push(variable.getUpperBound());
+                }
+            } else if (current instanceof IntersectionType intersection) {
+                intersection.getBounds().forEach(pending::push);
+            } else if (current instanceof ArrayType array) {
                 pending.push(array.getComponentType());
             } else if (current instanceof WildcardType wildcard) {
                 if (wildcard.getExtendsBound() != null) {
@@ -99,7 +112,6 @@ public final class ReturnedTypes {
                 declarations.add(((TypeElement) declared.asElement()).getQualifiedName().toString());
                 declared.getTypeArguments().forEach(pending::push);
             } else {
-                // A type variable by name only: its bound may mention itself
                 declarations.add(current.toString());
             }
         }
