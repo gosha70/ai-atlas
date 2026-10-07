@@ -40,6 +40,7 @@ import io.swagger.v3.oas.models.responses.ApiResponses;
 
 import javax.annotation.processing.Filer;
 import javax.annotation.processing.Messager;
+import javax.annotation.processing.ProcessingEnvironment;
 import javax.tools.Diagnostic;
 import javax.tools.StandardLocation;
 import java.io.IOException;
@@ -96,6 +97,7 @@ public final class OpenApiGenerator {
    * @param constraints  the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
    * @param paging       the paging contracts by operation identity, or {@code null} when
    *                     {@code ai.atlas.collections} is off
+   * @param env          the processing environment, which tells a collection parameter
    */
   public static void generate(
       List<EntityModel> entities,
@@ -105,9 +107,9 @@ public final class OpenApiGenerator {
       Collection<InputRecord> inputRecords,
       String apiBasePath, int apiMajor, String infoVersion,
       ConstraintSurfaces constraints, Map<String, PagingContract> paging,
-      Filer filer, Messager messager) {
+      ProcessingEnvironment env, Filer filer, Messager messager) {
     OpenAPI openAPI = buildSpec(entities, services, operationIds, routes, inputRecords, apiBasePath, apiMajor,
-        infoVersion, constraints, paging);
+        infoVersion, constraints, paging, env);
 
     try {
       String json = serializeToJson(openAPI);
@@ -146,7 +148,7 @@ public final class OpenApiGenerator {
       Function<String, RestOperation> routes,
       Collection<InputRecord> inputRecords,
       String apiBasePath, int apiMajor, String infoVersion,
-      ConstraintSurfaces constraints, Map<String, PagingContract> paging) {
+      ConstraintSurfaces constraints, Map<String, PagingContract> paging, ProcessingEnvironment env) {
     OpenAPI openAPI = new OpenAPI();
     openAPI.openapi(OPENAPI_VERSION);
     openAPI.info(new Info()
@@ -185,7 +187,7 @@ public final class OpenApiGenerator {
       }
       pathItem.operation(entry.httpMethod(), buildOperation(entry.method(), operationId, apiMajor,
           constraints != null ? constraints.operation(entry.operationKey()) : null, constraints, entry.rest(),
-          paging != null ? paging.get(entry.operationKey()) : null));
+          paging != null ? paging.get(entry.operationKey()) : null, env));
     }
     openAPI.paths(paths);
 
@@ -304,10 +306,11 @@ public final class OpenApiGenerator {
    * @param constraints the constraint surfaces, or {@code null} when {@code ai.atlas.constraints} is off
    * @param paging      the method's paging contract, or {@code null} when it has none or
    *                    {@code ai.atlas.collections} is off
+   * @param env         the processing environment, which tells a collection parameter
    */
   private static Operation buildOperation(MethodModel method, String operationId, int apiMajor,
                                           ContractIr.Operation irOperation, ConstraintSurfaces constraints,
-                                          RestOperation rest, PagingContract paging) {
+                                          RestOperation rest, PagingContract paging, ProcessingEnvironment env) {
     Operation operation = new Operation();
     operation.operationId(operationId);
     operation.summary(method.description());
@@ -330,11 +333,14 @@ public final class OpenApiGenerator {
         continue;
       }
       boolean path = RestOperation.PATH.equals(in);
+      // A collection is an array of its typed elements whatever the options. A query parameter's default
+      // style, form with explode, is how Spring binds a @RequestParam collection: ?tags=a&tags=b
+      boolean array = ConstraintSurfaces.collection(param.typeName(), env);
       Parameter parameter = new Parameter()
           .in(path ? "path" : "query")
           .name(param.name())
           .required(true)
-          .schema(mapJavaTypeToSchema(param.typeName().toString()));
+          .schema(array ? typedSchema(param.typeName(), env) : mapJavaTypeToSchema(param.typeName().toString()));
       if (!param.description().isEmpty()) {
         parameter.description(param.description());
       }
@@ -344,7 +350,7 @@ public final class OpenApiGenerator {
         parameter.required(irParam.required() || path);
         if (!irParam.constraints().isEmpty()) {
           // The keywords apply only to the matching JSON type, which the flag-off mapping may not give
-          parameter.schema(constrainedSchema(param.typeName(), constraints));
+          parameter.schema(typedSchema(param.typeName(), env));
         }
         ConstraintSurfaces.applyOpenApi(parameter.getSchema(), irParam.constraints());
       } else if (paging != null && paging.optionalCursor(i)) {
@@ -370,15 +376,16 @@ public final class OpenApiGenerator {
   }
 
   /**
-   * The schema of a constrained parameter, typed as the constraint model types it (FR-014): an
-   * integral type is an {@code integer}, {@code float}, {@code double} and {@code BigDecimal} are a
-   * {@code number}, and an array or any {@code java.util.Collection} is an {@code array} with
-   * {@code items}; anything else keeps its flag-off mapping.
+   * The schema of a constrained or collection parameter, typed as the constraint model types it
+   * (FR-014): an integral type is an {@code integer}, {@code float}, {@code double} and
+   * {@code BigDecimal} are a {@code number}, and an array or any {@code java.util.Collection} is an
+   * {@code array} with {@code items}, unconstrained for a raw one; anything else keeps its flag-off
+   * mapping.
    */
-  private static Schema<?> constrainedSchema(TypeName type, ConstraintSurfaces constraints) {
-    if (constraints.collection(type)) {
+  private static Schema<?> typedSchema(TypeName type, ProcessingEnvironment env) {
+    if (ConstraintSurfaces.collection(type, env)) {
       TypeName element = ConstraintSurfaces.elementType(type);
-      return new ArraySchema().items(element != null ? constrainedSchema(element, constraints) : new Schema<>());
+      return new ArraySchema().items(element != null ? typedSchema(element, env) : new Schema<>());
     }
     String name = type.toString();
     Schema<?> schema = mapJavaTypeToSchema(name);

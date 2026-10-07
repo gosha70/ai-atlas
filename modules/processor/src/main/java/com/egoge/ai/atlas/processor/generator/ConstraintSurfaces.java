@@ -95,6 +95,18 @@ public record ConstraintSurfaces(ContractProjection projection, boolean beanVali
      * @return whether it is an array or a collection
      */
     boolean collection(TypeName type) {
+        return collection(type, env);
+    }
+
+    /**
+     * Whether a parameter of {@code type} is a JSON array, as {@link #collection(TypeName)} decides,
+     * with or without {@code ai.atlas.constraints}.
+     *
+     * @param type the parameter's type, raw or parameterized
+     * @param env  the processing environment
+     * @return whether it is an array or a collection
+     */
+    static boolean collection(TypeName type, ProcessingEnvironment env) {
         if (type instanceof ArrayTypeName) {
             return true;
         }
