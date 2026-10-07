@@ -248,12 +248,14 @@ class AgenticPluginFunctionalTest {
     @Test
     void editingASourceWithSourceRetentionAnnotationsCompilesIncrementally() throws IOException {
         writeContractProject("");
-        createRunner("classes").build();
+        // Without file-system watching each build snapshots the sources afresh, so the edit is seen
+        // however late the watcher would report it (#66)
+        createRunner("classes", "--no-watch-fs").build();
         replaceIn("Plain.java", "return \"plain\";", "return \"still plain\";");
 
-        BuildResult result = createRunner("compileJava", "--info").build();
+        BuildResult result = createRunner("compileJava", "--info", "--no-watch-fs").build();
 
-        assertThat(result.task(":compileJava").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+        assertThat(result.task(":compileJava").getOutcome()).as(result.getOutput()).isEqualTo(TaskOutcome.SUCCESS);
         assertThat(result.getOutput()).contains("Incremental compilation of")
                 .doesNotContain("Full recompilation is required");
     }
