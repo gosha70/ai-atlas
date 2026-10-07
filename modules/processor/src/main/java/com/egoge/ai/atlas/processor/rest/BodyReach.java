@@ -70,6 +70,27 @@ final class BodyReach {
     private static final String JSON_TYPE_INFO = ANNOTATION + "JsonTypeInfo";
     private static final String JSON_CREATOR = ANNOTATION + "JsonCreator";
     private static final String JSON_PROPERTY = ANNOTATION + "JsonProperty";
+    private static final String JSON_IGNORE = ANNOTATION + "JsonIgnore";
+    /**
+     * The annotations that make an instance method of any name an input property's setter: those
+     * naming one, then those Jackson infers one from ({@code JacksonAnnotationIntrospector}'s
+     * {@code ANNOTATIONS_TO_INFER_DESER} in 2.18). Others, such as {@code @JsonIgnore} or
+     * {@code @JsonValue}, do not.
+     */
+    private static final Set<String> INPUT_ACCESSORS = Set.of(ANNOTATION + "JsonSetter", JSON_PROPERTY,
+            ANNOTATION + "JsonAnySetter", DATABIND + "JsonDeserialize", ANNOTATION + "JsonView",
+            ANNOTATION + "JsonFormat", ANNOTATION + "JsonTypeInfo", ANNOTATION + "JsonUnwrapped",
+            ANNOTATION + "JsonBackReference", ANNOTATION + "JsonManagedReference", ANNOTATION + "JsonMerge");
+    /**
+     * The annotations that make a no-argument method of any name a property's getter, which Jackson
+     * fills in place when it returns a {@code Collection} or {@code Map}: those naming one, then
+     * those Jackson infers one from ({@code ANNOTATIONS_TO_INFER_SER}). {@code @JsonAnyGetter} only
+     * serializes.
+     */
+    private static final Set<String> OUTPUT_ACCESSORS = Set.of(ANNOTATION + "JsonGetter", JSON_PROPERTY,
+            DATABIND + "JsonSerialize", ANNOTATION + "JsonView", ANNOTATION + "JsonFormat",
+            ANNOTATION + "JsonTypeInfo", ANNOTATION + "JsonRawValue", ANNOTATION + "JsonUnwrapped",
+            ANNOTATION + "JsonBackReference", ANNOTATION + "JsonManagedReference");
     private static final String JSON_IDENTITY_INFO = ANNOTATION + "JsonIdentityInfo";
     private static final String BUNDLE = ANNOTATION + "JacksonAnnotationsInside";
     /** The Jackson annotations the walk acts on. */
@@ -239,16 +260,16 @@ final class BodyReach {
                 boolean creator = isStatic && (annotated(method, JSON_CREATOR)
                         || IMPLICIT_FACTORIES.contains(memberName) && params.size() == 1);
                 // Not only @JsonGetter, @JsonSetter or @JsonProperty make a method of any name an accessor:
-                // Jackson infers one from @JsonView, @JsonFormat and others, so any of its annotations does
-                boolean accessor = !isStatic && method.getKind() == ElementKind.METHOD && jackson(method);
-                if (!isStatic && params.isEmpty() && mutableContainer(method.getReturnType())
-                        && (memberName.startsWith("get") || accessor)) {
+                // Jackson infers one from @JsonView, @JsonFormat and others, but never from @JsonIgnore
+                boolean property = !isStatic && method.getKind() == ElementKind.METHOD && !ignored(method);
+                if (property && params.isEmpty() && mutableContainer(method.getReturnType())
+                        && (memberName.startsWith("get") || annotatedAny(method, OUTPUT_ACCESSORS))) {
                     // Jackson fills a setterless Collection or Map through its getter
                     pending.add(Map.entry(((ExecutableType) types.asMemberOf(declared, method)).getReturnType(),
                             at + "()"));
                 }
-                boolean setter = !isStatic && !params.isEmpty() && (memberName.startsWith("set") && params.size() == 1
-                        || accessor);
+                boolean setter = property && !params.isEmpty() && (memberName.startsWith("set") && params.size() == 1
+                        || annotatedAny(method, INPUT_ACCESSORS));
                 if (creator || setter) {
                     ExecutableType executable = (ExecutableType) types.asMemberOf(declared, method);
                     // A setter's value is its last parameter: @JsonAnySetter takes the key first
@@ -332,10 +353,16 @@ final class BodyReach {
                 ? ((TypeElement) declared.asElement()).getQualifiedName().toString() : type.toString();
     }
 
-    /** Whether {@code element} carries a Jackson annotation, directly or in a bundle. */
-    private static boolean jackson(Element element) {
-        return effective(element).stream().map(BodyReach::name)
-                .anyMatch(name -> name.startsWith(ANNOTATION) || name.startsWith(DATABIND));
+    /** Whether {@code element} carries one of {@code annotations}, directly or in a bundle. */
+    private static boolean annotatedAny(Element element, Set<String> annotations) {
+        return effective(element).stream().map(BodyReach::name).anyMatch(annotations::contains);
+    }
+
+    /** Whether Jackson ignores {@code element}: {@code @JsonIgnore}, unless declared {@code false}. */
+    private static boolean ignored(Element element) {
+        return effective(element).stream().filter(mirror -> name(mirror).equals(JSON_IGNORE))
+                .anyMatch(mirror -> mirror.getElementValues().values().stream()
+                        .noneMatch(value -> Boolean.FALSE.equals(value.getValue())));
     }
 
     private static boolean annotated(Element element, String annotation) {

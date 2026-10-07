@@ -249,15 +249,17 @@ These are compile errors:
   command record instead. Members of JDK types are not followed, only their type arguments.
   The walk also follows what Jackson binds beyond the Java types: a `@JsonCreator` factory's
   parameters, an implicit `valueOf` or `fromString` factory's parameter, the value of a method of
-  any name that carries a Jackson annotation (`@JsonSetter`, `@JsonProperty`, `@JsonAnySetter`, or
-  one Jackson infers a property from, such as `@JsonView` or `@JsonFormat`), a setterless
-  `Collection` or `Map` getter that Jackson fills, whether named `get...` or Jackson-annotated
+  any name that Jackson makes a setter (`@JsonSetter`, `@JsonProperty`, `@JsonAnySetter`, or one
+  it infers an input property from, such as `@JsonView` or `@JsonFormat`), a setterless
+  `Collection` or `Map` getter that Jackson fills, whether named `get...` or made a getter
   (`@JsonGetter("orders") List<Order> orders()`), a generic method's or constructor's type
   variable by its own bound (two variables named `T` are never confused), a wildcard's
   bound declared on its type parameter (`Unsafe<?>` of `Unsafe<T extends Order>`), and the classes
   `@JsonDeserialize(as, contentAs, keyAs)`, `@JsonSubTypes` and
   `@JsonTypeInfo(defaultImpl)` name, so `@JsonDeserialize(as = Order.class) Object value` reaches
-  `Order`. Annotation bundles marked `@JacksonAnnotationsInside` are expanded, as Jackson does;
+  `Order`. Annotation bundles marked `@JacksonAnnotationsInside` are expanded, as Jackson does. A
+  method Jackson ignores (`@JsonIgnore`) or only serializes through (`@JsonAnyGetter`,
+  `@JsonValue`) takes no input, so what it mentions is not reached;
 - a body type whose Jackson annotations let code choose or fill the deserialized value out of the
   processor's sight. The check fails closed: any other `@JsonDeserialize` class attribute, such
   as `using`, `converter` or `builder`; `@JsonTypeInfo` with `CLASS`, `MINIMAL_CLASS` or `CUSTOM`
