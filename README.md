@@ -534,7 +534,7 @@ The `sample/` directory contains a minimal standalone project that demonstrates 
 
 ```kotlin
 plugins {
-    id("com.egoge.ai-atlas") version "1.2.0"
+    id("com.egoge.ai-atlas") version "1.3.0"
 }
 
 agentic {
@@ -549,9 +549,9 @@ The plugin automatically adds `annotations` to `implementation`, `processor` to 
 
 ```kotlin
 dependencies {
-    implementation("com.egoge:ai-atlas-annotations:1.2.0")
-    implementation("com.egoge:ai-atlas-runtime:1.2.0")
-    annotationProcessor("com.egoge:ai-atlas-processor:1.2.0")
+    implementation("com.egoge:ai-atlas-annotations:1.3.0")
+    implementation("com.egoge:ai-atlas-runtime:1.3.0")
+    annotationProcessor("com.egoge:ai-atlas-processor:1.3.0")
 }
 ```
 
@@ -583,7 +583,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-  id("com.egoge.ai-atlas") version "1.2.0"
+  id("com.egoge.ai-atlas") version "1.3.0"
 }
 ```
 

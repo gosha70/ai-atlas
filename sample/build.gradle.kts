@@ -1,10 +1,10 @@
 plugins {
-    id("com.egoge.ai-atlas") version "1.2.0"
+    id("com.egoge.ai-atlas") version "1.3.0"
     id("org.springframework.boot") version "3.5.14"
 }
 
 agentic {
-    version.set("1.2.0")
+    version.set("1.3.0")
     apiMajorVersion.set(2)
     mcpEnabled.set(false)
 }

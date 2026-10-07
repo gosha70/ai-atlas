@@ -13,7 +13,7 @@ DSL — no manual `annotationProcessor` dependencies or `-A` compiler args neede
 
 ### Using the published release (recommended)
 
-The sample's `build.gradle.kts` references the published `1.2.0` plugin. Just build:
+The sample's `build.gradle.kts` references the published `1.3.0` plugin. Just build:
 
 ```bash
 cd sample
@@ -26,7 +26,7 @@ To test against local changes, publish with the matching version:
 
 ```bash
 cd /path/to/ai-atlas
-./gradlew publishToMavenLocal -Pversion=1.2.0
+./gradlew publishToMavenLocal -Pversion=1.3.0
 
 cd sample
 ./gradlew build
@@ -63,11 +63,11 @@ The key sections in `build.gradle.kts`:
 
 ```kotlin
 plugins {
-    id("com.egoge.ai-atlas") version "1.2.0"
+    id("com.egoge.ai-atlas") version "1.3.0"
 }
 
 agentic {
-    version.set("1.2.0")
+    version.set("1.3.0")
     apiMajorVersion.set(2)
     mcpEnabled.set(false)
 }
