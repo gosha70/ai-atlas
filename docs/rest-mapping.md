@@ -248,9 +248,12 @@ These are compile errors:
   The error names the path, such as `shop.PlaceRequest.order`; hold the entity's fields in the
   command record instead. Members of JDK types are not followed, only their type arguments.
   The walk also follows what Jackson binds beyond the Java types: a `@JsonCreator` factory's
-  parameters, an implicit `valueOf` or `fromString` factory's parameter, a `@JsonSetter`,
-  `@JsonProperty` or `@JsonAnySetter` method's value, a setterless `Collection` or `Map` getter
-  that Jackson fills, a wildcard's
+  parameters, an implicit `valueOf` or `fromString` factory's parameter, the value of a method of
+  any name that carries a Jackson annotation (`@JsonSetter`, `@JsonProperty`, `@JsonAnySetter`, or
+  one Jackson infers a property from, such as `@JsonView` or `@JsonFormat`), a setterless
+  `Collection` or `Map` getter that Jackson fills, whether named `get...` or Jackson-annotated
+  (`@JsonGetter("orders") List<Order> orders()`), a generic method's or constructor's type
+  variable by its own bound (two variables named `T` are never confused), a wildcard's
   bound declared on its type parameter (`Unsafe<?>` of `Unsafe<T extends Order>`), and the classes
   `@JsonDeserialize(as, contentAs, keyAs)`, `@JsonSubTypes` and
   `@JsonTypeInfo(defaultImpl)` name, so `@JsonDeserialize(as = Order.class) Object value` reaches
@@ -263,6 +266,8 @@ These are compile errors:
   `@JsonTypeIdResolver`, `@JsonValueInstantiator` or one a later Jackson adds. Name the classes with
   `@JsonDeserialize(as)` or `@JsonSubTypes` instead. Mix-ins and modules registered on the
   `ObjectMapper` at runtime are outside what the processor can read.
+  So is `ObjectMapper` default typing (`activateDefaultTyping`), which lets a request name any
+  class to deserialize; never enable it for request bodies.
 
 Any other body is described in OpenAPI in the shape Jackson binds: an enum as a string with its
 constants; an array or a `java.util.Collection` as an array of its element, nested to any depth,

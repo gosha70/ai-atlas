@@ -25,19 +25,24 @@ import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Whether a request body type reaches an {@code @AgenticEntity}, or a subtype of one, that Jackson
  * would bind in full: through a type argument, a map key or value, an array component, a record
  * component, a field, a setter's, constructor's or {@code @JsonCreator} factory's parameter, a
- * {@code @JsonSetter}, {@code @JsonProperty} or {@code @JsonAnySetter} method's value, a supertype,
- * a setterless {@code Collection} or {@code Map} getter Jackson fills, an implicit {@code valueOf} or
+ * {@code @JsonSetter}, {@code @JsonProperty}, {@code @JsonAnySetter} or other Jackson-annotated
+ * method's value, a supertype, a setterless {@code Collection} or {@code Map} getter Jackson fills,
+ * named {@code get...} or Jackson-annotated ({@code @JsonGetter}, {@code @JsonProperty},
+ * {@code @JsonView}, {@code @JsonFormat}, ...), an implicit {@code valueOf} or
  * {@code fromString} factory's parameter, or a class a Jackson annotation names
  * ({@code @JsonDeserialize(as, contentAs, keyAs)}, {@code @JsonSubTypes},
  * {@code @JsonTypeInfo(defaultImpl)}), transitively. It fails closed on Jackson's annotations: one
@@ -51,6 +56,7 @@ import java.util.Set;
  * processor has no Jackson dependency.
  *
  * <p>Members of JDK types are not followed, only their type arguments. Each type is visited once,
+ * a type variable told apart from every other by its declaration and bound, never by its name alone,
  * and a declaration's members are followed once per erasure and set of
  * {@link ReturnedTypes#declarations}, so the walk ends, even on a type that grows through its own
  * supertype.
@@ -66,9 +72,6 @@ final class BodyReach {
     private static final String JSON_PROPERTY = ANNOTATION + "JsonProperty";
     private static final String JSON_IDENTITY_INFO = ANNOTATION + "JsonIdentityInfo";
     private static final String BUNDLE = ANNOTATION + "JacksonAnnotationsInside";
-    /** Annotations that make an instance method of any name a property's setter. */
-    private static final Set<String> SETTERS = Set.of(ANNOTATION + "JsonSetter", JSON_PROPERTY,
-            ANNOTATION + "JsonAnySetter");
     /** The Jackson annotations the walk acts on. */
     private static final Set<String> HANDLED = Set.of(JSON_DESERIALIZE, JSON_SUB_TYPES, JSON_TYPE_INFO, JSON_CREATOR,
             JSON_PROPERTY, JSON_IDENTITY_INFO, BUNDLE, ANNOTATION + "JsonSetter", ANNOTATION + "JsonAnySetter");
@@ -127,6 +130,8 @@ final class BodyReach {
     private final Types types;
     private final Elements elements;
     private final Deque<Map.Entry<TypeMirror, String>> pending = new ArrayDeque<>();
+    /** A number for each type variable's declaration, which tells apart two variables of one name. */
+    private final Map<Element, Integer> variables = new IdentityHashMap<>();
 
     private BodyReach(Types types, Elements elements) {
         this.types = types;
@@ -152,7 +157,7 @@ final class BodyReach {
             Map.Entry<TypeMirror, String> next = pending.removeFirst();
             TypeMirror current = next.getKey();
             String via = next.getValue();
-            if (!seen.add(current.toString())) {
+            if (!seen.add(key(current, Collections.newSetFromMap(new IdentityHashMap<>())))) {
                 continue;
             }
             if (current instanceof ArrayType array) {
@@ -233,14 +238,17 @@ final class BodyReach {
                 List<? extends VariableElement> params = method.getParameters();
                 boolean creator = isStatic && (annotated(method, JSON_CREATOR)
                         || IMPLICIT_FACTORIES.contains(memberName) && params.size() == 1);
+                // Not only @JsonGetter, @JsonSetter or @JsonProperty make a method of any name an accessor:
+                // Jackson infers one from @JsonView, @JsonFormat and others, so any of its annotations does
+                boolean accessor = !isStatic && method.getKind() == ElementKind.METHOD && jackson(method);
                 if (!isStatic && params.isEmpty() && mutableContainer(method.getReturnType())
-                        && (memberName.startsWith("get") || annotated(method, JSON_PROPERTY))) {
+                        && (memberName.startsWith("get") || accessor)) {
                     // Jackson fills a setterless Collection or Map through its getter
                     pending.add(Map.entry(((ExecutableType) types.asMemberOf(declared, method)).getReturnType(),
                             at + "()"));
                 }
                 boolean setter = !isStatic && !params.isEmpty() && (memberName.startsWith("set") && params.size() == 1
-                        || SETTERS.stream().anyMatch(name -> annotated(method, name)));
+                        || accessor);
                 if (creator || setter) {
                     ExecutableType executable = (ExecutableType) types.asMemberOf(declared, method);
                     // A setter's value is its last parameter: @JsonAnySetter takes the key first
@@ -324,6 +332,12 @@ final class BodyReach {
                 ? ((TypeElement) declared.asElement()).getQualifiedName().toString() : type.toString();
     }
 
+    /** Whether {@code element} carries a Jackson annotation, directly or in a bundle. */
+    private static boolean jackson(Element element) {
+        return effective(element).stream().map(BodyReach::name)
+                .anyMatch(name -> name.startsWith(ANNOTATION) || name.startsWith(DATABIND));
+    }
+
     private static boolean annotated(Element element, String annotation) {
         return effective(element).stream().anyMatch(mirror -> name(mirror).equals(annotation));
     }
@@ -350,6 +364,45 @@ final class BodyReach {
 
     private static String name(AnnotationMirror mirror) {
         return ((TypeElement) mirror.getAnnotationType().asElement()).getQualifiedName().toString();
+    }
+
+    /**
+     * What tells {@code type} apart from every other type: its {@code toString()}, but with each type
+     * variable named by its declaration's number and its bound, so {@code <T> void setA(T a)} and
+     * {@code <T extends Order> void setB(T b)} are two types. A variable inside its own bound, as in
+     * {@code T extends Comparable<T>}, is named by its number alone.
+     *
+     * @param open the variables whose bounds are being keyed, by identity
+     */
+    private String key(TypeMirror type, Set<TypeMirror> open) {
+        if (type instanceof TypeVariable variable) {
+            String name = variable.asElement().getSimpleName() + "#"
+                    + variables.computeIfAbsent(variable.asElement(), k -> variables.size());
+            if (!open.add(variable)) {
+                return name;
+            }
+            String key = name + " extends " + key(variable.getUpperBound(), open);
+            open.remove(variable);
+            return key;
+        }
+        if (type instanceof ArrayType array) {
+            return key(array.getComponentType(), open) + "[]";
+        }
+        if (type instanceof WildcardType wildcard) {
+            return "?" + (wildcard.getExtendsBound() == null ? "" : " extends " + key(wildcard.getExtendsBound(), open))
+                    + (wildcard.getSuperBound() == null ? "" : " super " + key(wildcard.getSuperBound(), open));
+        }
+        if (type instanceof IntersectionType intersection) {
+            return intersection.getBounds().stream().map(bound -> key(bound, open)).collect(Collectors.joining(" & "));
+        }
+        if (type instanceof DeclaredType declared) {
+            TypeElement element = (TypeElement) declared.asElement();
+            String name = declared.getEnclosingType() instanceof DeclaredType enclosing
+                    ? key(enclosing, open) + "." + element.getSimpleName() : element.getQualifiedName().toString();
+            return declared.getTypeArguments().isEmpty() ? name : declared.getTypeArguments().stream()
+                    .map(argument -> key(argument, open)).collect(Collectors.joining(",", name + "<", ">"));
+        }
+        return type.toString();
     }
 
     /** A type as a path through types names it: a declared type without its type arguments. */
