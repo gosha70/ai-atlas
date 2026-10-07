@@ -1,7 +1,7 @@
 [versions]
 # Core
 java = "17"
-atlas = "1.2.0"
+atlas = "1.3.0"
 
 # Code generation
 javapoet = "0.6.0"
