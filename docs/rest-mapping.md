@@ -259,7 +259,8 @@ These are compile errors:
   `@JsonTypeInfo(defaultImpl)` name, so `@JsonDeserialize(as = Order.class) Object value` reaches
   `Order`. Annotation bundles marked `@JacksonAnnotationsInside` are expanded, as Jackson does. A
   method Jackson ignores (`@JsonIgnore`) or only serializes through (`@JsonAnyGetter`,
-  `@JsonValue`) takes no input, so what it mentions is not reached;
+  `@JsonValue`, `@JsonProperty(access = READ_ONLY)`) takes no input, so what it mentions is not
+  reached;
 - a body type whose Jackson annotations let code choose or fill the deserialized value out of the
   processor's sight. The check fails closed: any other `@JsonDeserialize` class attribute, such
   as `using`, `converter` or `builder`; `@JsonTypeInfo` with `CLASS`, `MINIMAL_CLASS` or `CUSTOM`

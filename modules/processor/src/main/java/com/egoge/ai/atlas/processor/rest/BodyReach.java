@@ -71,6 +71,8 @@ final class BodyReach {
     private static final String JSON_CREATOR = ANNOTATION + "JsonCreator";
     private static final String JSON_PROPERTY = ANNOTATION + "JsonProperty";
     private static final String JSON_IGNORE = ANNOTATION + "JsonIgnore";
+    /** The {@code @JsonProperty(access)} value Jackson never deserializes. */
+    private static final String READ_ONLY = "READ_ONLY";
     /**
      * The annotations that make an instance method of any name an input property's setter: those
      * naming one, then those Jackson infers one from ({@code JacksonAnnotationIntrospector}'s
@@ -260,8 +262,10 @@ final class BodyReach {
                 boolean creator = isStatic && (annotated(method, JSON_CREATOR)
                         || IMPLICIT_FACTORIES.contains(memberName) && params.size() == 1);
                 // Not only @JsonGetter, @JsonSetter or @JsonProperty make a method of any name an accessor:
-                // Jackson infers one from @JsonView, @JsonFormat and others, but never from @JsonIgnore
-                boolean property = !isStatic && method.getKind() == ElementKind.METHOD && !ignored(method);
+                // Jackson infers one from @JsonView, @JsonFormat and others, but never from @JsonIgnore, and
+                // never deserializes a READ_ONLY one
+                boolean property = !isStatic && method.getKind() == ElementKind.METHOD && !ignored(method)
+                        && !readOnly(method);
                 if (property && params.isEmpty() && mutableContainer(method.getReturnType())
                         && (memberName.startsWith("get") || annotatedAny(method, OUTPUT_ACCESSORS))) {
                     // Jackson fills a setterless Collection or Map through its getter
@@ -356,6 +360,14 @@ final class BodyReach {
     /** Whether {@code element} carries one of {@code annotations}, directly or in a bundle. */
     private static boolean annotatedAny(Element element, Set<String> annotations) {
         return effective(element).stream().map(BodyReach::name).anyMatch(annotations::contains);
+    }
+
+    /** Whether Jackson only serializes {@code element}: {@code @JsonProperty(access = READ_ONLY)}. */
+    private static boolean readOnly(Element element) {
+        return effective(element).stream().filter(mirror -> name(mirror).equals(JSON_PROPERTY))
+                .anyMatch(mirror -> mirror.getElementValues().entrySet().stream().anyMatch(entry ->
+                        "access".contentEquals(entry.getKey().getSimpleName())
+                                && READ_ONLY.equals(entry.getValue().getValue().toString())));
     }
 
     /** Whether Jackson ignores {@code element}: {@code @JsonIgnore}, unless declared {@code false}. */

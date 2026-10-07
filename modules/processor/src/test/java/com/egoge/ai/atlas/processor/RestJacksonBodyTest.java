@@ -337,7 +337,7 @@ class RestJacksonBodyTest {
                 .anyMatch(e -> e.contains("which Jackson deserializes through @JsonValueInstantiator on shop.Instantiated"));
     }
 
-    /** Ignored and serialization-only methods take no input, so an entity they mention is not reached. */
+    /** Ignored, serialization-only and READ_ONLY methods take no input, so an entity they mention is not reached. */
     @Test
     void ignoredAndSerializationOnlyMethodsAreNotInputs() {
         String command = JACKSON + """
@@ -347,6 +347,8 @@ class RestJacksonBodyTest {
                     @JsonIgnore public void setSecret(Order order) { }
                     @JsonIgnore public List<Order> getHidden() { return List.of(); }
                     @JsonAnyGetter public Map<String, Order> outgoing() { return Map.of(); }
+                    @JsonProperty(access = JsonProperty.Access.READ_ONLY) public List<Order> orders() { return List.of(); }
+                    @JsonProperty(access = JsonProperty.Access.READ_ONLY) public void assign(Order order) { }
                 }
                 """;
         compile(List.of(REST_ON), ORDER, command, service("Outgoing", "null"));
