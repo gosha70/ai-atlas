@@ -157,7 +157,7 @@ public class AgenticProcessor extends AbstractProcessor {
                 OpenApiGenerator.generate(projections.openApiEntities(entityRegistry),
                         serviceRegistry, projection.operationIds(), rest::operation, rest.generatedInputRecords(),
                         apiBasePath, apiMajor, openApiInfoVersion, constraints.surfaces(projection),
-                        collections.contracts(), processingEnv.getFiler(), processingEnv.getMessager());
+                        collections.contracts(), processingEnv, processingEnv.getFiler(), processingEnv.getMessager());
                 openApiGenerated = true;
             }
             constraints.generateToolSpecifications(serviceRegistry, apiMajor, projection, collections.contracts(),
